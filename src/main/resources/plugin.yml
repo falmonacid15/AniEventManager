@@ -1,0 +1,22 @@
+name: anieventmanager
+version: '${version}'
+
+main: org.falmdev.anieventmanager.Anieventmanager
+api-version: '1.21'
+load: POSTWORLD
+
+softdepend:
+  - PlaceholderAPI
+
+commands:
+  em:
+    description: Comando principal de AniEventManager
+    usage: /em <subcomando>
+  bingo:
+    description: Ver tu tarjeta de bingo
+    usage: /bingo
+
+permissions:
+  anieventmanager.admin:
+    description: Acceso a todos los comandos de AniEventManager
+    default: op
