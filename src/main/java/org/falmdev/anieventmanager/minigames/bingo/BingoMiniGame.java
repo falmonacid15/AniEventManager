@@ -82,6 +82,12 @@ public class BingoMiniGame {
             cards.put(team.getId(), new BingoCard(team, cloneTasks(taskPool)));
         }
 
+        // Desregistrar listener anterior si existe (evita acumulación entre partidas)
+        if (gameListener != null) {
+            org.bukkit.event.HandlerList.unregisterAll(gameListener);
+            gameListener = null;
+        }
+
         // Registrar listeners
         gameListener = new BingoListener(plugin, this);
         plugin.getServer().getPluginManager().registerEvents(gameListener, plugin);
@@ -94,7 +100,11 @@ public class BingoMiniGame {
 
     public void forceStop() {
         cancelTasks();
-        if (gameListener != null) gameListener.stopLocationCheck();
+        if (gameListener != null) {
+            gameListener.stopLocationCheck();
+            org.bukkit.event.HandlerList.unregisterAll(gameListener);
+            gameListener = null;
+        }
         broadcastAll(Component.text("El Bingo fue detenido por un admin.", NamedTextColor.RED));
         state = State.FINISHED;
         cards.clear();
@@ -269,7 +279,11 @@ public class BingoMiniGame {
 
     private void finish(List<EventTeam> ranking) {
         cancelTasks();
-        if (gameListener != null) gameListener.stopLocationCheck();
+        if (gameListener != null) {
+            gameListener.stopLocationCheck();
+            org.bukkit.event.HandlerList.unregisterAll(gameListener);
+            gameListener = null;
+        }
         state = State.FINISHED;
         cards.clear();
 

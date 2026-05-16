@@ -83,16 +83,23 @@ public class BingoListener implements Listener {
         if (card == null) return;
 
         for (BingoTask task : card.getTasks()) {
-            if (task.getType() == BingoTask.Type.KILL_MOB
-                    && task.getMobType() == entityType
-                    && !task.isCompleted()) {
-                if (task.increment(1)) {
-                    onTaskCompleted(teamOpt.get(), task, card);
-                } else {
-                    // Progreso parcial — actualizar GUI si está abierto
-                    refreshOpenGUIs(teamOpt.get(), card);
-                }
+            if (task.getType() != BingoTask.Type.KILL_MOB) continue;
+            if (task.getMobType() != entityType) continue;
+            if (task.isCompleted()) continue;
+
+            boolean justCompleted = task.increment(1);
+
+            // Mostrar progreso parcial en chat solo al jugador que mató
+            if (!justCompleted) {
+                killer.sendMessage(Component.text("⚔ " + task.getDisplayName()
+                                + " — " + task.getProgress() + "/" + task.getRequired(),
+                        NamedTextColor.GRAY));
+                refreshOpenGUIs(teamOpt.get(), card);
+            } else {
+                onTaskCompleted(teamOpt.get(), task, card);
             }
+            // Solo procesar la primera tarea que coincida por kill
+            break;
         }
     }
 
@@ -219,7 +226,7 @@ public class BingoListener implements Listener {
         for (Player p : team.getOnlinePlayers()) {
             String titlePlain = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
                     .plainText().serialize(p.getOpenInventory().title());
-            if (titlePlain.startsWith("Bingo — ")) {
+            if (titlePlain.startsWith("✦ Tarjeta de Bingo")) {
                 plugin.getServer().getScheduler().runTask(plugin,
                         () -> BingoGUI.open(p, card, miniGame.getConfig()));
             }

@@ -17,7 +17,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-
 /**
  * Comandos del Bingo.
  *
@@ -289,24 +288,30 @@ public class BingoCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        if (!miniGame.isRunning()) {
-            player.sendMessage(Component.text("No hay ninguna partida de Bingo en curso.", NamedTextColor.RED));
-            return true;
-        }
-
         Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeamOf(player);
         if (teamOpt.isEmpty()) {
             player.sendMessage(Component.text("No estás en ningún equipo.", NamedTextColor.RED));
             return true;
         }
 
+        // Si hay partida en curso, mostrar la tarjeta con progreso en memoria
         BingoCard card = miniGame.getCard(teamOpt.get());
-        if (card == null) {
-            player.sendMessage(Component.text("No tienes una tarjeta de bingo asignada.", NamedTextColor.RED));
+        if (card != null) {
+            BingoGUI.open(player, card, miniGame.getConfig());
             return true;
         }
 
-        BingoGUI.open(player, card, miniGame.getConfig());
+        // Si no hay partida, mostrar las tareas del config como preview (progreso en 0)
+        List<BingoTask> tasks = miniGame.getConfig().loadTasks();
+        if (tasks.isEmpty()) {
+            player.sendMessage(Component.text(
+                    "No hay tareas configuradas aún.", NamedTextColor.GRAY));
+            return true;
+        }
+
+        // Crear una tarjeta temporal de preview sin progreso
+        BingoCard preview = new BingoCard(teamOpt.get(), tasks);
+        BingoGUI.open(player, preview, miniGame.getConfig());
         return true;
     }
 
