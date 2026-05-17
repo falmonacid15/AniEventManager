@@ -50,7 +50,9 @@ import java.util.Optional;
  * ── Bingo ─────────────────────────────────────────────────────────
  *   %anievent_bingo_running%         true si hay partida en curso
  *   %anievent_bingo_time%            Tiempo restante formateado (ej: "24:35")
+ *   %anievent_bingo_timepercent%     Porcentaje restante
  *   %anievent_bingo_percent%         Porcentaje completado del equipo del jugador (ej: "60%")
+ *   %anievent_bingo_progressbar%     Barra de progreso
  *   %anievent_bingo_done%            Tareas completadas del equipo (ej: "15")
  *   %anievent_bingo_total%           Total de tareas en la tarjeta (ej: "25")
  */
@@ -199,6 +201,37 @@ public class AniEventExpansion extends PlaceholderExpansion {
                 BingoCard card = bingo.getCard(teamOpt.get());
                 yield card != null ? String.valueOf(card.getTotalTasks()) : "0";
             }
+            case "bingo_progressbar" -> {
+                Player player = offlinePlayer.getPlayer();
+                if (player == null || !bingo.isRunning()) yield "&8░░░░░░░░░░ &70%";
+
+                Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeamOf(player);
+                if (teamOpt.isEmpty()) yield "&8░░░░░░░░░░ &70%";
+
+                BingoCard card = bingo.getCard(teamOpt.get());
+                if (card == null) yield "&8░░░░░░░░░░ &70%";
+
+                int percent = card.getCompletionPercent();
+                yield getProgressBar(percent);
+            }
+            case "bingo_timepercent" -> {
+                if (!bingo.isRunning()) yield "0";
+
+                int total = bingo.getTotalTimeSeconds();
+                int left = bingo.getTimeLeftSeconds();
+
+                if (total <= 0) yield "0";
+
+                double percent = (left / (double) total) * 100;
+
+                int rounded = (int) Math.round(percent);
+
+                // clamp 0–100
+                if (rounded < 0) rounded = 0;
+                if (rounded > 100) rounded = 100;
+
+                yield String.valueOf(rounded);
+            }
             default -> null;
         };
     }
@@ -261,5 +294,27 @@ public class AniEventExpansion extends PlaceholderExpansion {
             case "black"        -> "&0";
             default             -> "&f";
         };
+    }
+
+    private String getProgressBar(int percent) {
+        int totalBars = 10;
+        int filledBars = (int) Math.round((percent / 100.0) * totalBars);
+
+        StringBuilder bar = new StringBuilder();
+
+        String color;
+        if (percent < 50) color = "&c";
+        else if (percent < 80) color = "&e";
+        else color = "&a";
+
+        for (int i = 0; i < totalBars; i++) {
+            if (i < filledBars) {
+                bar.append(color).append("█");
+            } else {
+                bar.append("&8░");
+            }
+        }
+
+        return bar + " &7" + percent + "%";
     }
 }

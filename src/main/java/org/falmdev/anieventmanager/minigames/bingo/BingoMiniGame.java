@@ -313,6 +313,10 @@ public class BingoMiniGame {
         return String.format("%02d:%02d", mins, secs);
     }
 
+    public int getTotalTimeSeconds() {
+        return config.getDurationMinutes() * 60;
+    }
+
     private void broadcastAll(Component msg) {
         Bukkit.getOnlinePlayers().forEach(p -> p.sendMessage(msg));
     }
