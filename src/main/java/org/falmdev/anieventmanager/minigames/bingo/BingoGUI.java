@@ -12,6 +12,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
@@ -42,7 +43,7 @@ public class BingoGUI implements Listener {
     // ── Abrir GUI ─────────────────────────────────────────────────────────────
 
     public static void open(Player player, BingoCard card, BingoConfig config) {
-        Inventory inv = Bukkit.createInventory(null, 54,
+        Inventory inv = Bukkit.createInventory(new BingoHolder(), 54,
                 Component.text("✦ Tarjeta de Bingo", NamedTextColor.GOLD));
 
         fillBorders(inv);
@@ -133,9 +134,12 @@ public class BingoGUI implements Listener {
                 .decoration(TextDecoration.ITALIC, false));
 
         meta.lore(lore);
+        hideItemDetails(meta);
         item.setItemMeta(meta);
         return item;
     }
+
+
 
     /**
      * Genera una barra de progreso visual con caracteres Unicode.
@@ -230,12 +234,12 @@ public class BingoGUI implements Listener {
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
-        String titlePlain = PlainTextComponentSerializer.plainText()
-                .serialize(event.getView().title());
-        if (titlePlain.startsWith("✦ Tarjeta de Bingo")) {
+        if (event.getInventory().getHolder() instanceof BingoHolder) {
             event.setCancelled(true);
         }
     }
+
+
 
     // ── Utilidades ────────────────────────────────────────────────────────────
 
@@ -248,5 +252,15 @@ public class BingoGUI implements Listener {
             case EQUIP_ITEM     -> "Equipar ítem";
             case FISH_ITEM      -> "Pescar ítem";
         };
+    }
+
+    private static void hideItemDetails(ItemMeta meta) {
+        meta.addItemFlags(
+                ItemFlag.HIDE_ATTRIBUTES,
+                ItemFlag.HIDE_ENCHANTS,
+                ItemFlag.HIDE_UNBREAKABLE,
+                ItemFlag.HIDE_DESTROYS,
+                ItemFlag.HIDE_PLACED_ON
+        );
     }
 }

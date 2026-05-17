@@ -91,7 +91,6 @@ public class BingoMiniGame {
         // Registrar listeners
         gameListener = new BingoListener(plugin, this);
         plugin.getServer().getPluginManager().registerEvents(gameListener, plugin);
-        plugin.getServer().getPluginManager().registerEvents(new BingoGUI(), plugin);
 
         state = State.COUNTDOWN;
         showIntroAndCountdown();

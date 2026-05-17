@@ -215,6 +215,7 @@ public class BingoEditGUI implements Listener {
         lore.add(Component.text("para usarlo como icono.", NamedTextColor.YELLOW)
                 .decoration(TextDecoration.ITALIC, false));
         meta.lore(lore);
+
         item.setItemMeta(meta);
         return item;
     }

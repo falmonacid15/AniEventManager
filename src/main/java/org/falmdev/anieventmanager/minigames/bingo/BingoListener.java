@@ -64,7 +64,23 @@ public class BingoListener implements Listener {
         if (teamOpt.isEmpty()) return;
 
         ItemStack result = event.getRecipe().getResult();
-        checkTasksByType(teamOpt.get(), BingoTask.Type.CRAFT_ITEM, result.getType(), result.getAmount());
+        int craftedAmount;
+
+        if (event.isShiftClick()) {
+            // Calcular cuántas veces se puede repetir la receta con los ingredientes disponibles
+            int timesCanCraft = Integer.MAX_VALUE;
+            for (ItemStack ingredient : event.getInventory().getMatrix()) {
+                if (ingredient == null || ingredient.getType().isAir()) continue;
+                timesCanCraft = Math.min(timesCanCraft, ingredient.getAmount());
+            }
+            if (timesCanCraft == Integer.MAX_VALUE) timesCanCraft = 1;
+            craftedAmount = result.getAmount() * timesCanCraft;
+        } else {
+            craftedAmount = result.getAmount();
+        }
+
+        checkTasksByType(teamOpt.get(), BingoTask.Type.CRAFT_ITEM,
+                result.getType(), craftedAmount);
     }
 
     // ── KILL_MOB — matar mob ──────────────────────────────────────────────────

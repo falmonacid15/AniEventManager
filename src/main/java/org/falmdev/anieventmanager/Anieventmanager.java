@@ -11,7 +11,10 @@ import org.falmdev.anieventmanager.managers.ScoreManager;
 import org.falmdev.anieventmanager.managers.TeamManager;
 import org.falmdev.anieventmanager.minigames.bingo.BingoCommand;
 import org.falmdev.anieventmanager.minigames.bingo.BingoEditGUI;
+import org.falmdev.anieventmanager.minigames.bingo.BingoGUI;
 import org.falmdev.anieventmanager.minigames.bingo.BingoMiniGame;
+import org.falmdev.anieventmanager.minigames.frozenheist.FrozenHeistCommand;
+import org.falmdev.anieventmanager.minigames.frozenheist.FrozenHeistMiniGame;
 import org.falmdev.anieventmanager.minigames.tntrun.TNTRunCommand;
 import org.falmdev.anieventmanager.minigames.tntrun.TNTRunMiniGame;
 import org.falmdev.anieventmanager.placeholders.AniEventExpansion;
@@ -27,6 +30,9 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
     private BingoMiniGame  bingoMiniGame;
     private BingoCommand   bingoCommand;
     private BingoEditGUI   bingoEditGUI;
+    private FrozenHeistMiniGame frozenHeistMiniGame;
+    private FrozenHeistCommand  frozenHeistCommand;
+
 
     @Override
     public void onEnable() {
@@ -60,6 +66,7 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
 
         // Listeners globales
         Bukkit.getPluginManager().registerEvents(new TeamListener(this), this);
+        Bukkit.getPluginManager().registerEvents(new BingoGUI(), this);
         Bukkit.getPluginManager().registerEvents(bingoEditGUI, this);
         Bukkit.getPluginManager().registerEvents(this, this);
 
