@@ -33,7 +33,6 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
     private FrozenHeistMiniGame frozenHeistMiniGame;
     private FrozenHeistCommand  frozenHeistCommand;
 
-
     @Override
     public void onEnable() {
         instance = this;
@@ -48,6 +47,8 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
         this.bingoMiniGame  = new BingoMiniGame(this);
         this.bingoCommand   = new BingoCommand(this, bingoMiniGame);
         this.bingoEditGUI   = new BingoEditGUI(this);
+        this.frozenHeistMiniGame = new FrozenHeistMiniGame(this);
+        this.frozenHeistCommand  = new FrozenHeistCommand(this, frozenHeistMiniGame);
 
         // Comando principal /em
         EMCommand emCommand = new EMCommand(this);
@@ -98,4 +99,6 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
     public BingoMiniGame  getBingoMiniGame()    { return bingoMiniGame; }
     public BingoCommand   getBingoCommand()     { return bingoCommand; }
     public BingoEditGUI   getBingoEditGUI()     { return bingoEditGUI; }
+    public FrozenHeistMiniGame getFrozenHeistMiniGame() { return frozenHeistMiniGame; }
+    public FrozenHeistCommand  getFrozenHeistCommand()  { return frozenHeistCommand; }
 }

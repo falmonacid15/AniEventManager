@@ -55,7 +55,27 @@ import java.util.Optional;
  *   %anievent_bingo_progressbar%     Barra de progreso
  *   %anievent_bingo_done%            Tareas completadas del equipo (ej: "15")
  *   %anievent_bingo_total%           Total de tareas en la tarjeta (ej: "25")
+ *
+ *  * ── Frozen Heist ──────────────────────────────────────────────────
+ *  *   %anievent_fh_running%            true si hay partida en curso
+ *  *   %anievent_fh_state%              Estado: En espera / En juego / Finalizado
+ *  *   %anievent_fh_time%               Tiempo restante mm:ss (ej: "06:30")
+ *  *   %anievent_fh_timepercent%        Porcentaje de tiempo restante (100→0)
+ *  *   %anievent_fh_top_1_name%         Nombre del equipo en 1er lugar
+ *  *   %anievent_fh_top_1_score%        Puntos del equipo en 1er lugar
+ *  *   %anievent_fh_top_1_color%        Color legacy del equipo en 1er lugar
+ *  *   %anievent_fh_top_2_name%         ... (hasta top_8)
+ *  *   %anievent_fh_score%              Puntos del equipo del jugador en este minijuego
+ *  *   %anievent_fh_rank%               Posición actual del equipo (#1, #2...)
+ *  *   %anievent_fh_flag_state%         Estado de tu bandera: En base / Robada / Caída
+ *  *   %anievent_fh_flag_carrier%       Jugador que lleva tu bandera (o "-")
+ *  *   %anievent_fh_carrying%           true si este jugador lleva una bandera
+ *  *   %anievent_fh_carrying_team%      Nombre del equipo cuya bandera llevas
+ *  *   %anievent_fh_frozen%             true si el jugador está congelado
+ *  *   %anievent_fh_frozen_seconds%     Segundos restantes de congelamiento
  */
+
+
 public class AniEventExpansion extends PlaceholderExpansion {
 
     private final Anieventmanager plugin;
@@ -76,6 +96,7 @@ public class AniEventExpansion extends PlaceholderExpansion {
         if (params.startsWith("top_"))    return resolveTop(params);
         if (params.startsWith("bingo_"))  return resolveBingo(offlinePlayer, params);
         if (params.startsWith("tntrun_")) return resolveTNTRun(offlinePlayer, params);
+        if (params.startsWith("fh_"))        return resolveFrozenHeist(offlinePlayer, params);
 
         Player player = offlinePlayer.getPlayer();
 
@@ -232,6 +253,179 @@ public class AniEventExpansion extends PlaceholderExpansion {
 
                 yield String.valueOf(rounded);
             }
+            default -> null;
+        };
+    }
+
+    // ── Frozen Heist ──────────────────────────────────────────────────────────────
+
+    private String resolveFrozenHeist(OfflinePlayer offlinePlayer, String params) {
+        var fh = plugin.getFrozenHeistMiniGame();
+
+        // ── Estado global ─────────────────────────────────────────────────────────
+
+        if (params.equals("fh_running")) {
+            return String.valueOf(fh.isRunning());
+        }
+
+        if (params.equals("fh_state")) {
+            return switch (fh.getState()) {
+                case IDLE     -> "En espera";
+                case RUNNING  -> "En juego";
+                case FINISHED -> "Finalizado";
+            };
+        }
+
+        if (params.equals("fh_time")) {
+            return fh.isRunning() ? fh.getTimeLeftFormatted() : "--:--";
+        }
+
+        if (params.equals("fh_timepercent")) {
+            if (!fh.isRunning()) return "0";
+            int totalSeconds = fh.getConfig().getDurationMinutes() * 60;
+            if (totalSeconds <= 0) return "0";
+            int left = fh.getTimeLeftSeconds();
+            int percent = (int) Math.round((left / (double) totalSeconds) * 100);
+            if (percent < 0)   percent = 0;
+            if (percent > 100) percent = 100;
+            return String.valueOf(percent);
+        }
+
+        // ── Ranking de equipos — %anievent_fh_top_1_name%, _score%, _color% ──────
+
+        if (params.startsWith("fh_top_")) {
+            // formato esperado: fh_top_<N>_<campo>
+            String[] parts = params.split("_"); // ["fh","top","1","name"]
+            if (parts.length != 4) return "-";
+
+            int pos;
+            try {
+                pos = Integer.parseInt(parts[2]);
+                if (pos < 1 || pos > 8) return "-";
+            } catch (NumberFormatException e) { return "-"; }
+
+            String field = parts[3];
+
+            if (!fh.isRunning()) return "-";
+
+            // Ordenar equipos por puntos descendente
+            java.util.List<org.falmdev.anieventmanager.minigames.frozenheist.TeamHeistData> ranking =
+                    fh.getTeamData().values().stream()
+                            .sorted((a, b) -> Integer.compare(b.getPoints(), a.getPoints()))
+                            .toList();
+
+            if (pos > ranking.size()) return "-";
+
+            org.falmdev.anieventmanager.minigames.frozenheist.TeamHeistData entry = ranking.get(pos - 1);
+
+            return switch (field) {
+                case "name"  -> entry.getTeam().getDisplayName();
+                case "score" -> String.valueOf(entry.getPoints());
+                case "color" -> namedColorToLegacy(entry.getTeam().getColor().toString());
+                default      -> "-";
+            };
+        }
+
+        // ── Del equipo del jugador ────────────────────────────────────────────────
+
+        Player player = offlinePlayer.getPlayer();
+
+        // Placeholders que no requieren jugador online ni partida activa
+        if (player == null) {
+            return switch (params) {
+                case "fh_score"           -> "0";
+                case "fh_rank"            -> "-";
+                case "fh_flag_state"      -> "-";
+                case "fh_flag_carrier"    -> "-";
+                case "fh_carrying"        -> "false";
+                case "fh_carrying_team"   -> "-";
+                case "fh_frozen"          -> "false";
+                case "fh_frozen_seconds"  -> "0";
+                default                   -> null;
+            };
+        }
+
+        Optional<org.falmdev.anieventmanager.model.EventTeam> teamOpt =
+                plugin.getTeamManager().getTeamOf(player);
+
+        return switch (params) {
+
+            // Puntos del equipo del jugador en este minijuego
+            case "fh_score" -> {
+                if (!fh.isRunning() || teamOpt.isEmpty()) yield "0";
+                var data = fh.getTeamData().get(teamOpt.get().getId());
+                yield data != null ? String.valueOf(data.getPoints()) : "0";
+            }
+
+            // Posición en el ranking actual (#1, #2...)
+            case "fh_rank" -> {
+                if (!fh.isRunning() || teamOpt.isEmpty()) yield "-";
+                String myId = teamOpt.get().getId();
+                java.util.List<org.falmdev.anieventmanager.minigames.frozenheist.TeamHeistData> ranked =
+                        fh.getTeamData().values().stream()
+                                .sorted((a, b) -> Integer.compare(b.getPoints(), a.getPoints()))
+                                .toList();
+                for (int i = 0; i < ranked.size(); i++) {
+                    if (ranked.get(i).getTeam().getId().equals(myId)) yield "#" + (i + 1);
+                }
+                yield "-";
+            }
+
+            // Estado de la bandera del equipo del jugador
+            case "fh_flag_state" -> {
+                if (!fh.isRunning() || teamOpt.isEmpty()) yield "-";
+                String teamId = teamOpt.get().getId();
+                org.falmdev.anieventmanager.minigames.frozenheist.FlagManager.FlagState state =
+                        fh.getFlagManager().getState(teamId);
+                yield switch (state) {
+                    case IN_BASE -> "En base";
+                    case CARRIED -> "Robada";
+                    case DROPPED -> "Caída";
+                };
+            }
+
+            // Nombre del jugador que lleva la bandera del equipo del jugador
+            // Si está en base o caída devuelve "-"
+            case "fh_flag_carrier" -> {
+                if (!fh.isRunning() || teamOpt.isEmpty()) yield "-";
+                String teamId = teamOpt.get().getId();
+                java.util.UUID carrierUUID = fh.getFlagManager().getCarrier(teamId);
+                if (carrierUUID == null) yield "-";
+                Player carrier = org.bukkit.Bukkit.getPlayer(carrierUUID);
+                yield carrier != null ? carrier.getName() : "-";
+            }
+
+            // true si este jugador lleva una bandera actualmente
+            case "fh_carrying" -> {
+                if (!fh.isRunning()) yield "false";
+                var ps = fh.getPlayerState(player.getUniqueId());
+                yield ps != null ? String.valueOf(ps.isCarryingFlag()) : "false";
+            }
+
+            // Nombre del equipo cuya bandera lleva este jugador
+            case "fh_carrying_team" -> {
+                if (!fh.isRunning()) yield "-";
+                var ps = fh.getPlayerState(player.getUniqueId());
+                if (ps == null || !ps.isCarryingFlag()) yield "-";
+                String flagTeamId = ps.getCarryingFlagOf();
+                var flagData = fh.getTeamData().get(flagTeamId);
+                yield flagData != null ? flagData.getTeam().getDisplayName() : "-";
+            }
+
+            // true si el jugador está congelado
+            case "fh_frozen" -> {
+                if (!fh.isRunning()) yield "false";
+                var ps = fh.getPlayerState(player.getUniqueId());
+                yield ps != null ? String.valueOf(ps.isFrozen()) : "false";
+            }
+
+            // Segundos restantes de congelamiento (0 si no está congelado)
+            case "fh_frozen_seconds" -> {
+                if (!fh.isRunning()) yield "0";
+                var ps = fh.getPlayerState(player.getUniqueId());
+                yield ps != null ? String.valueOf(ps.getFrozenSecondsLeft()) : "0";
+            }
+
             default -> null;
         };
     }
