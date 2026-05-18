@@ -328,14 +328,7 @@ public class BingoEditGUI implements Listener {
         List<Component> lore = new ArrayList<>();
         lore.add(Component.empty());
         if (task.hasDescription()) {
-            String desc = task.getDescription();
-            int chunkSize = 40;
-            for (int i = 0; i < desc.length(); i += chunkSize) {
-                String chunk = desc.substring(i, Math.min(i + chunkSize, desc.length()));
-                lore.add(LegacyComponentSerializer.legacyAmpersand()
-                        .deserialize(chunk)
-                        .decoration(TextDecoration.ITALIC, false));
-            }
+            lore.addAll(wrapDescription(task.getDescription(), 40));
         } else {
             lore.add(Component.text("Sin descripción.", NamedTextColor.GRAY)
                     .decoration(TextDecoration.ITALIC, false));
@@ -348,6 +341,40 @@ public class BingoEditGUI implements Listener {
         meta.lore(lore);
         item.setItemMeta(meta);
         return item;
+    }
+
+    private List<Component> wrapDescription(String desc, int maxChars) {
+        List<Component> lines = new ArrayList<>();
+        String[] words = desc.split(" ");
+        StringBuilder current = new StringBuilder();
+        String lastColor = "";
+
+        for (String word : words) {
+            // Si añadir esta palabra supera el límite, cerrar línea actual
+            // (strip color codes para medir longitud real)
+            String plain = current.toString().replaceAll("&[0-9a-fk-or]", "");
+            String wordPlain = word.replaceAll("&[0-9a-fk-or]", "");
+
+            if (!plain.isEmpty() && plain.length() + 1 + wordPlain.length() > maxChars) {
+                lines.add(LegacyComponentSerializer.legacyAmpersand()
+                        .deserialize(current.toString().trim())
+                        .decoration(TextDecoration.ITALIC, false));
+                // Extraer el último código de color del chunk actual para propagarlo
+                java.util.regex.Matcher m = java.util.regex.Pattern
+                        .compile("&[0-9a-fk-or]").matcher(current.toString());
+                while (m.find()) lastColor = m.group();
+                current = new StringBuilder(lastColor);
+            }
+            if (!current.toString().equals(lastColor)) current.append(" ");
+            current.append(word);
+        }
+
+        if (!current.toString().isBlank()) {
+            lines.add(LegacyComponentSerializer.legacyAmpersand()
+                    .deserialize(current.toString().trim())
+                    .decoration(TextDecoration.ITALIC, false));
+        }
+        return lines;
     }
 
     private void fillBorders(Inventory inv) {

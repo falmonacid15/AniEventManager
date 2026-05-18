@@ -106,14 +106,7 @@ public class BingoGUI implements Listener {
 
         if (task.hasDescription()) {
             lore.add(Component.empty());
-            String desc = task.getDescription();
-            int chunkSize = 35;
-            for (int i = 0; i < desc.length(); i += chunkSize) {
-                String chunk = desc.substring(i, Math.min(i + chunkSize, desc.length()));
-                lore.add(LegacyComponentSerializer.legacyAmpersand()
-                        .deserialize(chunk)
-                        .decoration(TextDecoration.ITALIC, false));
-            }
+            lore.addAll(wrapDescription(task.getDescription(), 35));
         }
         lore.add(Component.empty());
 
@@ -266,6 +259,36 @@ public class BingoGUI implements Listener {
         };
     }
 
+    private static List<Component> wrapDescription(String desc, int maxChars) {
+        List<Component> lines = new ArrayList<>();
+        String[] words = desc.split(" ");
+        StringBuilder current = new StringBuilder();
+        String lastColor = "";
+
+        for (String word : words) {
+            String plain = current.toString().replaceAll("&[0-9a-fk-or]", "");
+            String wordPlain = word.replaceAll("&[0-9a-fk-or]", "");
+
+            if (!plain.isEmpty() && plain.length() + 1 + wordPlain.length() > maxChars) {
+                lines.add(LegacyComponentSerializer.legacyAmpersand()
+                        .deserialize(current.toString().trim())
+                        .decoration(TextDecoration.ITALIC, false));
+                java.util.regex.Matcher m = java.util.regex.Pattern
+                        .compile("&[0-9a-fk-or]").matcher(current.toString());
+                while (m.find()) lastColor = m.group();
+                current = new StringBuilder(lastColor);
+            }
+            if (!current.toString().equals(lastColor)) current.append(" ");
+            current.append(word);
+        }
+
+        if (!current.toString().isBlank()) {
+            lines.add(LegacyComponentSerializer.legacyAmpersand()
+                    .deserialize(current.toString().trim())
+                    .decoration(TextDecoration.ITALIC, false));
+        }
+        return lines;
+    }
     private static void hideItemDetails(ItemMeta meta) {
         meta.addItemFlags(
                 ItemFlag.HIDE_ATTRIBUTES,
