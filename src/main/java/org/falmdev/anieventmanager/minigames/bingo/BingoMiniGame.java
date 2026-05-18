@@ -3,9 +3,12 @@ package org.falmdev.anieventmanager.minigames.bingo;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.title.Title;
-import org.bukkit.Bukkit;
-import org.bukkit.GameMode;
-import org.bukkit.Location;
+import org.bukkit.*;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ArmorMeta;
+import org.bukkit.inventory.meta.trim.ArmorTrim;
+import org.bukkit.inventory.meta.trim.TrimMaterial;
+import org.bukkit.inventory.meta.trim.TrimPattern;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
 import org.falmdev.anieventmanager.model.EventTeam;
@@ -105,6 +108,13 @@ public class BingoMiniGame {
             gameListener = null;
         }
         broadcastAll(Component.text("El Bingo fue detenido por un admin.", NamedTextColor.RED));
+        Location endSpawn = config.getSpawn();
+        for (EventTeam team : plugin.getTeamManager().getAllTeams()) {
+            for (var p : team.getOnlinePlayers()) {
+                p.getInventory().clear();
+                if (endSpawn != null) p.teleport(endSpawn);
+            }
+        }
         state = State.FINISHED;
         cards.clear();
         Bukkit.getScheduler().runTaskLater(plugin, () -> state = State.IDLE, 20L);
@@ -171,6 +181,11 @@ public class BingoMiniGame {
 
     private void beginGame() {
         state = State.RUNNING;
+        for (EventTeam team : plugin.getTeamManager().getAllTeams()) {
+            for (var p : team.getOnlinePlayers()) {
+                giveKit(p, team);
+            }
+        }
         gameListener.startLocationCheck();
 
         Title go = Title.title(
@@ -286,6 +301,14 @@ public class BingoMiniGame {
         state = State.FINISHED;
         cards.clear();
 
+        Location endSpawn = config.getSpawn();
+        for (EventTeam team : plugin.getTeamManager().getAllTeams()) {
+            for (var p : team.getOnlinePlayers()) {
+                p.getInventory().clear();
+                if (endSpawn != null) p.teleport(endSpawn);
+            }
+        }
+
         broadcastAll(Component.text("━━━ Puntajes ━━━", NamedTextColor.GOLD));
         for (int i = 0; i < ranking.size(); i++) {
             EventTeam team = ranking.get(i);
@@ -334,12 +357,64 @@ public class BingoMiniGame {
             clone.setMobType(t.getMobType());
             clone.setMobCount(t.getMobCount());
             clone.setIcon(t.getIcon());
+            clone.setDescription(t.getDescription());
             clone.setLocation(t.getLocationWorld(),
                     t.getLocationX(), t.getLocationY(), t.getLocationZ(),
                     t.getLocationRadius());
             cloned.add(clone);
         }
         return cloned;
+    }
+
+    private void giveKit(org.bukkit.entity.Player player, EventTeam team) {
+        player.getInventory().clear();
+
+        // Determinar el TrimMaterial según el color del equipo
+        NamedTextColor color = team.getColor();
+        TrimMaterial trimMat;
+        if      (color == NamedTextColor.RED)          trimMat = Registry.TRIM_MATERIAL.get(org.bukkit.NamespacedKey.minecraft("redstone"));
+        else if (color == NamedTextColor.BLUE)         trimMat = Registry.TRIM_MATERIAL.get(org.bukkit.NamespacedKey.minecraft("lapis"));
+        else if (color == NamedTextColor.GREEN)        trimMat = Registry.TRIM_MATERIAL.get(org.bukkit.NamespacedKey.minecraft("emerald"));
+        else if (color == NamedTextColor.YELLOW)       trimMat = Registry.TRIM_MATERIAL.get(org.bukkit.NamespacedKey.minecraft("gold"));
+        else if (color == NamedTextColor.LIGHT_PURPLE) trimMat = Registry.TRIM_MATERIAL.get(org.bukkit.NamespacedKey.minecraft("amethyst"));
+        else if (color == NamedTextColor.AQUA)         trimMat = Registry.TRIM_MATERIAL.get(org.bukkit.NamespacedKey.minecraft("diamond"));
+        else if (color == NamedTextColor.GOLD)         trimMat = Registry.TRIM_MATERIAL.get(org.bukkit.NamespacedKey.minecraft("copper"));
+        else                                           trimMat = Registry.TRIM_MATERIAL.get(org.bukkit.NamespacedKey.minecraft("iron"));
+
+        TrimPattern silencePattern = Registry.TRIM_PATTERN.get(org.bukkit.NamespacedKey.minecraft("silence"));
+        ArmorTrim trim = new ArmorTrim(trimMat, silencePattern);
+
+        // Piezas de armadura
+        Material[] armorTypes = {
+                Material.NETHERITE_HELMET,
+                Material.NETHERITE_CHESTPLATE,
+                Material.NETHERITE_LEGGINGS,
+                Material.NETHERITE_BOOTS
+        };
+
+        ItemStack[] armorSet = new ItemStack[4];
+        for (int i = 0; i < armorTypes.length; i++) {
+            ItemStack piece = new ItemStack(armorTypes[i]);
+            ArmorMeta meta = (ArmorMeta) piece.getItemMeta();
+            meta.setTrim(trim);
+            piece.setItemMeta(meta);
+            armorSet[i] = piece;
+        }
+
+        // Equipar armadura (boots=0, leggings=1, chestplate=2, helmet=3 en el inventario de armadura)
+        player.getInventory().setHelmet(armorSet[0]);
+        player.getInventory().setChestplate(armorSet[1]);
+        player.getInventory().setLeggings(armorSet[2]);
+        player.getInventory().setBoots(armorSet[3]);
+
+        // Herramientas y consumibles
+        player.getInventory().addItem(
+                new ItemStack(Material.NETHERITE_SWORD),
+                new ItemStack(Material.NETHERITE_PICKAXE),
+                new ItemStack(Material.NETHERITE_SHOVEL),
+                new ItemStack(Material.GOLDEN_CARROT, 64),
+                new ItemStack(Material.TORCH, 64)
+        );
     }
 
     private BingoCard dummyCard(EventTeam team) {

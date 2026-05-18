@@ -103,6 +103,18 @@ public class BingoGUI implements Listener {
 
         // Lore
         List<Component> lore = new ArrayList<>();
+
+        if (task.hasDescription()) {
+            lore.add(Component.empty());
+            String desc = task.getDescription();
+            int chunkSize = 35;
+            for (int i = 0; i < desc.length(); i += chunkSize) {
+                String chunk = desc.substring(i, Math.min(i + chunkSize, desc.length()));
+                lore.add(LegacyComponentSerializer.legacyAmpersand()
+                        .deserialize(chunk)
+                        .decoration(TextDecoration.ITALIC, false));
+            }
+        }
         lore.add(Component.empty());
 
         // Estado

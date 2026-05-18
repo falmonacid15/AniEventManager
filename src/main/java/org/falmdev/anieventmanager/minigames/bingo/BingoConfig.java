@@ -218,6 +218,8 @@ public class BingoConfig {
                         );
                     }
                 }
+                String desc = yaml.getString(path + ".description", null);
+                if (desc != null) task.setDescription(desc);
                 list.add(task);
 
                 // Icono personalizado (opcional)
@@ -264,6 +266,12 @@ public class BingoConfig {
             yaml.set(path + ".icon", task.getIcon().name());
         } else {
             yaml.set(path + ".icon", null);
+        }
+
+        if (task.hasDescription()) {
+            yaml.set(path + ".description", task.getDescription());
+        } else {
+            yaml.set(path + ".description", null);
         }
         save();
     }

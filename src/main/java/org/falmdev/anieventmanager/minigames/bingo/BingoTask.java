@@ -32,6 +32,8 @@ public class BingoTask {
     // Icono personalizado que se muestra en el GUI (null = usar cristal por defecto)
     private Material icon = null;
 
+    private String description = "";
+
     // Para OBTAIN_ITEM, CRAFT_ITEM, EQUIP_ITEM, FISH_ITEM
     private Material material = Material.STONE;
     private int amount = 1;
@@ -112,6 +114,10 @@ public class BingoTask {
     public Material    getIcon()         { return icon; }
     public void        setIcon(Material m) { this.icon = m; }
     public boolean     hasCustomIcon()   { return icon != null; }
+
+    public String  getDescription()            { return description; }
+    public void    setDescription(String desc) { this.description = desc != null ? desc : ""; }
+    public boolean hasDescription()            { return !description.isEmpty(); }
 
     public Material    getMaterial()     { return material; }
     public void        setMaterial(Material m) { this.material = m; }
