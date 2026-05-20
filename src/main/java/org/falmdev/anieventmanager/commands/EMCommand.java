@@ -37,13 +37,14 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         if (args.length == 0) { sendHelp(player); return true; }
 
         switch (args[0].toLowerCase()) {
-            case "team"   -> handleTeam(player,  Arrays.copyOfRange(args, 1, args.length));
-            case "score"  -> handleScore(player, Arrays.copyOfRange(args, 1, args.length));
-            case "tntrun"       -> plugin.getTNTRunCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
-            case "bingo"        -> plugin.getBingoCommand().handleAdmin(player, Arrays.copyOfRange(args, 1, args.length));
-            case "frozenheist"  -> plugin.getFrozenHeistCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
-            case "help"   -> sendHelp(player);
-            default       -> player.sendMessage(Component.text("Subcomando desconocido. Usa ", NamedTextColor.RED)
+            case "team"        -> handleTeam(player,  Arrays.copyOfRange(args, 1, args.length));
+            case "score"       -> handleScore(player, Arrays.copyOfRange(args, 1, args.length));
+            case "tntrun"      -> plugin.getTNTRunCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
+            case "bingo"       -> plugin.getBingoCommand().handleAdmin(player, Arrays.copyOfRange(args, 1, args.length));
+            case "boatracing"  -> plugin.getBoatRacingCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
+            case "frozenheist" -> plugin.getFrozenHeistCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
+            case "help"        -> sendHelp(player);
+            default            -> player.sendMessage(Component.text("Subcomando desconocido. Usa ", NamedTextColor.RED)
                     .append(Component.text("/em help", NamedTextColor.YELLOW)));
         }
         return true;
@@ -160,7 +161,7 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         if (!(sender instanceof Player player) || !player.isOp()) return List.of();
 
         if (args.length == 1)
-            return filter(List.of("team", "score", "tntrun", "bingo", "frozenheist", "help"), args[0]);
+            return filter(List.of("team", "score", "tntrun", "bingo", "boatracing", "frozenheist", "help"), args[0]);
 
         if (args[0].equalsIgnoreCase("team")) {
             if (args.length == 2) return filter(List.of("create", "delete", "add", "remove", "list", "clear", "friendlyfire"), args[1]);
@@ -182,6 +183,8 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         if (args[0].equalsIgnoreCase("bingo"))
             return plugin.getBingoCommand().tabComplete(Arrays.copyOfRange(args, 1, args.length));
 
+        if (args[0].equalsIgnoreCase("boatracing"))
+            return plugin.getBoatRacingCommand().tabComplete(Arrays.copyOfRange(args, 1, args.length));
 
         if (args[0].equalsIgnoreCase("frozenheist"))
             return plugin.getFrozenHeistCommand().tabComplete(Arrays.copyOfRange(args, 1, args.length));
@@ -193,11 +196,13 @@ public class EMCommand implements CommandExecutor, TabCompleter {
 
     private void sendHelp(Player player) {
         player.sendMessage(Component.text("━━━ AniEventManager ━━━", NamedTextColor.GOLD));
-        player.sendMessage(help("/em team ...",   "Gestion de equipos"));
-        player.sendMessage(help("/em score ...",  "Gestion de puntajes"));
-        player.sendMessage(help("/em tntrun ...", "Minijuego TNT Run"));
-        player.sendMessage(help("/em bingo ...",  "Minijuego Bingo"));
-        player.sendMessage(help("/em help",       "Muestra esta ayuda"));
+        player.sendMessage(help("/em team ...",        "Gestion de equipos"));
+        player.sendMessage(help("/em score ...",       "Gestion de puntajes"));
+        player.sendMessage(help("/em tntrun ...",      "Minijuego TNT Run"));
+        player.sendMessage(help("/em bingo ...",       "Minijuego Bingo"));
+        player.sendMessage(help("/em boatracing ...",  "Minijuego Boat Racing"));
+        player.sendMessage(help("/em frozenheist ...", "Minijuego Frozen Heist"));
+        player.sendMessage(help("/em help",            "Muestra esta ayuda"));
     }
 
     private void sendTeamHelp(Player player) {

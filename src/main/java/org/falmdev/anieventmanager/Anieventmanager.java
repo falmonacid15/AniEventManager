@@ -13,6 +13,9 @@ import org.falmdev.anieventmanager.minigames.bingo.BingoCommand;
 import org.falmdev.anieventmanager.minigames.bingo.BingoEditGUI;
 import org.falmdev.anieventmanager.minigames.bingo.BingoGUI;
 import org.falmdev.anieventmanager.minigames.bingo.BingoMiniGame;
+import org.falmdev.anieventmanager.minigames.boatracing.BoatRacingCommand;
+import org.falmdev.anieventmanager.minigames.boatracing.BoatRacingListener;
+import org.falmdev.anieventmanager.minigames.boatracing.BoatRacingMiniGame;
 import org.falmdev.anieventmanager.minigames.frozenheist.FrozenHeistCommand;
 import org.falmdev.anieventmanager.minigames.frozenheist.FrozenHeistMiniGame;
 import org.falmdev.anieventmanager.minigames.tntrun.TNTRunCommand;
@@ -23,13 +26,15 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
 
     private static Anieventmanager instance;
 
-    private TeamManager    teamManager;
-    private ScoreManager   scoreManager;
-    private TNTRunMiniGame tntRunMiniGame;
-    private TNTRunCommand  tntRunCommand;
-    private BingoMiniGame  bingoMiniGame;
-    private BingoCommand   bingoCommand;
-    private BingoEditGUI   bingoEditGUI;
+    private TeamManager         teamManager;
+    private ScoreManager        scoreManager;
+    private TNTRunMiniGame      tntRunMiniGame;
+    private TNTRunCommand       tntRunCommand;
+    private BingoMiniGame       bingoMiniGame;
+    private BingoCommand        bingoCommand;
+    private BingoEditGUI        bingoEditGUI;
+    private BoatRacingMiniGame  boatRacingMiniGame;
+    private BoatRacingCommand   boatRacingCommand;
     private FrozenHeistMiniGame frozenHeistMiniGame;
     private FrozenHeistCommand  frozenHeistCommand;
 
@@ -38,15 +43,22 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
         instance = this;
 
         // Managers
-        this.teamManager   = new TeamManager(this);
-        this.scoreManager  = new ScoreManager(this);
+        this.teamManager  = new TeamManager(this);
+        this.scoreManager = new ScoreManager(this);
 
         // Minijuegos
         this.tntRunMiniGame = new TNTRunMiniGame(this);
         this.tntRunCommand  = new TNTRunCommand(this, tntRunMiniGame);
-        this.bingoMiniGame  = new BingoMiniGame(this);
-        this.bingoCommand   = new BingoCommand(this, bingoMiniGame);
-        this.bingoEditGUI   = new BingoEditGUI(this);
+
+        this.bingoMiniGame = new BingoMiniGame(this);
+        this.bingoCommand  = new BingoCommand(this, bingoMiniGame);
+        this.bingoEditGUI  = new BingoEditGUI(this);
+
+        this.boatRacingMiniGame = new BoatRacingMiniGame(this);
+        this.boatRacingCommand  = new BoatRacingCommand(this, boatRacingMiniGame);
+        BoatRacingListener boatRacingListener = new BoatRacingListener(this, boatRacingMiniGame);
+        this.boatRacingMiniGame.registerListener(boatRacingListener);
+
         this.frozenHeistMiniGame = new FrozenHeistMiniGame(this);
         this.frozenHeistCommand  = new FrozenHeistCommand(this, frozenHeistMiniGame);
 
@@ -69,6 +81,7 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
         Bukkit.getPluginManager().registerEvents(new TeamListener(this), this);
         Bukkit.getPluginManager().registerEvents(new BingoGUI(), this);
         Bukkit.getPluginManager().registerEvents(bingoEditGUI, this);
+        Bukkit.getPluginManager().registerEvents(boatRacingListener, this);
         Bukkit.getPluginManager().registerEvents(this, this);
 
         getLogger().info("AniEventManager habilitado.");
@@ -91,14 +104,16 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
 
     // ── Getters ───────────────────────────────────────────────────────────────
 
-    public static Anieventmanager getInstance() { return instance; }
-    public TeamManager    getTeamManager()      { return teamManager; }
-    public ScoreManager   getScoreManager()     { return scoreManager; }
-    public TNTRunMiniGame getTNTRunMiniGame()   { return tntRunMiniGame; }
-    public TNTRunCommand  getTNTRunCommand()    { return tntRunCommand; }
-    public BingoMiniGame  getBingoMiniGame()    { return bingoMiniGame; }
-    public BingoCommand   getBingoCommand()     { return bingoCommand; }
-    public BingoEditGUI   getBingoEditGUI()     { return bingoEditGUI; }
+    public static Anieventmanager getInstance()  { return instance; }
+    public TeamManager    getTeamManager()       { return teamManager; }
+    public ScoreManager   getScoreManager()      { return scoreManager; }
+    public TNTRunMiniGame getTNTRunMiniGame()    { return tntRunMiniGame; }
+    public TNTRunCommand  getTNTRunCommand()     { return tntRunCommand; }
+    public BingoMiniGame  getBingoMiniGame()     { return bingoMiniGame; }
+    public BingoCommand   getBingoCommand()      { return bingoCommand; }
+    public BingoEditGUI   getBingoEditGUI()      { return bingoEditGUI; }
+    public BoatRacingMiniGame getBoatRacingMiniGame() { return boatRacingMiniGame; }
+    public BoatRacingCommand  getBoatRacingCommand()  { return boatRacingCommand; }
     public FrozenHeistMiniGame getFrozenHeistMiniGame() { return frozenHeistMiniGame; }
     public FrozenHeistCommand  getFrozenHeistCommand()  { return frozenHeistCommand; }
 }
