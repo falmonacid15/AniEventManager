@@ -1,11 +1,11 @@
 package org.falmdev.anieventmanager.minigames.tntrun;
 
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.falmdev.anieventmanager.Anieventmanager;
+import org.falmdev.anieventmanager.utils.LocationUtil;
 
 import java.io.File;
 import java.io.IOException;
@@ -20,35 +20,35 @@ import java.util.List;
  *
  * world: "tntrun_world"
  *
- * lobby-spawn:
- *   world: tntrun_world
- *   x: 0.5  y: 100.0  z: 0.5  yaw: 0.0  pitch: 0.0
- *
- * spectator-spawn:
- *   world: tntrun_world
- *   x: 0.5  y: 120.0  z: 0.5  yaw: 0.0  pitch: 0.0
- *
- * arena-center:
- *   world: tntrun_world
- *   x: 0.0  y: 80.0  z: 0.0
+ * lobby-spawn:      { world, x, y, z, yaw, pitch }
+ * spectator-spawn:  { world, x, y, z, yaw, pitch }
+ * arena-center:     { world, x, y, z }
  *
  * player-spawns:
- *   - { world: tntrun_world, x: 5.5, y: 83.0, z: 5.5, yaw: 0.0, pitch: 0.0 }
- *   - { world: tntrun_world, x: -4.5, y: 83.0, z: 5.5, yaw: 180.0, pitch: 0.0 }
+ *   - { world, x, y, z, yaw, pitch }
  *   ...
  *
+ * arena:
+ *   size:        60         ← lado del cuadrado / diámetro del círculo
+ *   shape:       SQUARE     ← SQUARE | CIRCLE
+ *   layer-count: 3          ← número de capas de TNT+SAND
+ *   layer-gap:   3          ← bloques de AIR entre capas
+ *   dome-height: 30         ← altura de la cúpula sobre el jugador
+ *
  * settings:
- *   block-remove-delay: 10     <- ticks antes de que caiga el bloque (default: 10)
- *   countdown-seconds: 5       <- cuenta regresiva al inicio
- *   score-first: 10
- *   score-second: 6
- *   score-third: 3
- *   score-default: 1
+ *   block-remove-delay:  10   ← ticks antes de que caiga el bloque
+ *   countdown-seconds:   5
+ *   double-jump-enabled: true
+ *   double-jump-cooldown: 5   ← segundos de cooldown entre dobles saltos
+ *   score-first:   10
+ *   score-second:   6
+ *   score-third:    3
+ *   score-default:  1
  */
 public class TNTRunConfig {
 
     private final Anieventmanager plugin;
-    private File file;
+    private File              file;
     private FileConfiguration yaml;
 
     public TNTRunConfig(Anieventmanager plugin) {
@@ -78,9 +78,7 @@ public class TNTRunConfig {
 
     // ── World ─────────────────────────────────────────────────────────────────
 
-    public String getWorldName() {
-        return yaml.getString("world", "");
-    }
+    public String getWorldName() { return yaml.getString("world", ""); }
 
     public void setWorldName(String name) {
         yaml.set("world", name);
@@ -89,42 +87,18 @@ public class TNTRunConfig {
 
     public World getWorld() {
         String name = getWorldName();
-        if (name.isEmpty()) return null;
-        return Bukkit.getWorld(name);
+        return name.isEmpty() ? null : org.bukkit.Bukkit.getWorld(name);
     }
 
-    // ── Lobby spawn ───────────────────────────────────────────────────────────
+    // ── Spawns ────────────────────────────────────────────────────────────────
 
-    public Location getLobbySpawn() {
-        return readLocation("lobby-spawn");
-    }
+    public Location getLobbySpawn()     { return LocationUtil.read(yaml, "lobby-spawn"); }
+    public Location getSpectatorSpawn() { return LocationUtil.read(yaml, "spectator-spawn"); }
+    public Location getArenaCenter()    { return LocationUtil.read(yaml, "arena-center"); }
 
-    public void setLobbySpawn(Location loc) {
-        writeLocation("lobby-spawn", loc);
-        save();
-    }
-
-    // ── Spectator spawn ───────────────────────────────────────────────────────
-
-    public Location getSpectatorSpawn() {
-        return readLocation("spectator-spawn");
-    }
-
-    public void setSpectatorSpawn(Location loc) {
-        writeLocation("spectator-spawn", loc);
-        save();
-    }
-
-    // ── Arena center ──────────────────────────────────────────────────────────
-
-    public Location getArenaCenter() {
-        return readLocation("arena-center");
-    }
-
-    public void setArenaCenter(Location loc) {
-        writeLocation("arena-center", loc);
-        save();
-    }
+    public void setLobbySpawn(Location loc)     { LocationUtil.write(yaml, "lobby-spawn",     loc); save(); }
+    public void setSpectatorSpawn(Location loc) { LocationUtil.write(yaml, "spectator-spawn", loc); save(); }
+    public void setArenaCenter(Location loc)    { LocationUtil.write(yaml, "arena-center",    loc); save(); }
 
     // ── Player spawns ─────────────────────────────────────────────────────────
 
@@ -133,7 +107,7 @@ public class TNTRunConfig {
         if (!yaml.isList("player-spawns")) return list;
         for (Object o : yaml.getList("player-spawns")) {
             if (o instanceof java.util.Map<?, ?> m) {
-                Location l = mapToLocation(m);
+                Location l = LocationUtil.fromMap(m);
                 if (l != null) list.add(l);
             }
         }
@@ -144,10 +118,11 @@ public class TNTRunConfig {
         List<java.util.Map<String, Object>> current = new ArrayList<>();
         if (yaml.isList("player-spawns")) {
             for (Object o : yaml.getList("player-spawns")) {
-                if (o instanceof java.util.Map<?, ?> m) current.add(castMap(m));
+                if (o instanceof java.util.Map<?, ?> m)
+                    current.add(castMap(m));
             }
         }
-        current.add(locationToMap(loc));
+        current.add(LocationUtil.toMap(loc));
         yaml.set("player-spawns", current);
         save();
     }
@@ -157,32 +132,138 @@ public class TNTRunConfig {
         save();
     }
 
-    // ── Settings ──────────────────────────────────────────────────────────────
+    // ── Configuración de arena ────────────────────────────────────────────────
+
+    /**
+     * Tamaño de la arena en bloques (lado del cuadrado o diámetro del círculo).
+     * MODIFICAR con /em tntrun setsize <n>.
+     */
+    public int getArenaSize() {
+        return yaml.getInt("arena.size", TNTRunArena.ArenaConfig.defaults().arenaSize());
+    }
+
+    public void setArenaSize(int size) {
+        yaml.set("arena.size", Math.max(10, size));
+        save();
+    }
+
+    /**
+     * Forma de la arena: SQUARE (cuadrado) o CIRCLE (círculo).
+     * MODIFICAR con /em tntrun setshape <square|circle>.
+     */
+    public TNTRunArena.Shape getArenaShape() {
+        String raw = yaml.getString("arena.shape", "SQUARE").toUpperCase();
+        try {
+            return TNTRunArena.Shape.valueOf(raw);
+        } catch (IllegalArgumentException e) {
+            return TNTRunArena.Shape.SQUARE;
+        }
+    }
+
+    public void setArenaShape(TNTRunArena.Shape shape) {
+        yaml.set("arena.shape", shape.name());
+        save();
+    }
+
+    /**
+     * Número de capas de TNT+SAND (mínimo 1).
+     * MODIFICAR con /em tntrun setlayers <n>.
+     */
+    public int getLayerCount() {
+        return yaml.getInt("arena.layer-count", TNTRunArena.ArenaConfig.defaults().layerCount());
+    }
+
+    public void setLayerCount(int count) {
+        yaml.set("arena.layer-count", Math.max(1, count));
+        save();
+    }
+
+    /**
+     * Bloques de AIR entre capas (mínimo 1).
+     * MODIFICAR con /em tntrun setlayergap <n>.
+     */
+    public int getLayerGap() {
+        return yaml.getInt("arena.layer-gap", TNTRunArena.ArenaConfig.defaults().layerGap());
+    }
+
+    public void setLayerGap(int gap) {
+        yaml.set("arena.layer-gap", Math.max(1, gap));
+        save();
+    }
+
+    /**
+     * Altura de la cúpula sobre el nivel del jugador (mínimo 5).
+     * MODIFICAR con /em tntrun setdomeheight <n>.
+     */
+    public int getDomeHeight() {
+        return yaml.getInt("arena.dome-height", TNTRunArena.ArenaConfig.defaults().domeHeight());
+    }
+
+    public void setDomeHeight(int height) {
+        yaml.set("arena.dome-height", Math.max(5, height));
+        save();
+    }
+
+    /**
+     * Construye el {@link TNTRunArena.ArenaConfig} con los valores actuales.
+     * Úsalo para crear un {@link TNTRunArena}.
+     */
+    public TNTRunArena.ArenaConfig buildArenaConfig() {
+        return new TNTRunArena.ArenaConfig(
+                getArenaSize(),
+                getArenaShape(),
+                getLayerCount(),
+                getLayerGap(),
+                getDomeHeight()
+        );
+    }
+
+    // ── Settings de juego ─────────────────────────────────────────────────────
 
     /**
      * Ticks antes de que el bloque desaparezca tras pisarlo.
-     * 20 ticks = 1 segundo. Default: 10 (medio segundo).
-     * MODIFICAR AQUI para cambiar la velocidad de caída de bloques.
+     * 20 ticks = 1 segundo. Default: 10.
      */
-    public int getBlockRemoveDelay() {
-        return yaml.getInt("settings.block-remove-delay", 10);
-    }
+    public int getBlockRemoveDelay() { return yaml.getInt("settings.block-remove-delay", 10); }
 
     public void setBlockRemoveDelay(int ticks) {
         yaml.set("settings.block-remove-delay", ticks);
         save();
     }
 
-    /**
-     * Segundos de cuenta regresiva antes de iniciar.
-     * MODIFICAR AQUI para cambiar la duración de la cuenta regresiva.
-     */
-    public int getCountdownSeconds() {
-        return yaml.getInt("settings.countdown-seconds", 5);
-    }
+    /** Segundos de cuenta regresiva antes de iniciar. */
+    public int getCountdownSeconds() { return yaml.getInt("settings.countdown-seconds", 5); }
 
     public void setCountdownSeconds(int seconds) {
         yaml.set("settings.countdown-seconds", seconds);
+        save();
+    }
+
+    // ── Doble salto ───────────────────────────────────────────────────────────
+
+    /**
+     * Habilita o deshabilita el doble salto durante la partida.
+     * Default: true.
+     */
+    public boolean isDoubleJumpEnabled() {
+        return yaml.getBoolean("settings.double-jump-enabled", true);
+    }
+
+    public void setDoubleJumpEnabled(boolean enabled) {
+        yaml.set("settings.double-jump-enabled", enabled);
+        save();
+    }
+
+    /**
+     * Cooldown en segundos entre dobles saltos consecutivos.
+     * Default: 5 segundos.
+     */
+    public int getDoubleJumpCooldown() {
+        return yaml.getInt("settings.double-jump-cooldown", 5);
+    }
+
+    public void setDoubleJumpCooldown(int seconds) {
+        yaml.set("settings.double-jump-cooldown", Math.max(0, seconds));
         save();
     }
 
@@ -190,10 +271,10 @@ public class TNTRunConfig {
 
     public int getScoreForPlace(int place) {
         return switch (place) {
-            case 1  -> yaml.getInt("settings.score-first",   10);
-            case 2  -> yaml.getInt("settings.score-second",   6);
-            case 3  -> yaml.getInt("settings.score-third",    3);
-            default -> yaml.getInt("settings.score-default",  1);
+            case 1  -> yaml.getInt("settings.score-first",    10);
+            case 2  -> yaml.getInt("settings.score-second",    6);
+            case 3  -> yaml.getInt("settings.score-third",     3);
+            default -> yaml.getInt("settings.score-default",   1);
         };
     }
 
@@ -212,11 +293,12 @@ public class TNTRunConfig {
 
     /**
      * Verifica que la configuración mínima esté completa para poder iniciar.
-     * Devuelve null si todo está bien, o un mensaje de error si falta algo.
+     *
+     * @return {@code null} si todo está bien, o un mensaje de error si falta algo.
      */
     public String validate() {
         if (getWorld() == null)
-            return "El mundo no está configurado. Usa /em tntrun setworld <mundo>.";
+            return "El mundo no está configurado. Usa /em tntrun setworld.";
         if (getLobbySpawn() == null)
             return "El lobby spawn no está configurado. Usa /em tntrun setlobby.";
         if (getSpectatorSpawn() == null)
@@ -228,65 +310,10 @@ public class TNTRunConfig {
         return null;
     }
 
-    // ── Helpers privados ──────────────────────────────────────────────────────
-
-    private Location readLocation(String path) {
-        if (!yaml.isConfigurationSection(path)) return null;
-        String worldName = yaml.getString(path + ".world", "");
-        World world = Bukkit.getWorld(worldName);
-        if (world == null) return null;
-        return new Location(
-                world,
-                yaml.getDouble(path + ".x"),
-                yaml.getDouble(path + ".y"),
-                yaml.getDouble(path + ".z"),
-                (float) yaml.getDouble(path + ".yaw"),
-                (float) yaml.getDouble(path + ".pitch")
-        );
-    }
-
-    private void writeLocation(String path, Location loc) {
-        yaml.set(path + ".world", loc.getWorld().getName());
-        yaml.set(path + ".x",     loc.getX());
-        yaml.set(path + ".y",     loc.getY());
-        yaml.set(path + ".z",     loc.getZ());
-        yaml.set(path + ".yaw",   (double) loc.getYaw());
-        yaml.set(path + ".pitch", (double) loc.getPitch());
-    }
-
-    private Location mapToLocation(java.util.Map<?, ?> map) {
-        try {
-            World w = Bukkit.getWorld((String) map.get("world"));
-            if (w == null) return null;
-            double x     = toDouble(map.get("x"));
-            double y     = toDouble(map.get("y"));
-            double z     = toDouble(map.get("z"));
-            Object rawYaw   = map.get("yaw");
-            Object rawPitch = map.get("pitch");
-            float  yaw   = rawYaw   != null ? (float) toDouble(rawYaw)   : 0f;
-            float  pitch = rawPitch != null ? (float) toDouble(rawPitch) : 0f;
-            return new Location(w, x, y, z, yaw, pitch);
-        } catch (Exception e) { return null; }
-    }
-
-    private java.util.Map<String, Object> locationToMap(Location loc) {
-        java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
-        m.put("world", loc.getWorld().getName());
-        m.put("x",     loc.getX());
-        m.put("y",     loc.getY());
-        m.put("z",     loc.getZ());
-        m.put("yaw",   (double) loc.getYaw());
-        m.put("pitch", (double) loc.getPitch());
-        return m;
-    }
+    // ── Helper privado ────────────────────────────────────────────────────────
 
     @SuppressWarnings("unchecked")
     private java.util.Map<String, Object> castMap(java.util.Map<?, ?> m) {
         return (java.util.Map<String, Object>) m;
-    }
-
-    private double toDouble(Object o) {
-        if (o instanceof Number n) return n.doubleValue();
-        return Double.parseDouble(o.toString());
     }
 }

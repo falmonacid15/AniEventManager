@@ -21,8 +21,8 @@ public class TNTRunMiniGame {
     public enum State { IDLE, LOBBY, COUNTDOWN, RUNNING, FINISHED }
 
     private final Anieventmanager plugin;
-    private final TNTRunConfig config;
-    private TNTRunArena arena;
+    private final TNTRunConfig    config;
+    private TNTRunArena    arena;
     private TNTRunListener gameListener;
 
     private State state = State.IDLE;
@@ -69,13 +69,12 @@ public class TNTRunMiniGame {
         List<EventTeam> teams = new ArrayList<>(plugin.getTeamManager().getAllTeams());
         if (teams.isEmpty()) return false;
 
-        // Generar arena
-        arena = new TNTRunArena(config.getArenaCenter());
+        // Generar arena con la configuración actual
+        arena = new TNTRunArena(config.getArenaCenter(), config.buildArenaConfig());
         arena.generate();
 
-        // Teletransportar jugadores y aplicar visión nocturna
+        // Teletransportar jugadores
         int spawnIndex = 0;
-        // Solo agregar equipos que tengan al menos un jugador online
         for (EventTeam team : teams) {
             if (team.getOnlinePlayers().isEmpty()) continue;
             aliveTeams.add(team);
@@ -85,7 +84,7 @@ public class TNTRunMiniGame {
 
                 Location spawn = spawns.size() > spawnIndex
                         ? spawns.get(spawnIndex)
-                        : config.getArenaCenter().clone().add(0, TNTRunArena.PLAYER_OFFSET, 0);
+                        : config.getArenaCenter().clone().add(0, arena.getPlayerSpawnY() - config.getArenaCenter().getY(), 0);
                 p.teleport(spawn);
                 spawnIndex++;
 
@@ -139,7 +138,10 @@ public class TNTRunMiniGame {
 
         Title go = Title.title(
                 Component.text("¡YA!", NamedTextColor.GREEN),
-                Component.text("¡Corre!", NamedTextColor.WHITE),
+                Component.text(config.isDoubleJumpEnabled()
+                                ? "¡Corre! §7(doble salto activo)"
+                                : "¡Corre!",
+                        NamedTextColor.WHITE),
                 Title.Times.times(Duration.ofMillis(100), Duration.ofMillis(800), Duration.ofMillis(200))
         );
         forEachActive(p -> p.showTitle(go));
@@ -151,7 +153,9 @@ public class TNTRunMiniGame {
     public void eliminatePlayer(Player player) {
         if (!activePlayers.remove(player.getUniqueId())) return;
 
-        // Quitar visión nocturna al ser eliminado
+        // Limpiar estado de doble salto
+        if (gameListener != null) gameListener.clearDoubleJumpState(player);
+
         removeNightVision(player);
 
         Location spectator = config.getSpectatorSpawn();
@@ -160,10 +164,9 @@ public class TNTRunMiniGame {
         player.setHealth(20);
         player.setFoodLevel(20);
         player.setFireTicks(0);
-        applyNightVision(player); // espectadores también ven en la oscuridad
+        applyNightVision(player);
         player.sendMessage(Component.text("Caíste. Ahora eres espectador.", NamedTextColor.RED));
 
-        // Al inicio, remover del juego equipos que no tengan jugadores online en absoluto
         aliveTeams.removeIf(t -> {
             boolean hasNoActivePlayers = t.getOnlinePlayers().stream()
                     .noneMatch(p -> activePlayers.contains(p.getUniqueId()));
@@ -192,21 +195,17 @@ public class TNTRunMiniGame {
     public void checkWinCondition() {
         if (state != State.RUNNING) return;
 
-        // Equipos con al menos un jugador activo
         List<EventTeam> teamsWithPlayers = aliveTeams.stream()
                 .filter(t -> t.getOnlinePlayers().stream()
                         .anyMatch(p -> activePlayers.contains(p.getUniqueId())))
                 .toList();
 
-        // Si solo queda 1 equipo con jugadores activos → ese equipo gana
-        // Si no queda ninguno → termina sin ganador
         if (teamsWithPlayers.size() <= 1) {
             EventTeam winner = teamsWithPlayers.isEmpty() ? null : teamsWithPlayers.get(0);
             finish(winner);
             return;
         }
 
-        // Si solo queda 1 jugador activo en total (puede ser de cualquier equipo) → gana su equipo
         if (activePlayers.size() == 1) {
             UUID lastUUID = activePlayers.iterator().next();
             Player lastPlayer = Bukkit.getPlayer(lastUUID);
@@ -225,7 +224,6 @@ public class TNTRunMiniGame {
         if (gameListener != null) gameListener.stopTick();
         gameStartTime = 0;
 
-        // Quitar visión nocturna a todos los jugadores online (activos y espectadores)
         Bukkit.getOnlinePlayers().forEach(this::removeNightVision);
 
         List<EventTeam> ranking = new ArrayList<>();
@@ -244,7 +242,6 @@ public class TNTRunMiniGame {
                     .append(Component.text(" ganó el TNT Run!", NamedTextColor.GOLD)));
         }
 
-        // Asignar puntajes
         for (int i = 0; i < ranking.size(); i++) {
             EventTeam team = ranking.get(i);
             int score = config.getScoreForPlace(i + 1);
@@ -253,7 +250,6 @@ public class TNTRunMiniGame {
                     .append(Component.text(team.getDisplayName(), team.getColor())));
         }
 
-        // Restaurar arena y volver al lobby después de 5 segundos
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (arena != null) arena.restore();
             returnToMainLobby();
@@ -275,62 +271,35 @@ public class TNTRunMiniGame {
 
     // ── Visión nocturna ───────────────────────────────────────────────────────
 
-    /**
-     * Aplica visión nocturna infinita al jugador.
-     * Se usa amplifier 0 (nivel I) — suficiente para ver en la oscuridad.
-     * ambient=true y particles=false para que no moleste visualmente.
-     */
     private void applyNightVision(Player player) {
         player.addPotionEffect(new PotionEffect(
                 PotionEffectType.NIGHT_VISION,
-                PotionEffect.INFINITE_DURATION, // duración infinita
-                0,      // amplifier (nivel I)
-                true,   // ambient — efecto más suave visualmente
-                false,  // sin partículas
-                false   // sin icono en el HUD
+                PotionEffect.INFINITE_DURATION,
+                0, true, false, false
         ));
     }
 
-    /**
-     * Remueve la visión nocturna del jugador.
-     */
     private void removeNightVision(Player player) {
         player.removePotionEffect(PotionEffectType.NIGHT_VISION);
     }
 
     // ── Utilidades ────────────────────────────────────────────────────────────
 
-    public boolean isActivePlayer(Player player) {
-        return activePlayers.contains(player.getUniqueId());
-    }
-
+    public boolean isActivePlayer(Player player) { return activePlayers.contains(player.getUniqueId()); }
     public boolean isCountingDown() { return state == State.COUNTDOWN; }
     public boolean isRunning()      { return state == State.RUNNING; }
     public State   getState()       { return state; }
     public TNTRunConfig getConfig() { return config; }
+    public TNTRunArena  getArena()  { return arena; }
 
-    public List<EventTeam> getAliveTeams() {
-        return Collections.unmodifiableList(aliveTeams);
-    }
+    public List<EventTeam> getAliveTeams()    { return Collections.unmodifiableList(aliveTeams); }
+    public int getActivePlayerCount()         { return activePlayers.size(); }
+    public int getAliveTeamCount()            { return aliveTeams.size(); }
 
-    /** Cantidad de jugadores activos aún en juego. */
-    public int getActivePlayerCount() {
-        return activePlayers.size();
-    }
-
-    /** Cantidad de equipos aún vivos. */
-    public int getAliveTeamCount() {
-        return aliveTeams.size();
-    }
-
-    /** Tiempo transcurrido desde que inició la partida en segundos. */
     public long getElapsedSeconds() {
-        return gameStartTime > 0
-                ? (System.currentTimeMillis() - gameStartTime) / 1000
-                : 0;
+        return gameStartTime > 0 ? (System.currentTimeMillis() - gameStartTime) / 1000 : 0;
     }
 
-    /** Tiempo transcurrido formateado mm:ss. */
     public String getElapsedFormatted() {
         long secs = getElapsedSeconds();
         return String.format("%02d:%02d", secs / 60, secs % 60);
