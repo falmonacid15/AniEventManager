@@ -118,6 +118,7 @@ public class AniEventExpansion extends PlaceholderExpansion {
         if (params.startsWith("tntrun_"))    return resolveTNTRun(offlinePlayer, params);
         if (params.startsWith("fh_"))        return resolveFrozenHeist(offlinePlayer, params);
         if (params.startsWith("br_"))        return resolveBoatRacing(offlinePlayer, params);
+        if (params.startsWith("teamid_"))    return resolveTeamById(params);
 
         Player player = offlinePlayer.getPlayer();
 
@@ -505,6 +506,100 @@ public class AniEventExpansion extends PlaceholderExpansion {
                         || rd.getBestLapTimeMs() == 0) yield "-";
                 long diff = Math.abs(rd.getBestLapTimeMs() - leader.getBestLapTimeMs());
                 yield "+" + String.format("%.3f", diff / 1000.0) + "s";
+            }
+
+            default -> null;
+        };
+    }
+
+    // ── Equipo por ID (para hologramas) ──────────────────────────────────────
+    //
+    // Formato: %anievent_teamid_<id>_<campo>%
+    //
+    //   %anievent_teamid_rojo_name%        Nombre del equipo con id "rojo"
+    //   %anievent_teamid_rojo_color%       Color legacy del equipo (&c, &9...)
+    //   %anievent_teamid_rojo_score%       Puntaje global del equipo
+    //   %anievent_teamid_rojo_members%     Miembros separados por coma
+    //   %anievent_teamid_rojo_size%        Cantidad de miembros
+    //   %anievent_teamid_rojo_rank%        Posición en el ranking global (#1, #2...)
+    //
+    // Para Frozen Heist (puntos locales del minijuego):
+    //   %anievent_teamid_rojo_fh_score%    Puntos del equipo en el Frozen Heist actual
+    //   %anievent_teamid_rojo_fh_flag%     Estado de la bandera: En base / Robada / Caída
+    //   %anievent_teamid_rojo_fh_rank%     Posición en el ranking del Frozen Heist (#1...)
+
+    private String resolveTeamById(String params) {
+        // formato: teamid_<id>_<campo>
+        // El id puede tener guiones (ej: equipo-rojo), así que tomamos todo
+        // entre el primer _ y el último _ como el id, y el campo es lo último
+        String withoutPrefix = params.substring("teamid_".length()); // "<id>_<campo>"
+        int lastUnderscore = withoutPrefix.lastIndexOf('_');
+        if (lastUnderscore <= 0) return null;
+
+        String teamId = withoutPrefix.substring(0, lastUnderscore);
+        String field  = withoutPrefix.substring(lastUnderscore + 1);
+
+        // Campos de FH con sub-campo: teamid_<id>_fh_<campo>
+        // En ese caso field sería "fh" y necesitamos mirar más adelante
+        if (field.equals("fh")) return null; // incompleto, ignorar
+
+        // Detectar campos de FH: teamid_<id>_fh_score / fh_flag / fh_rank
+        if (teamId.endsWith("_fh")) {
+            // Recalcular: el id es todo antes de "_fh_<campo>"
+            // params = teamid_<id>_fh_<campo>
+            // Buscar "_fh_" en withoutPrefix
+            int fhIdx = withoutPrefix.lastIndexOf("_fh_");
+            if (fhIdx > 0) {
+                teamId = withoutPrefix.substring(0, fhIdx);
+                field  = "fh_" + withoutPrefix.substring(fhIdx + 4);
+            }
+        }
+
+        final String finalTeamId = teamId;
+        Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeam(finalTeamId);
+
+        return switch (field) {
+            // ── Campos globales del equipo ─────────────────────────────────
+            case "name" -> teamOpt.map(EventTeam::getDisplayName).orElse("-");
+            case "color" -> teamOpt.map(t -> namedColorToLegacy(t.getColor().toString())).orElse("&f");
+            case "score" -> teamOpt.map(t ->
+                    String.valueOf(plugin.getScoreManager().getScore(t))).orElse("0");
+            case "members" -> teamOpt.map(t -> {
+                var names = t.getOnlinePlayers().stream().map(Player::getName).toList();
+                return names.isEmpty() ? "ninguno" : String.join(", ", names);
+            }).orElse("ninguno");
+            case "size" -> teamOpt.map(t -> String.valueOf(t.getMemberCount())).orElse("0");
+            case "rank" -> teamOpt.map(t -> {
+                int rank = plugin.getScoreManager().getRank(t);
+                return rank == -1 ? "-" : "#" + rank;
+            }).orElse("-");
+
+            // ── Campos del Frozen Heist ────────────────────────────────────
+            case "fh_score" -> {
+                var fh = plugin.getFrozenHeistMiniGame();
+                if (!fh.isRunning()) yield "0";
+                var data = fh.getTeamData().get(finalTeamId);
+                yield data != null ? String.valueOf(data.getPoints()) : "0";
+            }
+            case "fh_flag" -> {
+                var fh = plugin.getFrozenHeistMiniGame();
+                if (!fh.isRunning()) yield "-";
+                var flagState = fh.getFlagManager().getState(finalTeamId);
+                yield switch (flagState) {
+                    case IN_BASE -> "En base";
+                    case CARRIED -> "Robada";
+                    case DROPPED -> "Caída";
+                };
+            }
+            case "fh_rank" -> {
+                var fh = plugin.getFrozenHeistMiniGame();
+                if (!fh.isRunning()) yield "-";
+                var ranked = fh.getTeamData().values().stream()
+                        .sorted((a, b) -> Integer.compare(b.getPoints(), a.getPoints()))
+                        .toList();
+                for (int i = 0; i < ranked.size(); i++)
+                    if (ranked.get(i).getTeam().getId().equals(finalTeamId)) yield "#" + (i + 1);
+                yield "-";
             }
 
             default -> null;

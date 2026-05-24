@@ -180,6 +180,7 @@ public class BingoMiniGame {
     }
 
     private void beginGame() {
+        plugin.getBingoWallManager().clearAllWalls();
         state = State.RUNNING;
         for (EventTeam team : plugin.getTeamManager().getAllTeams()) {
             for (var p : team.getOnlinePlayers()) {
@@ -361,6 +362,7 @@ public class BingoMiniGame {
             clone.setLocation(t.getLocationWorld(),
                     t.getLocationX(), t.getLocationY(), t.getLocationZ(),
                     t.getLocationRadius());
+            clone.setStructureKey(t.getStructureKey());
             cloned.add(clone);
         }
         return cloned;
@@ -369,7 +371,6 @@ public class BingoMiniGame {
     private void giveKit(org.bukkit.entity.Player player, EventTeam team) {
         player.getInventory().clear();
 
-        // Determinar el TrimMaterial según el color del equipo
         NamedTextColor color = team.getColor();
         TrimMaterial trimMat;
         if      (color == NamedTextColor.RED)          trimMat = Registry.TRIM_MATERIAL.get(org.bukkit.NamespacedKey.minecraft("redstone"));
@@ -384,34 +385,84 @@ public class BingoMiniGame {
         TrimPattern silencePattern = Registry.TRIM_PATTERN.get(org.bukkit.NamespacedKey.minecraft("silence"));
         ArmorTrim trim = new ArmorTrim(trimMat, silencePattern);
 
-        // Piezas de armadura
-        Material[] armorTypes = {
-                Material.NETHERITE_HELMET,
-                Material.NETHERITE_CHESTPLATE,
-                Material.NETHERITE_LEGGINGS,
-                Material.NETHERITE_BOOTS
-        };
+        // Helmet
+        ItemStack helmet = new ItemStack(Material.NETHERITE_HELMET);
+        ArmorMeta helmetMeta = (ArmorMeta) helmet.getItemMeta();
+        helmetMeta.setTrim(trim);
+        helmetMeta.addEnchant(org.bukkit.enchantments.Enchantment.PROTECTION,       4, true);
+        helmetMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,       3, true);
+        helmetMeta.addEnchant(org.bukkit.enchantments.Enchantment.RESPIRATION,      3, true);
+        helmetMeta.addEnchant(org.bukkit.enchantments.Enchantment.AQUA_AFFINITY,    1, true);
+        helmet.setItemMeta(helmetMeta);
 
-        ItemStack[] armorSet = new ItemStack[4];
-        for (int i = 0; i < armorTypes.length; i++) {
-            ItemStack piece = new ItemStack(armorTypes[i]);
-            ArmorMeta meta = (ArmorMeta) piece.getItemMeta();
-            meta.setTrim(trim);
-            piece.setItemMeta(meta);
-            armorSet[i] = piece;
-        }
+        // Chestplate
+        ItemStack chestplate = new ItemStack(Material.NETHERITE_CHESTPLATE);
+        ArmorMeta chestMeta = (ArmorMeta) chestplate.getItemMeta();
+        chestMeta.setTrim(trim);
+        chestMeta.addEnchant(org.bukkit.enchantments.Enchantment.PROTECTION,  4, true);
+        chestMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,  3, true);
+        chestplate.setItemMeta(chestMeta);
 
-        // Equipar armadura (boots=0, leggings=1, chestplate=2, helmet=3 en el inventario de armadura)
-        player.getInventory().setHelmet(armorSet[0]);
-        player.getInventory().setChestplate(armorSet[1]);
-        player.getInventory().setLeggings(armorSet[2]);
-        player.getInventory().setBoots(armorSet[3]);
+        // Leggings
+        ItemStack leggings = new ItemStack(Material.NETHERITE_LEGGINGS);
+        ArmorMeta legMeta = (ArmorMeta) leggings.getItemMeta();
+        legMeta.setTrim(trim);
+        legMeta.addEnchant(org.bukkit.enchantments.Enchantment.PROTECTION,    4, true);
+        legMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,    3, true);
+        legMeta.addEnchant(org.bukkit.enchantments.Enchantment.SWIFT_SNEAK,   3, true);
+        leggings.setItemMeta(legMeta);
 
-        // Herramientas y consumibles
+        // Boots
+        ItemStack boots = new ItemStack(Material.NETHERITE_BOOTS);
+        ArmorMeta bootsMeta = (ArmorMeta) boots.getItemMeta();
+        bootsMeta.setTrim(trim);
+        bootsMeta.addEnchant(org.bukkit.enchantments.Enchantment.PROTECTION,      4, true);
+        bootsMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,      3, true);
+        bootsMeta.addEnchant(org.bukkit.enchantments.Enchantment.FEATHER_FALLING, 4, true);
+        bootsMeta.addEnchant(org.bukkit.enchantments.Enchantment.DEPTH_STRIDER,   3, true);
+        boots.setItemMeta(bootsMeta);
+
+        player.getInventory().setHelmet(helmet);
+        player.getInventory().setChestplate(chestplate);
+        player.getInventory().setLeggings(leggings);
+        player.getInventory().setBoots(boots);
+
+        // ── Herramientas
+        ItemStack sword = new ItemStack(Material.NETHERITE_SWORD);
+        var swordMeta = sword.getItemMeta();
+        swordMeta.addEnchant(org.bukkit.enchantments.Enchantment.SHARPNESS,   5, true);
+        swordMeta.addEnchant(org.bukkit.enchantments.Enchantment.SWEEPING_EDGE,  3, true);
+        swordMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,  3, true);
+        swordMeta.addEnchant(org.bukkit.enchantments.Enchantment.LOOTING,     3, true);
+        sword.setItemMeta(swordMeta);
+
+        ItemStack axe = new ItemStack(Material.NETHERITE_AXE);
+        var axeMeta = axe.getItemMeta();
+        axeMeta.addEnchant(org.bukkit.enchantments.Enchantment.SHARPNESS,   5, true);
+        axeMeta.addEnchant(org.bukkit.enchantments.Enchantment.EFFICIENCY,  5, true);
+        axeMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,  3, true);
+        axe.setItemMeta(axeMeta);
+
+        ItemStack pickaxe = new ItemStack(Material.NETHERITE_PICKAXE);
+        var pickMeta = pickaxe.getItemMeta();
+        pickMeta.addEnchant(org.bukkit.enchantments.Enchantment.EFFICIENCY,  5, true);
+        pickMeta.addEnchant(org.bukkit.enchantments.Enchantment.FORTUNE,     3, true);
+        pickMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,  3, true);
+        pickaxe.setItemMeta(pickMeta);
+
+        ItemStack shovel = new ItemStack(Material.NETHERITE_SHOVEL);
+        var shovelMeta = shovel.getItemMeta();
+        shovelMeta.addEnchant(org.bukkit.enchantments.Enchantment.EFFICIENCY,  5, true);
+        shovelMeta.addEnchant(org.bukkit.enchantments.Enchantment.FORTUNE,     3, true);
+        shovelMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,  3, true);
+        shovel.setItemMeta(shovelMeta);
+
+        // ── Dar al inventario ─────────────────────────────────────────────────────
         player.getInventory().addItem(
-                new ItemStack(Material.NETHERITE_SWORD),
-                new ItemStack(Material.NETHERITE_PICKAXE),
-                new ItemStack(Material.NETHERITE_SHOVEL),
+                sword,
+                axe,
+                pickaxe,
+                shovel,
                 new ItemStack(Material.GOLDEN_CARROT, 64),
                 new ItemStack(Material.TORCH, 64)
         );

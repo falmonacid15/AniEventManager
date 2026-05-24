@@ -1,5 +1,7 @@
 package org.falmdev.anieventmanager;
 
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -21,6 +23,7 @@ import org.falmdev.anieventmanager.minigames.frozenheist.FrozenHeistMiniGame;
 import org.falmdev.anieventmanager.minigames.tntrun.TNTRunCommand;
 import org.falmdev.anieventmanager.minigames.tntrun.TNTRunMiniGame;
 import org.falmdev.anieventmanager.placeholders.AniEventExpansion;
+import org.falmdev.anieventmanager.minigames.bingo.BingoWallManager;
 
 public final class Anieventmanager extends JavaPlugin implements Listener {
 
@@ -31,6 +34,7 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
     private TNTRunMiniGame      tntRunMiniGame;
     private TNTRunCommand       tntRunCommand;
     private BingoMiniGame       bingoMiniGame;
+    private BingoWallManager bingoWallManager;
     private BingoCommand        bingoCommand;
     private BingoEditGUI        bingoEditGUI;
     private BoatRacingMiniGame  boatRacingMiniGame;
@@ -53,6 +57,7 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
         this.bingoMiniGame = new BingoMiniGame(this);
         this.bingoCommand  = new BingoCommand(this, bingoMiniGame);
         this.bingoEditGUI  = new BingoEditGUI(this);
+        this.bingoWallManager = new BingoWallManager(this);
 
         this.boatRacingMiniGame = new BoatRacingMiniGame(this);
         this.boatRacingCommand  = new BoatRacingCommand(this, boatRacingMiniGame);
@@ -79,8 +84,9 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
 
         // Listeners globales
         Bukkit.getPluginManager().registerEvents(new TeamListener(this), this);
-        Bukkit.getPluginManager().registerEvents(new BingoGUI(), this);
+        Bukkit.getPluginManager().registerEvents(new BingoGUI(this), this);
         Bukkit.getPluginManager().registerEvents(bingoEditGUI, this);
+        Bukkit.getPluginManager().registerEvents(bingoWallManager, this);
         Bukkit.getPluginManager().registerEvents(boatRacingListener, this);
         Bukkit.getPluginManager().registerEvents(this, this);
 
@@ -102,6 +108,16 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
         getLogger().info("AniEventManager deshabilitado.");
     }
 
+    public void reloadAll(org.bukkit.entity.Player player) {
+        if (bingoMiniGame.getState() != BingoMiniGame.State.IDLE) {
+            player.sendMessage(Component.text(
+                    "⚠ Bingo en curso — los cambios aplican a la siguiente partida.",
+                    NamedTextColor.YELLOW));
+        }
+        bingoMiniGame.getConfig().reload();
+        player.sendMessage(Component.text("✔ Configuración recargada.", NamedTextColor.GREEN));
+        getLogger().info("Configuración recargada por " + player.getName());
+    }
     // ── Getters ───────────────────────────────────────────────────────────────
 
     public static Anieventmanager getInstance()  { return instance; }
@@ -112,6 +128,7 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
     public BingoMiniGame  getBingoMiniGame()     { return bingoMiniGame; }
     public BingoCommand   getBingoCommand()      { return bingoCommand; }
     public BingoEditGUI   getBingoEditGUI()      { return bingoEditGUI; }
+    public BingoWallManager getBingoWallManager() { return bingoWallManager; }
     public BoatRacingMiniGame getBoatRacingMiniGame() { return boatRacingMiniGame; }
     public BoatRacingCommand  getBoatRacingCommand()  { return boatRacingCommand; }
     public FrozenHeistMiniGame getFrozenHeistMiniGame() { return frozenHeistMiniGame; }

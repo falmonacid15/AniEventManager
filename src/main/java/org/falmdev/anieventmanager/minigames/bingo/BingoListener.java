@@ -1,5 +1,6 @@
 package org.falmdev.anieventmanager.minigames.bingo;
 
+import io.papermc.paper.event.player.PlayerTradeEvent;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
@@ -15,7 +16,6 @@ import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerFishEvent;
-import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
@@ -23,10 +23,6 @@ import org.falmdev.anieventmanager.model.EventTeam;
 
 import java.util.Optional;
 
-/**
- * Listener del Bingo.
- * Detecta los seis tipos de tarea y notifica al minijuego.
- */
 public class BingoListener implements Listener {
 
     private final Anieventmanager plugin;
@@ -38,7 +34,7 @@ public class BingoListener implements Listener {
         this.miniGame = miniGame;
     }
 
-    // ── OBTAIN_ITEM — recoger ítem del suelo ──────────────────────────────────
+    // ── OBTAIN_ITEM ───────────────────────────────────────────────────────────
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPickup(EntityPickupItemEvent event) {
@@ -50,10 +46,10 @@ public class BingoListener implements Listener {
 
         Material mat = event.getItem().getItemStack().getType();
         int amount   = event.getItem().getItemStack().getAmount();
-        checkObtainTasks(teamOpt.get(), mat, amount);
+        checkTasksByType(teamOpt.get(), BingoTask.Type.OBTAIN_ITEM, mat, amount);
     }
 
-    // ── CRAFT_ITEM — craftear ítem ────────────────────────────────────────────
+    // ── CRAFT_ITEM ────────────────────────────────────────────────────────────
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onCraft(CraftItemEvent event) {
@@ -67,7 +63,6 @@ public class BingoListener implements Listener {
         int craftedAmount;
 
         if (event.isShiftClick()) {
-            // Calcular cuántas veces se puede repetir la receta con los ingredientes disponibles
             int timesCanCraft = Integer.MAX_VALUE;
             for (ItemStack ingredient : event.getInventory().getMatrix()) {
                 if (ingredient == null || ingredient.getType().isAir()) continue;
@@ -79,11 +74,10 @@ public class BingoListener implements Listener {
             craftedAmount = result.getAmount();
         }
 
-        checkTasksByType(teamOpt.get(), BingoTask.Type.CRAFT_ITEM,
-                result.getType(), craftedAmount);
+        checkTasksByType(teamOpt.get(), BingoTask.Type.CRAFT_ITEM, result.getType(), craftedAmount);
     }
 
-    // ── KILL_MOB — matar mob ──────────────────────────────────────────────────
+    // ── KILL_MOB ──────────────────────────────────────────────────────────────
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onKill(EntityDeathEvent event) {
@@ -104,8 +98,6 @@ public class BingoListener implements Listener {
             if (task.isCompleted()) continue;
 
             boolean justCompleted = task.increment(1);
-
-            // Mostrar progreso parcial en chat solo al jugador que mató
             if (!justCompleted) {
                 killer.sendMessage(Component.text("⚔ " + task.getDisplayName()
                                 + " — " + task.getProgress() + "/" + task.getRequired(),
@@ -114,12 +106,11 @@ public class BingoListener implements Listener {
             } else {
                 onTaskCompleted(teamOpt.get(), task, card);
             }
-            // Solo procesar la primera tarea que coincida por kill
             break;
         }
     }
 
-    // ── EQUIP_ITEM — equipar armadura ─────────────────────────────────────────
+    // ── EQUIP_ITEM ────────────────────────────────────────────────────────────
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onInventoryClick(InventoryClickEvent event) {
@@ -136,7 +127,7 @@ public class BingoListener implements Listener {
         checkTasksByType(teamOpt.get(), BingoTask.Type.EQUIP_ITEM, item.getType(), 1);
     }
 
-    // ── FISH_ITEM — pescar ítem ───────────────────────────────────────────────
+    // ── FISH_ITEM ─────────────────────────────────────────────────────────────
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onFish(PlayerFishEvent event) {
@@ -152,7 +143,55 @@ public class BingoListener implements Listener {
         }
     }
 
-    // ── REACH_LOCATION — tick periódico ───────────────────────────────────────
+    // ── TRADE_ANY / TRADE_ITEM ────────────────────────────────────────────────
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onTrade(PlayerTradeEvent event) {
+        if (!miniGame.isRunning()) return;
+
+        Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeamOf(event.getPlayer());
+        if (teamOpt.isEmpty()) return;
+
+        BingoCard card = miniGame.getCard(teamOpt.get());
+        if (card == null) return;
+
+        Material result = event.getTrade().getResult().getType();
+
+        for (BingoTask task : card.getTasks()) {
+            if (task.isCompleted()) continue;
+
+            switch (task.getType()) {
+                case TRADE_ANY -> {
+                    boolean done = task.increment(1);
+                    if (done) {
+                        onTaskCompleted(teamOpt.get(), task, card);
+                    } else {
+                        event.getPlayer().sendMessage(
+                                Component.text("🤝 " + task.getDisplayName()
+                                                + " — " + task.getProgress() + "/" + task.getRequired(),
+                                        NamedTextColor.GRAY));
+                        refreshOpenGUIs(teamOpt.get(), card);
+                    }
+                }
+                case TRADE_ITEM -> {
+                    if (task.getMaterial() != result) continue;
+                    boolean done = task.increment(1);
+                    if (done) {
+                        onTaskCompleted(teamOpt.get(), task, card);
+                    } else {
+                        event.getPlayer().sendMessage(
+                                Component.text("🤝 " + task.getDisplayName()
+                                                + " — " + task.getProgress() + "/" + task.getRequired(),
+                                        NamedTextColor.GRAY));
+                        refreshOpenGUIs(teamOpt.get(), card);
+                    }
+                }
+                default -> {}
+            }
+        }
+    }
+
+    // ── REACH_LOCATION + VISIT_STRUCTURE — tick periódico ────────────────────
 
     public void startLocationCheck() {
         locationTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
@@ -163,26 +202,35 @@ public class BingoListener implements Listener {
                 if (card == null) continue;
 
                 for (BingoTask task : card.getTasks()) {
-                    if (task.getType() != BingoTask.Type.REACH_LOCATION || task.isCompleted()) continue;
+                    if (task.isCompleted()) continue;
 
-                    for (Player p : team.getOnlinePlayers()) {
-                        Location loc = p.getLocation();
-                        if (!loc.getWorld().getName().equals(task.getLocationWorld())) continue;
+                    if (task.getType() == BingoTask.Type.REACH_LOCATION) {
+                        for (Player p : team.getOnlinePlayers()) {
+                            Location loc = p.getLocation();
+                            if (!loc.getWorld().getName().equals(task.getLocationWorld())) continue;
 
-                        double dx = loc.getX() - task.getLocationX();
-                        double dy = loc.getY() - task.getLocationY();
-                        double dz = loc.getZ() - task.getLocationZ();
-                        double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                            double dx   = loc.getX() - task.getLocationX();
+                            double dy   = loc.getY() - task.getLocationY();
+                            double dz   = loc.getZ() - task.getLocationZ();
+                            double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-                        if (dist <= task.getLocationRadius()) {
-                            if (task.complete()) {
-                                onTaskCompleted(team, task, card);
+                            if (dist <= task.getLocationRadius()) {
+                                if (task.complete()) onTaskCompleted(team, task, card);
+                            }
+                        }
+                    }
+
+                    if (task.getType() == BingoTask.Type.VISIT_STRUCTURE) {
+                        for (Player p : team.getOnlinePlayers()) {
+                            if (isInsideStructure(p.getLocation(), task.getStructureKey())) {
+                                if (task.complete()) onTaskCompleted(team, task, card);
+                                break;
                             }
                         }
                     }
                 }
             }
-        }, 20L, 20L); // cada segundo
+        }, 20L, 20L);
     }
 
     public void stopLocationCheck() {
@@ -191,18 +239,12 @@ public class BingoListener implements Listener {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private void checkObtainTasks(EventTeam team, Material mat, int amount) {
-        checkTasksByType(team, BingoTask.Type.OBTAIN_ITEM, mat, amount);
-    }
-
     private void checkTasksByType(EventTeam team, BingoTask.Type type, Material mat, int amount) {
         BingoCard card = miniGame.getCard(team);
         if (card == null) return;
 
         for (BingoTask task : card.getTasks()) {
-            if (task.getType() == type
-                    && task.getMaterial() == mat
-                    && !task.isCompleted()) {
+            if (task.getType() == type && task.getMaterial() == mat && !task.isCompleted()) {
                 if (task.increment(amount)) {
                     onTaskCompleted(team, task, card);
                 } else {
@@ -212,12 +254,36 @@ public class BingoListener implements Listener {
         }
     }
 
-    /**
-     * Se llama cuando una tarea se completa.
-     * Notifica al equipo y verifica condición de victoria.
-     */
+    private boolean isInsideStructure(Location location, String structureKey) {
+        if (location.getWorld() == null) return false;
+
+        org.bukkit.NamespacedKey key;
+        try {
+            if (structureKey.contains(":")) {
+                String[] parts = structureKey.split(":", 2);
+                key = new org.bukkit.NamespacedKey(parts[0], parts[1]);
+            } else {
+                key = new org.bukkit.NamespacedKey("minecraft", structureKey);
+            }
+        } catch (Exception e) {
+            return false;
+        }
+
+        org.bukkit.generator.structure.Structure structure =
+                org.bukkit.Registry.STRUCTURE.get(key);
+        if (structure == null) return false;
+
+        org.bukkit.util.StructureSearchResult result =
+                location.getWorld().locateNearestStructure(location, structure, 1, false);
+        if (result == null) return false;
+
+        Location structLoc = result.getLocation();
+        double dx = location.getX() - structLoc.getX();
+        double dz = location.getZ() - structLoc.getZ();
+        return Math.sqrt(dx * dx + dz * dz) <= 80.0;
+    }
+
     private void onTaskCompleted(EventTeam team, BingoTask task, BingoCard card) {
-        // Anunciar en chat
         Bukkit.getOnlinePlayers().forEach(p ->
                 p.sendMessage(Component.text("✔ ", NamedTextColor.GREEN)
                         .append(Component.text(team.getDisplayName(), team.getColor()))
@@ -226,18 +292,10 @@ public class BingoListener implements Listener {
                         .append(Component.text("  (" + card.getCompletedCount()
                                 + "/" + card.getTotalTasks() + ")", NamedTextColor.GRAY)))
         );
-
-        // Actualizar GUI si algún miembro lo tiene abierto
         refreshOpenGUIs(team, card);
-
-        // Verificar victoria
         miniGame.checkWinCondition(team, card);
     }
 
-    /**
-     * Actualiza el GUI de bingo para todos los miembros del equipo
-     * que lo tengan abierto en ese momento.
-     */
     private void refreshOpenGUIs(EventTeam team, BingoCard card) {
         for (Player p : team.getOnlinePlayers()) {
             String titlePlain = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer

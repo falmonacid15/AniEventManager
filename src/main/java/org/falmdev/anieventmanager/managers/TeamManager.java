@@ -41,6 +41,10 @@ public class TeamManager {
         load();
     }
 
+    public void reload() {
+        load();
+    }
+
     // ── Archivo YAML ──────────────────────────────────────────────────────────
 
     private void setupFile() {

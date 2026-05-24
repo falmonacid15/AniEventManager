@@ -56,6 +56,10 @@ public class TNTRunConfig {
         load();
     }
 
+    public void reload() {
+        load();
+    }
+
     // ── Carga y guardado ──────────────────────────────────────────────────────
 
     public void load() {

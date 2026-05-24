@@ -44,6 +44,7 @@ public class EMCommand implements CommandExecutor, TabCompleter {
             case "boatracing"  -> plugin.getBoatRacingCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
             case "frozenheist" -> plugin.getFrozenHeistCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
             case "help"        -> sendHelp(player);
+            case "reload" -> plugin.reloadAll(player);
             default            -> player.sendMessage(Component.text("Subcomando desconocido. Usa ", NamedTextColor.RED)
                     .append(Component.text("/em help", NamedTextColor.YELLOW)));
         }
@@ -161,7 +162,7 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         if (!(sender instanceof Player player) || !player.isOp()) return List.of();
 
         if (args.length == 1)
-            return filter(List.of("team", "score", "tntrun", "bingo", "boatracing", "frozenheist", "help"), args[0]);
+            return filter(List.of("team", "score", "tntrun", "bingo", "boatracing", "frozenheist", "help", "reload"), args[0]);
 
         if (args[0].equalsIgnoreCase("team")) {
             if (args.length == 2) return filter(List.of("create", "delete", "add", "remove", "list", "clear", "friendlyfire"), args[1]);
@@ -188,6 +189,8 @@ public class EMCommand implements CommandExecutor, TabCompleter {
 
         if (args[0].equalsIgnoreCase("frozenheist"))
             return plugin.getFrozenHeistCommand().tabComplete(Arrays.copyOfRange(args, 1, args.length));
+
+
 
         return List.of();
     }

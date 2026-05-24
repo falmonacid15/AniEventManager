@@ -25,42 +25,37 @@ import java.util.UUID;
 /**
  * GUI de edición de una tarea del bingo.
  *
- * Layout (27 slots = 3 filas x 9 columnas):
+ * Layout (36 slots = 4 filas x 9 columnas):
+ *   Fila 0: borders
+ *   Fila 1: border | ICON(10) | border | TITLE(12) | border | DESC(14) | border | RESET(16) | border
+ *   Fila 2: borders
+ *   Fila 3: borders con INFO(28) en el centro
  *
- *   [border] [border] [border] [border] [border] [border] [border] [border] [border]
- *   [border] [ICON]   [border] [TITLE]  [border] [RESET]  [border] [INFO]   [border]
- *   [border] [border] [border] [border] [border] [border] [border] [border] [border]
- *
- *   Slot 10 — ICON:  click para establecer el item en mano como icono
- *   Slot 13 — TITLE: click para cambiar el título (prompt en chat)
- *   Slot 15 — RESET: click para quitar el icono personalizado
- *   Slot 16 — INFO:  información de la tarea (no clickeable)
+ * Descripción: soporta saltos de línea usando \n en el chat.
+ *   Ejemplo: "Primera línea\nSegunda línea\n&aTercera en verde"
  */
 public class BingoEditGUI implements Listener {
 
-    private static final int SLOT_ICON   = 10;
-    private static final int SLOT_TITLE  = 12;
-    private static final int SLOT_DESC   = 14;
-    private static final int SLOT_RESET  = 16;
-    private static final int SLOT_INFO   = 28;
+    private static final int SLOT_ICON  = 10;
+    private static final int SLOT_TITLE = 12;
+    private static final int SLOT_DESC  = 14;
+    private static final int SLOT_RESET = 16;
+    private static final int SLOT_INFO  = 28;
 
     private final Anieventmanager plugin;
     private final BingoConfig config;
 
-    // Jugadores esperando input de chat para cambiar título
-    // UUID -> taskId
     private final Map<UUID, String> awaitingTitle = new HashMap<>();
-    private final Map<UUID, String> awaitingDesc = new HashMap<>();
+    private final Map<UUID, String> awaitingDesc  = new HashMap<>();
 
     public BingoEditGUI(Anieventmanager plugin) {
         this.plugin = plugin;
-        this.config  = plugin.getBingoMiniGame().getConfig();
+        this.config = plugin.getBingoMiniGame().getConfig();
     }
 
     // ── Abrir el editor ───────────────────────────────────────────────────────
 
     public void open(Player player, BingoTask task) {
-        // El título usa el prefijo plain "Editar tarea: " para poder extraer el id fácilmente
         Inventory inv = Bukkit.createInventory(null, 36,
                 Component.text("Editar tarea: ", NamedTextColor.GOLD)
                         .append(Component.text(task.getId(), NamedTextColor.YELLOW)));
@@ -81,7 +76,6 @@ public class BingoEditGUI implements Listener {
     public void onInventoryClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
 
-        // Extraer el título como plain text para evitar problemas con códigos de color
         String titlePlain = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
                 .plainText().serialize(event.getView().title());
 
@@ -92,7 +86,6 @@ public class BingoEditGUI implements Listener {
         String taskId = titlePlain.replace("Editar tarea: ", "").trim();
         int slot = event.getRawSlot();
 
-        // Recargar la tarea desde config para tener el estado más reciente
         BingoTask task = config.loadTasks().stream()
                 .filter(t -> t.getId().equals(taskId))
                 .findFirst().orElse(null);
@@ -106,7 +99,6 @@ public class BingoEditGUI implements Listener {
         switch (slot) {
 
             case SLOT_ICON -> {
-                // Tomar el item que el jugador tiene en mano
                 ItemStack hand = player.getInventory().getItemInMainHand();
                 if (hand.getType().isAir()) {
                     player.sendMessage(Component.text(
@@ -116,40 +108,38 @@ public class BingoEditGUI implements Listener {
                 }
                 task.setIcon(hand.getType());
                 config.saveTask(task);
-                player.sendMessage(Component.text("✔ Icono de '", NamedTextColor.GREEN)
-                        .append(Component.text(taskId, NamedTextColor.YELLOW))
-                        .append(Component.text("' cambiado a ", NamedTextColor.GREEN))
+                player.sendMessage(Component.text("✔ Icono cambiado a ", NamedTextColor.GREEN)
                         .append(Component.text(hand.getType().name().toLowerCase()
                                 .replace('_', ' '), NamedTextColor.WHITE))
                         .append(Component.text(".", NamedTextColor.GREEN)));
-                // Reabrir con los datos actualizados
-                plugin.getServer().getScheduler().runTask(plugin,
-                        () -> open(player, task));
+                plugin.getServer().getScheduler().runTask(plugin, () -> open(player, task));
             }
 
             case SLOT_TITLE -> {
-                // Iniciar prompt de chat
                 player.closeInventory();
                 awaitingTitle.put(player.getUniqueId(), taskId);
                 player.sendMessage(Component.text(
-                                "Escribe el nuevo título para la tarea '", NamedTextColor.YELLOW)
+                                "Escribe el nuevo título para '", NamedTextColor.YELLOW)
                         .append(Component.text(taskId, NamedTextColor.WHITE))
                         .append(Component.text("' en el chat:", NamedTextColor.YELLOW)));
                 player.sendMessage(Component.text(
-                        "Escribe 'cancelar' para cancelar.", NamedTextColor.GRAY));
+                        "Usa &a, &c, &l, etc. para colores. 'cancelar' para cancelar.",
+                        NamedTextColor.GRAY));
             }
 
             case SLOT_DESC -> {
                 player.closeInventory();
                 awaitingDesc.put(player.getUniqueId(), taskId);
                 player.sendMessage(Component.text(
-                                "Escribe la nueva descripción para la tarea '", NamedTextColor.YELLOW)
+                                "Escribe la descripción para '", NamedTextColor.YELLOW)
                         .append(Component.text(taskId, NamedTextColor.WHITE))
                         .append(Component.text("' en el chat:", NamedTextColor.YELLOW)));
                 player.sendMessage(Component.text(
-                        "Escribe 'cancelar' para cancelar.", NamedTextColor.GRAY));
+                        "Usa \\n para saltos de línea. Ej: &7Primera línea\\n&aSeg. línea",
+                        NamedTextColor.GRAY));
                 player.sendMessage(Component.text(
-                        "Escribe 'borrar' para quitar la descripción.", NamedTextColor.GRAY));
+                        "'cancelar' para cancelar. 'borrar' para quitar la descripción.",
+                        NamedTextColor.GRAY));
             }
 
             case SLOT_RESET -> {
@@ -160,24 +150,20 @@ public class BingoEditGUI implements Listener {
                 }
                 task.setIcon(null);
                 config.saveTask(task);
-                player.sendMessage(Component.text("✔ Icono de '", NamedTextColor.GREEN)
-                        .append(Component.text(taskId, NamedTextColor.YELLOW))
-                        .append(Component.text("' reseteado al default.", NamedTextColor.GREEN)));
-                plugin.getServer().getScheduler().runTask(plugin,
-                        () -> open(player, task));
+                player.sendMessage(Component.text("✔ Icono reseteado al default.", NamedTextColor.GREEN));
+                plugin.getServer().getScheduler().runTask(plugin, () -> open(player, task));
             }
         }
     }
 
-    // ── Chat prompt para el título ─────────────────────────────────────────────
-
+    // ── Chat prompts ──────────────────────────────────────────────────────────
 
     @EventHandler
     public void onChat(AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
         UUID uid = player.getUniqueId();
 
-        // Manejo de título (existente)
+        // Título
         if (awaitingTitle.containsKey(uid)) {
             event.setCancelled(true);
             String taskId = awaitingTitle.remove(uid);
@@ -195,13 +181,13 @@ public class BingoEditGUI implements Listener {
                 task.setDisplayName(input);
                 config.saveTask(task);
                 player.sendMessage(Component.text("✔ Título cambiado a: ", NamedTextColor.GREEN)
-                        .append(Component.text(input, NamedTextColor.WHITE)));
+                        .append(LegacyComponentSerializer.legacyAmpersand().deserialize(input)));
                 open(player, task);
             });
             return;
         }
 
-        // Manejo de descripción (NUEVO)
+        // Descripción
         if (awaitingDesc.containsKey(uid)) {
             event.setCancelled(true);
             String taskId = awaitingDesc.remove(uid);
@@ -222,10 +208,12 @@ public class BingoEditGUI implements Listener {
                     config.saveTask(task);
                     player.sendMessage(Component.text("✔ Descripción eliminada.", NamedTextColor.GREEN));
                 } else {
-                    task.setDescription(input);
+                    // Reemplazar \n literal por el separador interno
+                    // El jugador escribe "línea1\nlínea2", se guarda con \n real
+                    String processed = input.replace("\\n", "\n");
+                    task.setDescription(processed);
                     config.saveTask(task);
-                    player.sendMessage(Component.text("✔ Descripción cambiada a: ", NamedTextColor.GREEN)
-                            .append(Component.text(input, NamedTextColor.WHITE)));
+                    player.sendMessage(Component.text("✔ Descripción guardada.", NamedTextColor.GREEN));
                 }
                 open(player, task);
             });
@@ -235,7 +223,7 @@ public class BingoEditGUI implements Listener {
     // ── Construcción de slots ─────────────────────────────────────────────────
 
     private ItemStack buildIconSlot(BingoTask task) {
-        Material mat = task.hasCustomIcon() ? task.getIcon() : Material.ITEM_FRAME;
+        Material mat  = task.hasCustomIcon() ? task.getIcon() : Material.ITEM_FRAME;
         ItemStack item = new ItemStack(mat);
         ItemMeta  meta = item.getItemMeta();
         meta.displayName(Component.text("Cambiar icono", NamedTextColor.GOLD)
@@ -255,7 +243,6 @@ public class BingoEditGUI implements Listener {
         lore.add(Component.text("para usarlo como icono.", NamedTextColor.YELLOW)
                 .decoration(TextDecoration.ITALIC, false));
         meta.lore(lore);
-
         item.setItemMeta(meta);
         return item;
     }
@@ -269,12 +256,45 @@ public class BingoEditGUI implements Listener {
         lore.add(Component.empty());
         lore.add(Component.text("Título actual: ", NamedTextColor.GRAY)
                 .decoration(TextDecoration.ITALIC, false)
-                .append(Component.text(task.getDisplayName(), NamedTextColor.WHITE)
+                .append(LegacyComponentSerializer.legacyAmpersand()
+                        .deserialize(task.getDisplayName())
                         .decoration(TextDecoration.ITALIC, false)));
         lore.add(Component.empty());
-        lore.add(Component.text("Click para escribir un", NamedTextColor.YELLOW)
+        lore.add(Component.text("Click para escribir en el chat.", NamedTextColor.YELLOW)
                 .decoration(TextDecoration.ITALIC, false));
-        lore.add(Component.text("nuevo título en el chat.", NamedTextColor.YELLOW)
+        lore.add(Component.text("Soporta &a, &c, &l, etc.", NamedTextColor.GRAY)
+                .decoration(TextDecoration.ITALIC, false));
+        meta.lore(lore);
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private ItemStack buildDescSlot(BingoTask task) {
+        ItemStack item = new ItemStack(Material.WRITABLE_BOOK);
+        ItemMeta  meta = item.getItemMeta();
+        meta.displayName(Component.text("Cambiar descripción", NamedTextColor.GOLD)
+                .decoration(TextDecoration.ITALIC, false));
+        List<Component> lore = new ArrayList<>();
+        lore.add(Component.empty());
+        if (task.hasDescription()) {
+            // Mostrar cada línea separada
+            for (String line : task.getDescription().split("\n")) {
+                lore.add(LegacyComponentSerializer.legacyAmpersand()
+                        .deserialize(line)
+                        .decoration(TextDecoration.ITALIC, false));
+            }
+        } else {
+            lore.add(Component.text("Sin descripción.", NamedTextColor.GRAY)
+                    .decoration(TextDecoration.ITALIC, false));
+        }
+        lore.add(Component.empty());
+        lore.add(Component.text("Click para escribir en el chat.", NamedTextColor.YELLOW)
+                .decoration(TextDecoration.ITALIC, false));
+        lore.add(Component.text("Usa \\n para saltos de línea.", NamedTextColor.GRAY)
+                .decoration(TextDecoration.ITALIC, false));
+        lore.add(Component.text("Usa &a, &c, etc. para colores.", NamedTextColor.GRAY)
+                .decoration(TextDecoration.ITALIC, false));
+        lore.add(Component.text("'borrar' para eliminarla.", NamedTextColor.GRAY)
                 .decoration(TextDecoration.ITALIC, false));
         meta.lore(lore);
         item.setItemMeta(meta);
@@ -318,63 +338,6 @@ public class BingoEditGUI implements Listener {
         meta.lore(lore);
         item.setItemMeta(meta);
         return item;
-    }
-
-    private ItemStack buildDescSlot(BingoTask task) {
-        ItemStack item = new ItemStack(Material.WRITABLE_BOOK);
-        ItemMeta  meta = item.getItemMeta();
-        meta.displayName(Component.text("Cambiar descripción", NamedTextColor.GOLD)
-                .decoration(TextDecoration.ITALIC, false));
-        List<Component> lore = new ArrayList<>();
-        lore.add(Component.empty());
-        if (task.hasDescription()) {
-            lore.addAll(wrapDescription(task.getDescription(), 40));
-        } else {
-            lore.add(Component.text("Sin descripción.", NamedTextColor.GRAY)
-                    .decoration(TextDecoration.ITALIC, false));
-        }
-        lore.add(Component.empty());
-        lore.add(Component.text("Click para escribir en el chat.", NamedTextColor.YELLOW)
-                .decoration(TextDecoration.ITALIC, false));
-        lore.add(Component.text("Escribe 'borrar' para quitarla.", NamedTextColor.GRAY)
-                .decoration(TextDecoration.ITALIC, false));
-        meta.lore(lore);
-        item.setItemMeta(meta);
-        return item;
-    }
-
-    private List<Component> wrapDescription(String desc, int maxChars) {
-        List<Component> lines = new ArrayList<>();
-        String[] words = desc.split(" ");
-        StringBuilder current = new StringBuilder();
-        String lastColor = "";
-
-        for (String word : words) {
-            // Si añadir esta palabra supera el límite, cerrar línea actual
-            // (strip color codes para medir longitud real)
-            String plain = current.toString().replaceAll("&[0-9a-fk-or]", "");
-            String wordPlain = word.replaceAll("&[0-9a-fk-or]", "");
-
-            if (!plain.isEmpty() && plain.length() + 1 + wordPlain.length() > maxChars) {
-                lines.add(LegacyComponentSerializer.legacyAmpersand()
-                        .deserialize(current.toString().trim())
-                        .decoration(TextDecoration.ITALIC, false));
-                // Extraer el último código de color del chunk actual para propagarlo
-                java.util.regex.Matcher m = java.util.regex.Pattern
-                        .compile("&[0-9a-fk-or]").matcher(current.toString());
-                while (m.find()) lastColor = m.group();
-                current = new StringBuilder(lastColor);
-            }
-            if (!current.toString().equals(lastColor)) current.append(" ");
-            current.append(word);
-        }
-
-        if (!current.toString().isBlank()) {
-            lines.add(LegacyComponentSerializer.legacyAmpersand()
-                    .deserialize(current.toString().trim())
-                    .decoration(TextDecoration.ITALIC, false));
-        }
-        return lines;
     }
 
     private void fillBorders(Inventory inv) {
