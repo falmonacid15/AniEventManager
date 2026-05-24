@@ -10,6 +10,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
+import org.falmdev.anieventmanager.managers.MiniGame;
 import org.falmdev.anieventmanager.model.EventTeam;
 import org.falmdev.anieventmanager.utils.TeamColorUtil;
 
@@ -17,7 +18,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class FrozenHeistMiniGame {
+public class FrozenHeistMiniGame implements MiniGame {
 
     public enum State { IDLE, RUNNING, FINISHED }
 
@@ -27,10 +28,8 @@ public class FrozenHeistMiniGame {
 
     private State state = State.IDLE;
 
-    // teamId → datos del equipo
-    private final Map<String, TeamHeistData>  teamData    = new LinkedHashMap<>();
-    // UUID → estado del jugador
-    private final Map<UUID, PlayerState>       playerStates = new HashMap<>();
+    private final Map<String, TeamHeistData> teamData     = new LinkedHashMap<>();
+    private final Map<UUID, PlayerState>      playerStates = new HashMap<>();
 
     private FlagManager flagManager;
 
@@ -43,8 +42,40 @@ public class FrozenHeistMiniGame {
         this.config = new FrozenHeistConfig(plugin);
     }
 
+    // ── MiniGame interface ────────────────────────────────────────────────────
+
+    @Override public String getId()          { return "frozenheist"; }
+    @Override public String getDisplayName() { return "Frozen Heist"; }
+    @Override public String getStateName()   { return state.name(); }
+    @Override public boolean isIdle()        { return state == State.IDLE; }
+
+    @Override
+    public boolean isRunning() {
+        return state == State.RUNNING;
+    }
+
+    /**
+     * Frozen Heist no tiene lobby previo: sendToLobby inicia directamente.
+     */
+    @Override
+    public boolean sendToLobby() {
+        return start();
+    }
+
+    @Override
+    public void reloadConfig() {
+        config.reload();
+    }
+
+    @Override
+    public String validateConfig() {
+        Collection<EventTeam> teams = plugin.getTeamManager().getAllTeams();
+        return config.validate(teams);
+    }
+
     // ── Inicio ────────────────────────────────────────────────────────────────
 
+    @Override
     public boolean start() {
         if (state != State.IDLE) return false;
 
@@ -54,7 +85,6 @@ public class FrozenHeistMiniGame {
         String error = config.validate(teams);
         if (error != null) return false;
 
-        // Inicializar datos por equipo
         teamData.clear();
         playerStates.clear();
 
@@ -65,16 +95,13 @@ public class FrozenHeistMiniGame {
             teamData.put(team.getId(), data);
         }
 
-        // Inicializar banderas
         flagManager = new FlagManager(plugin, teamData);
         flagManager.initAll();
 
-        // Registrar y configurar listener
         if (listener != null) org.bukkit.event.HandlerList.unregisterAll(listener);
         listener = new FrozenHeistListener(plugin, this);
         plugin.getServer().getPluginManager().registerEvents(listener, plugin);
 
-        // Teletransportar y equipar jugadores
         for (TeamHeistData data : teamData.values()) {
             for (Player p : data.getTeam().getOnlinePlayers()) {
                 playerStates.put(p.getUniqueId(), new PlayerState(p.getUniqueId()));
@@ -97,6 +124,7 @@ public class FrozenHeistMiniGame {
         return true;
     }
 
+    @Override
     public void forceStop() {
         finish(true);
     }
@@ -121,7 +149,7 @@ public class FrozenHeistMiniGame {
         }, 20L, 20L);
     }
 
-    // ── Scoreboard updater — actionbar con puntajes ───────────────────────────
+    // ── Scoreboard updater ────────────────────────────────────────────────────
 
     private void startScoreboardUpdater() {
         scoreboardTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
@@ -136,37 +164,21 @@ public class FrozenHeistMiniGame {
                 Component bar;
 
                 if (ps.isFrozen()) {
-                    if (ps.isBeingRescued()) {
-                        bar = Component.text("❄ Siendo rescatado... " + ps.getFrozenSecondsLeft() + "s",
-                                NamedTextColor.AQUA);
-                    } else {
-                        bar = Component.text("❄ Congelado — " + ps.getFrozenSecondsLeft() + "s  |  Espera a tu compañero",
-                                NamedTextColor.AQUA);
-                    }
+                    bar = ps.isBeingRescued()
+                            ? Component.text("❄ Siendo rescatado... " + ps.getFrozenSecondsLeft() + "s", NamedTextColor.AQUA)
+                            : Component.text("❄ Congelado — " + ps.getFrozenSecondsLeft() + "s  |  Espera a tu compañero", NamedTextColor.AQUA);
                 } else if (ps.isRescuing()) {
-                    bar = Component.text("⏳ Rescatando... mantén el click",
-                            NamedTextColor.YELLOW);
+                    bar = Component.text("⏳ Rescatando... mantén el click", NamedTextColor.YELLOW);
                 } else if (ps.isCarryingFlag()) {
-                    // Revisar si es bandera propia (recuperación) o enemiga (captura)
-                    plugin.getTeamManager().getTeamOf(p).ifPresent(team -> {
-                        // se maneja abajo con la variable flagMsg
-                    });
-                    String flagTeamId = ps.getCarryingFlagOf();
+                    String flagTeamId  = ps.getCarryingFlagOf();
                     String playerTeamId = plugin.getTeamManager().getTeamOf(p)
                             .map(t -> t.getId()).orElse("");
                     boolean isOwn = flagTeamId.equals(playerTeamId);
-
                     TeamHeistData flagData = teamData.get(flagTeamId);
-                    String flagTeamName = flagData != null
-                            ? flagData.getTeam().getDisplayName() : flagTeamId;
-
-                    if (isOwn) {
-                        bar = Component.text("🚩 Llevas tu bandera — ¡llévala a tu base!",
-                                NamedTextColor.GREEN);
-                    } else {
-                        bar = Component.text("🚩 Llevas la bandera de " + flagTeamName + " — ¡entrégala!",
-                                NamedTextColor.GOLD);
-                    }
+                    String flagTeamName = flagData != null ? flagData.getTeam().getDisplayName() : flagTeamId;
+                    bar = isOwn
+                            ? Component.text("🚩 Llevas tu bandera — ¡llévala a tu base!", NamedTextColor.GREEN)
+                            : Component.text("🚩 Llevas la bandera de " + flagTeamName + " — ¡entrégala!", NamedTextColor.GOLD);
                 } else {
                     bar = Component.text("⏱ " + time, NamedTextColor.YELLOW);
                 }
@@ -180,7 +192,7 @@ public class FrozenHeistMiniGame {
     // ── Fin ───────────────────────────────────────────────────────────────────
 
     private void finish(boolean cancelled) {
-        if (timerTask != null && !timerTask.isCancelled()) timerTask.cancel();
+        if (timerTask      != null && !timerTask.isCancelled())      timerTask.cancel();
         if (scoreboardTask != null && !scoreboardTask.isCancelled()) scoreboardTask.cancel();
         if (listener != null) {
             listener.cleanup();
@@ -191,7 +203,6 @@ public class FrozenHeistMiniGame {
         state = State.FINISHED;
 
         if (!cancelled) {
-            // Ordenar por puntos
             List<TeamHeistData> ranking = teamData.values().stream()
                     .sorted((a, b) -> Integer.compare(b.getPoints(), a.getPoints()))
                     .toList();
@@ -205,7 +216,6 @@ public class FrozenHeistMiniGame {
                         .append(Component.text(" — " + d.getPoints() + " pts", NamedTextColor.YELLOW)));
             }
 
-            // Título al ganador
             if (!ranking.isEmpty()) {
                 TeamHeistData winner = ranking.get(0);
                 Title winTitle = Title.title(
@@ -217,7 +227,6 @@ public class FrozenHeistMiniGame {
             }
         }
 
-        // Limpiar efectos de todos los jugadores
         playerStates.keySet().stream()
                 .map(Bukkit::getPlayer)
                 .filter(Objects::nonNull)
@@ -232,15 +241,10 @@ public class FrozenHeistMiniGame {
 
     // ── Respawn ───────────────────────────────────────────────────────────────
 
-    /**
-     * Respawn instantáneo en la base del equipo.
-     * Si llevaba una bandera, la suelta.
-     */
     public void respawn(Player player) {
         PlayerState ps = playerStates.get(player.getUniqueId());
         if (ps == null) return;
 
-        // Soltar bandera si llevaba
         if (ps.isCarryingFlag()) {
             flagManager.dropFlag(ps.getCarryingFlagOf(), player.getLocation());
             ps.clearFlag();
@@ -248,7 +252,6 @@ public class FrozenHeistMiniGame {
             clearFlagHelmet(player);
         }
 
-        // Descongelar si estaba frozen
         if (ps.isFrozen()) {
             ps.unfreeze();
             restoreMovement(player);
@@ -256,7 +259,6 @@ public class FrozenHeistMiniGame {
 
         ps.resetHits();
 
-        // Cancelar si alguien lo estaba rescatando
         if (ps.isBeingRescued()) {
             Player rescuer = Bukkit.getPlayer(ps.getBeingRescuedBy());
             if (rescuer != null) {
@@ -265,7 +267,6 @@ public class FrozenHeistMiniGame {
             }
         }
 
-        // Teletransportar a la base del equipo
         plugin.getTeamManager().getTeamOf(player).ifPresent(team -> {
             TeamHeistData data = teamData.get(team.getId());
             if (data != null && data.getBaseSpawn() != null) {
@@ -285,7 +286,6 @@ public class FrozenHeistMiniGame {
         PlayerState ps = playerStates.get(player.getUniqueId());
         if (ps == null || ps.isFrozen()) return;
 
-        // Soltar bandera si llevaba
         if (ps.isCarryingFlag()) {
             String flagTeamId = ps.getCarryingFlagOf();
             flagManager.dropFlag(flagTeamId, player.getLocation());
@@ -297,7 +297,6 @@ public class FrozenHeistMiniGame {
                     .append(Component.text(" soltó la bandera al quedar congelado.", NamedTextColor.YELLOW)));
         }
 
-        // Aplicar congelación
         BukkitTask task = Bukkit.getScheduler().runTaskLater(plugin, () -> {
             PlayerState current = playerStates.get(player.getUniqueId());
             if (current != null && current.isFrozen()) {
@@ -346,7 +345,6 @@ public class FrozenHeistMiniGame {
     // ── Efectos ───────────────────────────────────────────────────────────────
 
     private void applyFreezeEffects(Player p) {
-        // Velocidad 0 mediante potion effect
         p.addPotionEffect(new org.bukkit.potion.PotionEffect(
                 org.bukkit.potion.PotionEffectType.SLOWNESS, Integer.MAX_VALUE, 255, false, false, false));
         p.addPotionEffect(new org.bukkit.potion.PotionEffect(
@@ -358,7 +356,6 @@ public class FrozenHeistMiniGame {
         p.removePotionEffect(org.bukkit.potion.PotionEffectType.SLOWNESS);
         p.removePotionEffect(org.bukkit.potion.PotionEffectType.JUMP_BOOST);
         p.setFreezeTicks(0);
-        // Restaurar slowness de bandera si la lleva
         PlayerState ps = playerStates.get(p.getUniqueId());
         if (ps != null && ps.isCarryingFlag()) applyFlagSlowness(p);
     }
@@ -383,14 +380,13 @@ public class FrozenHeistMiniGame {
             p.getInventory().setChestplate(buildLeatherArmor(org.bukkit.Material.LEATHER_CHESTPLATE, armorColor));
             p.getInventory().setLeggings(buildLeatherArmor(org.bukkit.Material.LEATHER_LEGGINGS, armorColor));
             p.getInventory().setBoots(buildLeatherArmor(org.bukkit.Material.LEATHER_BOOTS, armorColor));
-            p.getInventory().setHelmet(null); // sin casco, reservado para la bandera
+            p.getInventory().setHelmet(null);
         });
     }
 
     public void equipFlagHelmet(Player p, String flagTeamId) {
         TeamHeistData data = teamData.get(flagTeamId);
         if (data == null) return;
-        // Construimos el item de banner directamente aquí usando FlagManager
         ItemStack banner = flagManager.buildPublicFlagItem(flagTeamId, data.getTeam());
         p.getInventory().setHelmet(banner);
     }
@@ -405,7 +401,6 @@ public class FrozenHeistMiniGame {
                 (org.bukkit.inventory.meta.LeatherArmorMeta) item.getItemMeta();
         meta.setColor(color);
         meta.setUnbreakable(true);
-        // Ocultar atributos para que no llene el lore del item
         meta.addItemFlags(org.bukkit.inventory.ItemFlag.HIDE_ATTRIBUTES,
                 org.bukkit.inventory.ItemFlag.HIDE_UNBREAKABLE);
         item.setItemMeta(meta);
@@ -420,7 +415,6 @@ public class FrozenHeistMiniGame {
         p.removePotionEffect(org.bukkit.potion.PotionEffectType.SLOWNESS);
         p.removePotionEffect(org.bukkit.potion.PotionEffectType.JUMP_BOOST);
         p.removePotionEffect(org.bukkit.potion.PotionEffectType.SPEED);
-        // Quitar armadura y bandera del casco
         p.getInventory().setHelmet(null);
         p.getInventory().setChestplate(null);
         p.getInventory().setLeggings(null);
@@ -441,13 +435,12 @@ public class FrozenHeistMiniGame {
 
     // ── Getters ───────────────────────────────────────────────────────────────
 
-    public State getState()                   { return state; }
-    public boolean isRunning()                { return state == State.RUNNING; }
-    public FrozenHeistConfig getConfig()      { return config; }
-    public FlagManager getFlagManager()       { return flagManager; }
+    public State getState()                         { return state; }
+    public FrozenHeistConfig getConfig()            { return config; }
+    public FlagManager getFlagManager()             { return flagManager; }
     public Map<String, TeamHeistData> getTeamData() { return Collections.unmodifiableMap(teamData); }
-    public PlayerState getPlayerState(UUID uuid) { return playerStates.get(uuid); }
-    public int getTimeLeftSeconds()           { return timeLeftSeconds; }
+    public PlayerState getPlayerState(UUID uuid)    { return playerStates.get(uuid); }
+    public int getTimeLeftSeconds()                 { return timeLeftSeconds; }
 
     public String getTimeLeftFormatted() {
         return String.format("%02d:%02d", timeLeftSeconds / 60, timeLeftSeconds % 60);

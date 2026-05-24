@@ -19,19 +19,19 @@ import java.util.List;
  *   /em tntrun clearspawns
  *
  * ── Configuración de arena ─────────────────────────────────────────────────────
- *   /em tntrun setsize <n>              Tamaño (lado/diámetro) en bloques
- *   /em tntrun setshape <square|circle> Forma de la arena
- *   /em tntrun setlayers <n>            Número de capas de TNT+SAND
- *   /em tntrun setlayergap <n>          Bloques de AIR entre capas
- *   /em tntrun setdomeheight <n>        Altura de la cúpula
- *   /em tntrun generate                 Genera la arena
- *   /em tntrun clear                    Elimina la arena generada
+ *   /em tntrun setsize <n>
+ *   /em tntrun setshape <square|circle>
+ *   /em tntrun setlayers <n>
+ *   /em tntrun setlayergap <n>
+ *   /em tntrun setdomeheight <n>
+ *   /em tntrun generate
+ *   /em tntrun clear
  *
  * ── Configuración de juego ─────────────────────────────────────────────────────
  *   /em tntrun setdelay <ticks>
  *   /em tntrun setscore <lugar> <pts>
- *   /em tntrun setjump <on|off>          Activa/desactiva el doble salto
- *   /em tntrun setjumpcooldown <segundos> Cooldown entre dobles saltos
+ *   /em tntrun setjump <on|off>
+ *   /em tntrun setjumpcooldown <segundos>
  *   /em tntrun settings
  *
  * ── Control del juego ──────────────────────────────────────────────────────────
@@ -103,15 +103,9 @@ public class TNTRunCommand {
             case "setshape" -> {
                 if (args.length < 2) { err(player, "Uso: /em tntrun setshape <square|circle>"); return; }
                 switch (args[1].toLowerCase()) {
-                    case "square" -> {
-                        miniGame.getConfig().setArenaShape(TNTRunArena.Shape.SQUARE);
-                        ok(player, "Forma de arena: §bCUADRADA§a.");
-                    }
-                    case "circle" -> {
-                        miniGame.getConfig().setArenaShape(TNTRunArena.Shape.CIRCLE);
-                        ok(player, "Forma de arena: §bCIRCULAR§a.");
-                    }
-                    default -> err(player, "Forma inválida. Usa 'square' o 'circle'.");
+                    case "square" -> { miniGame.getConfig().setArenaShape(TNTRunArena.Shape.SQUARE); ok(player, "Forma de arena: §bCUADRADA§a."); }
+                    case "circle" -> { miniGame.getConfig().setArenaShape(TNTRunArena.Shape.CIRCLE); ok(player, "Forma de arena: §bCIRCULAR§a."); }
+                    default       -> err(player, "Forma inválida. Usa 'square' o 'circle'.");
                 }
             }
 
@@ -159,9 +153,7 @@ public class TNTRunCommand {
                         "Generando arena " + cfg.arenaSize() + "x" + cfg.arenaSize()
                                 + " (" + cfg.shape().name().toLowerCase() + ", "
                                 + cfg.layerCount() + " capas)...", NamedTextColor.YELLOW));
-
-                TNTRunArena tempArena = new TNTRunArena(
-                        miniGame.getConfig().getArenaCenter(), cfg);
+                TNTRunArena tempArena = new TNTRunArena(miniGame.getConfig().getArenaCenter(), cfg);
                 tempArena.generate();
                 ok(player, "Arena generada correctamente.");
             }
@@ -176,8 +168,7 @@ public class TNTRunCommand {
                     return;
                 }
                 TNTRunArena.ArenaConfig cfg = miniGame.getConfig().buildArenaConfig();
-                TNTRunArena tempArena = new TNTRunArena(
-                        miniGame.getConfig().getArenaCenter(), cfg);
+                TNTRunArena tempArena = new TNTRunArena(miniGame.getConfig().getArenaCenter(), cfg);
                 player.sendMessage(Component.text("Eliminando arena...", NamedTextColor.YELLOW));
                 tempArena.clear();
                 ok(player, "Arena eliminada correctamente.");
@@ -227,6 +218,16 @@ public class TNTRunCommand {
                 } catch (NumberFormatException e) { err(player, "'" + args[1] + "' no es un número válido."); }
             }
 
+            case "setenddelay" -> {
+                if (args.length < 2) { err(player, "Uso: /em tntrun setenddelay <segundos>  (mínimo 5)"); return; }
+                try {
+                    int secs = Integer.parseInt(args[1]);
+                    if (secs < 5) { err(player, "El delay mínimo al finalizar es 5 segundos."); return; }
+                    miniGame.getConfig().setEndDelaySeconds(secs);
+                    ok(player, "Delay de fin seteado a " + secs + "s.");
+                } catch (NumberFormatException e) { err(player, "'" + args[1] + "' no es un número válido."); }
+            }
+
             case "settings" -> printSettings(player);
 
             // ── Control del juego ──────────────────────────────────────────────
@@ -272,24 +273,62 @@ public class TNTRunCommand {
                     "addspawn", "clearspawns",
                     "setsize", "setshape", "setlayers", "setlayergap", "setdomeheight",
                     "generate", "clear",
-                    "setdelay", "setscore", "setjump", "setjumpcooldown",
+                    "setdelay", "setscore", "setjump", "setjumpcooldown", "setenddelay",
                     "settings", "lobby", "start", "stop"
             ), args[0]);
         }
+
         return switch (args[0].toLowerCase()) {
-            case "setshape"       -> args.length == 2 ? filter(List.of("square", "circle"), args[1])          : List.of();
-            case "setjump"        -> args.length == 2 ? filter(List.of("on", "off"), args[1])                  : List.of();
-            case "setsize"        -> args.length == 2 ? filter(List.of("20", "30", "40", "60", "80"), args[1]) : List.of();
-            case "setlayers"      -> args.length == 2 ? filter(List.of("1", "2", "3", "4", "5"), args[1])      : List.of();
-            case "setlayergap"    -> args.length == 2 ? filter(List.of("1", "2", "3", "5", "8", "10", "15"), args[1])      : List.of();
-            case "setdomeheight"  -> args.length == 2 ? filter(List.of("10", "15", "20", "25", "30"), args[1]) : List.of();
-            case "setdelay"       -> args.length == 2 ? filter(List.of("5", "10", "15", "20"), args[1])        : List.of();
-            case "setjumpcooldown"-> args.length == 2 ? filter(List.of("0", "3", "5", "8", "10"), args[1])    : List.of();
+
+            // ── Valores booleanos / enum ───────────────────────────────────────
+            case "setshape" ->
+                    args.length == 2 ? filter(List.of("square", "circle"), args[1]) : List.of();
+
+            case "setjump" ->
+                    args.length == 2 ? filter(List.of("on", "off"), args[1]) : List.of();
+
+            // ── Valores numéricos con sugerencias ─────────────────────────────
+            case "setsize" ->
+                    args.length == 2
+                            ? filter(List.of("20", "30", "40", "60", "80", "100"), args[1])
+                            : List.of();
+
+            case "setlayers" ->
+                    args.length == 2
+                            ? filter(List.of("1", "2", "3", "4", "5"), args[1])
+                            : List.of();
+
+            case "setlayergap" ->
+                    args.length == 2
+                            ? filter(List.of("1", "2", "3", "4", "5", "8", "10", "15"), args[1])
+                            : List.of();
+
+            case "setdomeheight" ->
+                    args.length == 2
+                            ? filter(List.of("5", "10", "15", "20", "25", "30"), args[1])
+                            : List.of();
+
+            case "setdelay" ->
+                    args.length == 2
+                            ? filter(List.of("5", "10", "15", "20", "40"), args[1])
+                            : List.of();
+
+            case "setjumpcooldown" ->
+                    args.length == 2
+                            ? filter(List.of("0", "3", "5", "8", "10", "15"), args[1])
+                            : List.of();
+
+            case "setenddelay" ->
+                    args.length == 2
+                            ? filter(List.of("10", "15", "20", "30", "45", "60"), args[1])
+                            : List.of();
+
             case "setscore" -> {
                 if (args.length == 2) yield filter(List.of("1", "2", "3", "4"), args[1]);
-                if (args.length == 3) yield filter(List.of("10", "6", "3", "1"), args[2]);
+                if (args.length == 3) yield filter(List.of("10", "8", "6", "4", "3", "2", "1", "0"), args[2]);
                 yield List.of();
             }
+
             default -> List.of();
         };
     }
@@ -308,23 +347,24 @@ public class TNTRunCommand {
         info(player, "Spawns",          String.valueOf(cfg.getPlayerSpawns().size()));
 
         player.sendMessage(Component.text("  Arena:", NamedTextColor.GRAY));
-        info(player, "Tamaño",          cfg.getArenaSize() + "x" + cfg.getArenaSize() + " bloques");
-        info(player, "Forma",           cfg.getArenaShape().name().toLowerCase());
-        info(player, "Capas",           String.valueOf(cfg.getLayerCount()));
-        info(player, "Espacio capas",   cfg.getLayerGap() + " bloques");
-        info(player, "Altura cúpula",   cfg.getDomeHeight() + " bloques");
+        info(player, "Tamaño",         cfg.getArenaSize() + "x" + cfg.getArenaSize() + " bloques");
+        info(player, "Forma",          cfg.getArenaShape().name().toLowerCase());
+        info(player, "Capas",          String.valueOf(cfg.getLayerCount()));
+        info(player, "Espacio capas",  cfg.getLayerGap() + " bloques");
+        info(player, "Altura cúpula",  cfg.getDomeHeight() + " bloques");
 
         player.sendMessage(Component.text("  Juego:", NamedTextColor.GRAY));
-        info(player, "Delay bloque",    cfg.getBlockRemoveDelay() + " ticks (" +
+        info(player, "Delay bloque",   cfg.getBlockRemoveDelay() + " ticks (" +
                 String.format("%.1f", cfg.getBlockRemoveDelay() / 20.0) + "s)");
-        info(player, "Countdown",       cfg.getCountdownSeconds() + "s");
-        info(player, "Doble salto",     cfg.isDoubleJumpEnabled()
+        info(player, "Countdown",      cfg.getCountdownSeconds() + "s");
+        info(player, "Delay fin",       cfg.getEndDelaySeconds() + "s");
+        info(player, "Doble salto",    cfg.isDoubleJumpEnabled()
                 ? "§aactivado §7(cooldown: " + cfg.getDoubleJumpCooldown() + "s)"
                 : "§cdesactivado");
-        info(player, "Puntaje 1°",      String.valueOf(cfg.getScoreForPlace(1)));
-        info(player, "Puntaje 2°",      String.valueOf(cfg.getScoreForPlace(2)));
-        info(player, "Puntaje 3°",      String.valueOf(cfg.getScoreForPlace(3)));
-        info(player, "Estado",          miniGame.getState().name());
+        info(player, "Puntaje 1°",     String.valueOf(cfg.getScoreForPlace(1)));
+        info(player, "Puntaje 2°",     String.valueOf(cfg.getScoreForPlace(2)));
+        info(player, "Puntaje 3°",     String.valueOf(cfg.getScoreForPlace(3)));
+        info(player, "Estado",         miniGame.getState().name());
 
         String validation = cfg.validate();
         if (validation != null) {
@@ -340,33 +380,34 @@ public class TNTRunCommand {
         player.sendMessage(Component.text("━━━ /em tntrun ━━━", NamedTextColor.GOLD));
 
         player.sendMessage(Component.text("  Spawn / mundo:", NamedTextColor.GRAY));
-        help(player, "/em tntrun setworld",               "Setea el mundo actual");
-        help(player, "/em tntrun setlobby",               "Setea el spawn del lobby");
-        help(player, "/em tntrun setspectator",           "Setea el spawn de espectadores");
-        help(player, "/em tntrun setcenter",              "Setea el centro de la arena");
-        help(player, "/em tntrun addspawn",               "Agrega un spawn de jugador");
-        help(player, "/em tntrun clearspawns",            "Elimina todos los spawns");
+        help(player, "/em tntrun setworld",                "Setea el mundo actual");
+        help(player, "/em tntrun setlobby",                "Setea el spawn del lobby");
+        help(player, "/em tntrun setspectator",            "Setea el spawn de espectadores");
+        help(player, "/em tntrun setcenter",               "Setea el centro de la arena");
+        help(player, "/em tntrun addspawn",                "Agrega un spawn de jugador");
+        help(player, "/em tntrun clearspawns",             "Elimina todos los spawns");
 
         player.sendMessage(Component.text("  Arena:", NamedTextColor.GRAY));
-        help(player, "/em tntrun setsize <n>",            "Tamaño lado/diámetro (bloques)");
+        help(player, "/em tntrun setsize <n>",             "Tamaño lado/diámetro (bloques)");
         help(player, "/em tntrun setshape <square|circle>","Forma de la arena");
-        help(player, "/em tntrun setlayers <n>",          "Número de capas TNT+SAND");
-        help(player, "/em tntrun setlayergap <n>",        "Bloques de aire entre capas");
-        help(player, "/em tntrun setdomeheight <n>",      "Altura de la cúpula");
-        help(player, "/em tntrun generate",               "Genera la arena");
-        help(player, "/em tntrun clear",                  "Elimina la arena generada");
+        help(player, "/em tntrun setlayers <n>",           "Número de capas TNT+SAND");
+        help(player, "/em tntrun setlayergap <n>",         "Bloques de aire entre capas");
+        help(player, "/em tntrun setdomeheight <n>",       "Altura de la cúpula");
+        help(player, "/em tntrun generate",                "Genera la arena");
+        help(player, "/em tntrun clear",                   "Elimina la arena generada");
 
         player.sendMessage(Component.text("  Juego:", NamedTextColor.GRAY));
-        help(player, "/em tntrun setdelay <ticks>",       "Delay caída del bloque");
-        help(player, "/em tntrun setscore <n> <pts>",     "Puntaje por posición");
-        help(player, "/em tntrun setjump <on|off>",       "Activa/desactiva doble salto");
-        help(player, "/em tntrun setjumpcooldown <s>",    "Cooldown del doble salto");
-        help(player, "/em tntrun settings",               "Ver configuración completa");
+        help(player, "/em tntrun setdelay <ticks>",        "Delay caída del bloque");
+        help(player, "/em tntrun setscore <n> <pts>",      "Puntaje por posición");
+        help(player, "/em tntrun setjump <on|off>",        "Activa/desactiva doble salto");
+        help(player, "/em tntrun setjumpcooldown <s>",     "Cooldown del doble salto (0=sin cd)");
+        help(player, "/em tntrun setenddelay <s>",         "Tiempo en arena al finalizar");
+        help(player, "/em tntrun settings",                "Ver configuración completa");
 
         player.sendMessage(Component.text("  Control:", NamedTextColor.GRAY));
-        help(player, "/em tntrun lobby",                  "Mover jugadores al lobby");
-        help(player, "/em tntrun start",                  "Iniciar la partida");
-        help(player, "/em tntrun stop",                   "Detener la partida");
+        help(player, "/em tntrun lobby",                   "Mover jugadores al lobby");
+        help(player, "/em tntrun start",                   "Iniciar la partida");
+        help(player, "/em tntrun stop",                    "Detener la partida");
     }
 
     // ── Utilidades ─────────────────────────────────────────────────────────────
@@ -376,8 +417,8 @@ public class TNTRunCommand {
                 || miniGame.getState() == TNTRunMiniGame.State.COUNTDOWN;
     }
 
-    private void ok(Player p, String msg)   { p.sendMessage(Component.text("✔ " + msg, NamedTextColor.GREEN)); }
-    private void err(Player p, String msg)  { p.sendMessage(Component.text("✘ " + msg, NamedTextColor.RED)); }
+    private void ok(Player p, String msg)  { p.sendMessage(Component.text("✔ " + msg, NamedTextColor.GREEN)); }
+    private void err(Player p, String msg) { p.sendMessage(Component.text("✘ " + msg, NamedTextColor.RED)); }
 
     private void help(Player p, String cmd, String desc) {
         p.sendMessage(Component.text("  " + cmd, NamedTextColor.YELLOW)

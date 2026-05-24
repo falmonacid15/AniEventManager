@@ -6,17 +6,19 @@ import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
+import org.falmdev.anieventmanager.managers.MiniGame;
 import org.falmdev.anieventmanager.model.EventTeam;
 
 import java.time.Duration;
 import java.util.*;
 
-public class TNTRunMiniGame {
+public class TNTRunMiniGame implements MiniGame {
 
     public enum State { IDLE, LOBBY, COUNTDOWN, RUNNING, FINISHED }
 
@@ -92,7 +94,12 @@ public class TNTRunMiniGame {
             }
         }
 
-        // Registrar listener
+        // Desregistrar listener anterior si por alguna razón aún existe
+        if (gameListener != null) {
+            org.bukkit.event.HandlerList.unregisterAll(gameListener);
+            gameListener = null;
+        }
+        // Registrar listener nuevo
         gameListener = new TNTRunListener(plugin, this);
         plugin.getServer().getPluginManager().registerEvents(gameListener, plugin);
 
@@ -153,17 +160,31 @@ public class TNTRunMiniGame {
     public void eliminatePlayer(Player player) {
         if (!activePlayers.remove(player.getUniqueId())) return;
 
-        // Limpiar estado de doble salto
+        // 1. Limpiar el estado de doble salto (pone allowFlight=false, flying=false)
+        //    ANTES de cambiar el gamemode, para que el cliente no siga en estado
+        //    "volando" y atraviese el suelo del spawn espectador.
         if (gameListener != null) gameListener.clearDoubleJumpState(player);
 
         removeNightVision(player);
 
-        Location spectator = config.getSpectatorSpawn();
-        if (spectator != null) player.teleport(spectator);
-        player.setGameMode(GameMode.SPECTATOR);
+        // 2. Fijar salud/comida antes del TP para evitar una muerte real.
         player.setHealth(20);
         player.setFoodLevel(20);
         player.setFireTicks(0);
+
+        // 3. Cambiar a SPECTATOR y teleportar.
+        player.setGameMode(GameMode.SPECTATOR);
+        Location spectator = config.getSpectatorSpawn();
+        if (spectator != null) player.teleport(spectator);
+
+        // 4. Restaurar allowFlight=true DESPUÉS del gamemode SPECTATOR.
+        //    clearDoubleJumpState lo puso en false (necesario para evitar el bug
+        //    de atravesar el suelo), pero SPECTATOR requiere allowFlight=true
+        //    para que el jugador pueda volar con la tecla de espacio.
+        //    En SURVIVAL esto quedaría en false correctamente, pero en SPECTATOR
+        //    Bukkit no lo activa automáticamente si fue desactivado manualmente.
+        player.setAllowFlight(true);
+
         applyNightVision(player);
         player.sendMessage(Component.text("Caíste. Ahora eres espectador.", NamedTextColor.RED));
 
@@ -221,7 +242,10 @@ public class TNTRunMiniGame {
         cancelTasks();
         state = State.FINISHED;
 
-        if (gameListener != null) gameListener.stopTick();
+        if (gameListener != null) {
+            gameListener.stopTick();  // stopTick() también hace unregisterAll
+            gameListener = null;
+        }
         gameStartTime = 0;
 
         Bukkit.getOnlinePlayers().forEach(this::removeNightVision);
@@ -254,13 +278,17 @@ public class TNTRunMiniGame {
             if (arena != null) arena.restore();
             returnToMainLobby();
             state = State.IDLE;
-        }, 100L);
+        }, config.getEndDelayTicks());
     }
 
     private void returnToMainLobby() {
         Location lobby = config.getLobbySpawn();
         if (lobby == null) return;
         Bukkit.getOnlinePlayers().forEach(p -> {
+            // Restaurar allowFlight antes de cambiar a ADVENTURE para que
+            // jugadores que estaban en SPECTATOR no queden con vuelo bloqueado
+            p.setAllowFlight(false);
+            p.setFlying(false);
             p.setGameMode(GameMode.ADVENTURE);
             p.teleport(lobby);
             removeNightVision(p);
@@ -283,11 +311,111 @@ public class TNTRunMiniGame {
         player.removePotionEffect(PotionEffectType.NIGHT_VISION);
     }
 
+    // ── API de piso para placeholders ─────────────────────────────────────────
+
+    /**
+     * Devuelve el índice (1-based) de la capa de SAND más cercana por debajo
+     * del jugador, o -1 si no hay arena activa.
+     * Capa 1 = la más alta (donde el jugador empieza).
+     */
+    public int getPlayerFloor(Player player) {
+        if (arena == null || !isStrictlyRunning()) return -1;
+        int py = player.getLocation().getBlockY() - 1; // Y del bloque bajo los pies
+        int baseY = arena.getCenter().getBlockY();
+        TNTRunArena.ArenaConfig cfg = arena.getArenaConfig();
+
+        // Buscar la capa más cercana por debajo
+        for (int i = cfg.layerCount() - 1; i >= 0; i--) {
+            int layerSandY = baseY + 10 + i * (2 + cfg.layerGap()) + 1; // Y del SAND de la capa i
+            if (py >= layerSandY - 2) {
+                return cfg.layerCount() - i; // invertido: capa 1 = más alta
+            }
+        }
+        return cfg.layerCount(); // está por debajo de todas las capas
+    }
+
+    /**
+     * Devuelve el total de capas configuradas.
+     */
+    public int getTotalFloors() {
+        if (arena == null) return 0;
+        return arena.getArenaConfig().layerCount();
+    }
+
+    /**
+     * Devuelve el Y exacto de la capa SAND del piso indicado (1-based).
+     */
+    private int getFloorSandY(int floorIndex) {
+        if (arena == null) return -1;
+        int baseY = arena.getCenter().getBlockY();
+        TNTRunArena.ArenaConfig cfg = arena.getArenaConfig();
+        // floorIndex 1 = capa más alta = layerCount-1 en índice 0-based
+        int layerIdx = cfg.layerCount() - floorIndex;
+        if (layerIdx < 0 || layerIdx >= cfg.layerCount()) return -1;
+        return baseY + 10 + layerIdx * (2 + cfg.layerGap()) + 1;
+    }
+
+    /**
+     * Cuenta cuántos bloques SAND quedan en el piso indicado (1-based).
+     */
+    public int getSandCountOnFloor(int floorIndex) {
+        if (arena == null || !isStrictlyRunning()) return 0;
+        int targetY = getFloorSandY(floorIndex);
+        if (targetY < 0) return 0;
+        int count = 0;
+        for (Location loc : arena.getSandBlocks()) {
+            if (loc.getBlockY() == targetY && loc.getBlock().getType() == Material.SAND) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Devuelve el total original de bloques SAND en el piso indicado (1-based).
+     * Se calcula a partir de la lista inicial de sandBlocks filtrando por Y.
+     */
+    public int getTotalSandOnFloor(int floorIndex) {
+        if (arena == null) return 0;
+        int targetY = getFloorSandY(floorIndex);
+        if (targetY < 0) return 0;
+        int count = 0;
+        for (Location loc : arena.getSandBlocks()) {
+            if (loc.getBlockY() == targetY) count++;
+        }
+        return count;
+    }
+
+    /**
+     * Devuelve lista de jugadores activos en el piso indicado (1-based).
+     */
+    public List<Player> getPlayersOnFloor(int floorIndex) {
+        if (arena == null || !isStrictlyRunning()) return List.of();
+        int targetY = getFloorSandY(floorIndex);
+        if (targetY < 0) return List.of();
+        List<Player> result = new ArrayList<>();
+        for (UUID uuid : activePlayers) {
+            Player p = Bukkit.getPlayer(uuid);
+            if (p == null) continue;
+            // El jugador está "en" un piso si sus pies están entre layerSandY y layerSandY + layerGap + 2
+            int py = p.getLocation().getBlockY() - 1;
+            TNTRunArena.ArenaConfig cfg = arena.getArenaConfig();
+            if (py >= targetY - 1 && py <= targetY + cfg.layerGap() + 1) {
+                result.add(p);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Devuelve el listener activo (para acceder a datos de cooldown).
+     */
+    public TNTRunListener getGameListener() { return gameListener; }
+
     // ── Utilidades ────────────────────────────────────────────────────────────
 
     public boolean isActivePlayer(Player player) { return activePlayers.contains(player.getUniqueId()); }
     public boolean isCountingDown() { return state == State.COUNTDOWN; }
-    public boolean isRunning()      { return state == State.RUNNING; }
     public State   getState()       { return state; }
     public TNTRunConfig getConfig() { return config; }
     public TNTRunArena  getArena()  { return arena; }
@@ -318,5 +446,38 @@ public class TNTRunMiniGame {
 
     private void cancelTasks() {
         if (countdownTask != null && !countdownTask.isCancelled()) countdownTask.cancel();
+    }
+
+    // ── MiniGame interface ────────────────────────────────────────────────────
+
+    @Override public String getId()          { return "tntrun"; }
+    @Override public String getDisplayName() { return "TNT Run"; }
+    @Override public String getStateName()   { return state.name(); }
+    @Override public boolean isIdle()        { return state == State.IDLE; }
+
+    /**
+     * El contrato de MiniGame amplía isRunning a RUNNING o COUNTDOWN para que
+     * el MiniGameManager sepa que no debe solapar otra partida.
+     * Nota: el método de instancia existente isRunning() devolvía solo RUNNING;
+     * lo reemplazamos aquí para cumplir el contrato más amplio.
+     */
+    @Override
+    public boolean isRunning() {
+        return state == State.RUNNING || state == State.COUNTDOWN;
+    }
+
+    /** Alias de isRunning() == RUNNING estricto para uso interno del listener. */
+    public boolean isStrictlyRunning() {
+        return state == State.RUNNING;
+    }
+
+    @Override
+    public void reloadConfig() {
+        config.reload();
+    }
+
+    @Override
+    public String validateConfig() {
+        return config.validate();
     }
 }

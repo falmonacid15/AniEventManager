@@ -35,11 +35,7 @@ import java.util.stream.Collectors;
  *   %anievent_team_rank%
  *
  * ── Ranking general (top N) ──────────────────────────────────────
- *   %anievent_top_1_name%
- *   %anievent_top_1_score%
- *   %anievent_top_1_color%
- *   %anievent_top_1_members%
- *   ... hasta top_8
+ *   %anievent_top_1_name%  _score%  _color%  _members%  ... top_8
  *
  * ── TNT Run ───────────────────────────────────────────────────────
  *   %anievent_tntrun_running%
@@ -49,6 +45,19 @@ import java.util.stream.Collectors;
  *   %anievent_tntrun_elapsed%
  *   %anievent_tntrun_alive_1% ... alive_8
  *   %anievent_tntrun_iseliminated%
+ *
+ *   — Piso del jugador —
+ *   %anievent_tntrun_floor%             Piso actual del jugador (1 = más alto)
+ *   %anievent_tntrun_floor_total%       Total de pisos de la arena
+ *   %anievent_tntrun_floor_players%     Número de jugadores en el mismo piso
+ *   %anievent_tntrun_floor_playernames% Nombres de jugadores en el mismo piso (coma)
+ *   %anievent_tntrun_floor_blocks%      Bloques SAND restantes en el piso actual
+ *   %anievent_tntrun_floor_blocks_total% Total original de bloques en el piso
+ *   %anievent_tntrun_floor_blocks_percent% Porcentaje de bloques restantes (0-100)
+ *
+ *   — Doble salto (para below-name) —
+ *   %anievent_tntrun_jump_cooldown%     Porcentaje de cooldown restante (0=listo, 100=recién usado)
+ *   %anievent_tntrun_jump_bar%          Barra de carga del cooldown (10 chars, legacy color)
  *
  * ── Bingo ─────────────────────────────────────────────────────────
  *   %anievent_bingo_running%
@@ -60,43 +69,10 @@ import java.util.stream.Collectors;
  *   %anievent_bingo_total%
  *
  * ── Frozen Heist ──────────────────────────────────────────────────
- *   %anievent_fh_running%
- *   %anievent_fh_state%
- *   %anievent_fh_time%
- *   %anievent_fh_timepercent%
- *   %anievent_fh_top_1_name%  _score%  _color%  ... top_8
- *   %anievent_fh_score%
- *   %anievent_fh_rank%
- *   %anievent_fh_flag_state%
- *   %anievent_fh_flag_carrier%
- *   %anievent_fh_carrying%
- *   %anievent_fh_carrying_team%
- *   %anievent_fh_frozen%
- *   %anievent_fh_frozen_seconds%
+ *   (sin cambios)
  *
  * ── Boat Racing ───────────────────────────────────────────────────
- *   %anievent_br_running%            true si hay sesión activa (qualy o carrera)
- *   %anievent_br_state%              Estado: En espera / Paddock / Clasificación / Carrera / Finalizado
- *   %anievent_br_lap%                Vuelta actual del jugador (ej: "2")
- *   %anievent_br_totallaps%          Total de vueltas configuradas (ej: "3")
- *   %anievent_br_laps%               "Vuelta 2/3" — formato compacto
- *   %anievent_br_laptime%            Tiempo transcurrido en la vuelta actual (ej: "1:23.456")
- *   %anievent_br_bestlap%            Mejor vuelta del jugador (ej: "1:21.200")
- *   %anievent_br_lastlap%            Tiempo de la última vuelta completada
- *   %anievent_br_position%           Posición en tiempo real (ej: "#3")
- *   %anievent_br_position_num%       Solo el número (ej: "3")
- *   %anievent_br_qualytime%          Tiempo de clasificación del jugador ("DNF" si no terminó)
- *   %anievent_br_gridpos%            Posición de parrilla después de la qualy (ej: "#1")
- *   %anievent_br_top_1_name%         Jugador en posición 1 en tiempo real
- *   %anievent_br_top_1_lap%          Vuelta actual del jugador en pos 1
- *   %anievent_br_top_1_laptime%      Tiempo de vuelta del jugador en pos 1
- *   %anievent_br_top_2_name%         ... hasta top_8
- *   %anievent_br_top_2_lap%
- *   %anievent_br_top_2_laptime%
- *   %anievent_br_gap%                Diferencia de tiempo con el jugador delante (ej: "+2.341s")
- *   %anievent_br_interval%           Diferencia con el líder (ej: "+5.123s")
- *   %anievent_br_finished%           true si el jugador ya terminó la carrera
- *   %anievent_br_racepos%            Posición final en carrera (solo si terminó)
+ *   (sin cambios)
  */
 public class AniEventExpansion extends PlaceholderExpansion {
 
@@ -119,7 +95,7 @@ public class AniEventExpansion extends PlaceholderExpansion {
         if (params.startsWith("fh_"))        return resolveFrozenHeist(offlinePlayer, params);
         if (params.startsWith("br_"))        return resolveBoatRacing(offlinePlayer, params);
         if (params.startsWith("teamid_"))    return resolveTeamById(params);
-        if (params.startsWith("pd_")) return resolveParkourDuos(offlinePlayer, params);
+        if (params.startsWith("pd_"))        return resolveParkourDuos(offlinePlayer, params);
 
         Player player = offlinePlayer.getPlayer();
 
@@ -159,6 +135,132 @@ public class AniEventExpansion extends PlaceholderExpansion {
             default -> null;
         };
     }
+
+    // ── TNT Run ───────────────────────────────────────────────────────────────
+
+    private String resolveTNTRun(OfflinePlayer offlinePlayer, String params) {
+        TNTRunMiniGame tnt = plugin.getTNTRunMiniGame();
+
+        // ── Placeholders globales (no requieren jugador) ──────────────────────
+        switch (params) {
+            case "tntrun_running"     -> { return String.valueOf(tnt.isRunning()); }
+            case "tntrun_state"       -> { return switch (tnt.getState()) {
+                case IDLE      -> "En espera";
+                case LOBBY     -> "Lobby";
+                case COUNTDOWN -> "Iniciando";
+                case RUNNING   -> "En juego";
+                case FINISHED  -> "Finalizando";
+            }; }
+            case "tntrun_players"     -> { return String.valueOf(tnt.getActivePlayerCount()); }
+            case "tntrun_teams"       -> { return String.valueOf(tnt.getAliveTeamCount()); }
+            case "tntrun_elapsed"     -> { return tnt.isRunning() ? tnt.getElapsedFormatted() : "--:--"; }
+            case "tntrun_floor_total" -> { return String.valueOf(tnt.getTotalFloors()); }
+        }
+
+        // alive_N
+        if (params.startsWith("tntrun_alive_")) {
+            int index = Integer.parseInt(params.replace("tntrun_alive_", "")) - 1;
+            List<EventTeam> alive = tnt.getAliveTeams();
+            return index < alive.size() ? alive.get(index).getDisplayName() : "-";
+        }
+
+        // ── Placeholders que requieren jugador ────────────────────────────────
+        Player player = offlinePlayer.getPlayer();
+
+        if (params.equals("tntrun_iseliminated")) {
+            if (player == null || !tnt.isRunning()) return "false";
+            Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeamOf(player);
+            if (teamOpt.isEmpty()) return "false";
+            boolean eliminated = tnt.getAliveTeams().stream()
+                    .noneMatch(t -> t.getId().equals(teamOpt.get().getId()));
+            return String.valueOf(eliminated);
+        }
+
+        // Cooldown del doble salto — no necesita partida activa para mostrar 0
+        if (params.equals("tntrun_jump_cooldown")) {
+            if (player == null) return "0";
+            var listener = tnt.getGameListener();
+            if (listener == null) return "0";
+            return String.valueOf(listener.getJumpCooldownPercent(player.getUniqueId()));
+        }
+
+        if (params.equals("tntrun_jump_bar")) {
+            if (player == null) return buildJumpBar(0);
+            var listener = tnt.getGameListener();
+            int pct = (listener != null) ? listener.getJumpCooldownPercent(player.getUniqueId()) : 0;
+            return buildJumpBar(pct);
+        }
+
+        // Placeholders de piso — requieren partida activa y jugador
+        if (player == null || !tnt.isRunning()) {
+            return switch (params) {
+                case "tntrun_floor"                 -> "-";
+                case "tntrun_floor_players"         -> "0";
+                case "tntrun_floor_playernames"     -> "";
+                case "tntrun_floor_blocks"          -> "0";
+                case "tntrun_floor_blocks_total"    -> "0";
+                case "tntrun_floor_blocks_percent"  -> "0";
+                default -> null;
+            };
+        }
+
+        int floor      = tnt.getPlayerFloor(player);
+        int totalFloors = tnt.getTotalFloors();
+
+        return switch (params) {
+            case "tntrun_floor" -> floor > 0 ? String.valueOf(floor) : "-";
+
+            case "tntrun_floor_players" -> {
+                if (floor < 1) yield "0";
+                yield String.valueOf(tnt.getPlayersOnFloor(floor).size());
+            }
+
+            case "tntrun_floor_playernames" -> {
+                if (floor < 1) yield "";
+                List<Player> onFloor = tnt.getPlayersOnFloor(floor);
+                yield onFloor.stream().map(Player::getName).collect(Collectors.joining(", "));
+            }
+
+            case "tntrun_floor_blocks" -> {
+                if (floor < 1) yield "0";
+                yield String.valueOf(tnt.getSandCountOnFloor(floor));
+            }
+
+            case "tntrun_floor_blocks_total" -> {
+                if (floor < 1) yield "0";
+                yield String.valueOf(tnt.getTotalSandOnFloor(floor));
+            }
+
+            case "tntrun_floor_blocks_percent" -> {
+                if (floor < 1) yield "0";
+                int total   = tnt.getTotalSandOnFloor(floor);
+                int current = tnt.getSandCountOnFloor(floor);
+                if (total <= 0) yield "0";
+                int pct = (int) Math.round((current * 100.0) / total);
+                yield String.valueOf(Math.max(0, Math.min(100, pct)));
+            }
+
+            default -> null;
+        };
+    }
+
+    // ── Barra de cooldown de doble salto (para below-name) ───────────────────
+    //   pct = 0   → todo verde  (listo)
+    //   pct = 100 → todo rojo   (recién usado)
+
+    private String buildJumpBar(int pct) {
+        int total  = 10;
+        // "consumido" = porcentaje ya usado del cooldown
+        int filled = (int) Math.round((pct / 100.0) * total);
+        String filledColor = pct > 60 ? "§c" : pct > 30 ? "§e" : "§a";
+        StringBuilder bar = new StringBuilder();
+        for (int i = 0; i < total; i++) {
+            bar.append(i < filled ? filledColor + "█" : "§a█");
+        }
+        return bar.toString();
+    }
+
+    // ── Parkour Duos ──────────────────────────────────────────────────────────
 
     private String resolveParkourDuos(OfflinePlayer offlinePlayer, String params) {
         var pd = plugin.getParkourDuosMiniGame();
@@ -202,43 +304,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
             case "pd_rank"          -> data.isFinished() ? "#" + data.getFinishRank() : "-";
             case "pd_score"         -> String.valueOf(data.getInternalScore());
             default                 -> null;
-        };
-    }
-
-    // ── TNT Run ───────────────────────────────────────────────────────────────
-
-    private String resolveTNTRun(OfflinePlayer offlinePlayer, String params) {
-        TNTRunMiniGame tnt = plugin.getTNTRunMiniGame();
-
-        return switch (params) {
-            case "tntrun_running" -> String.valueOf(tnt.isRunning());
-            case "tntrun_state" -> switch (tnt.getState()) {
-                case IDLE      -> "En espera";
-                case LOBBY     -> "Lobby";
-                case COUNTDOWN -> "Iniciando";
-                case RUNNING   -> "En juego";
-                case FINISHED  -> "Finalizando";
-            };
-            case "tntrun_players" -> String.valueOf(tnt.getActivePlayerCount());
-            case "tntrun_teams"   -> String.valueOf(tnt.getAliveTeamCount());
-            case "tntrun_elapsed" -> tnt.isRunning() ? tnt.getElapsedFormatted() : "--:--";
-            case "tntrun_alive_1", "tntrun_alive_2", "tntrun_alive_3",
-                 "tntrun_alive_4", "tntrun_alive_5", "tntrun_alive_6",
-                 "tntrun_alive_7", "tntrun_alive_8" -> {
-                int index = Integer.parseInt(params.replace("tntrun_alive_", "")) - 1;
-                List<EventTeam> alive = tnt.getAliveTeams();
-                yield index < alive.size() ? alive.get(index).getDisplayName() : "-";
-            }
-            case "tntrun_iseliminated" -> {
-                Player player = offlinePlayer.getPlayer();
-                if (player == null || !tnt.isRunning()) yield "false";
-                Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeamOf(player);
-                if (teamOpt.isEmpty()) yield "false";
-                boolean eliminated = tnt.getAliveTeams().stream()
-                        .noneMatch(t -> t.getId().equals(teamOpt.get().getId()));
-                yield String.valueOf(eliminated);
-            }
-            default -> null;
         };
     }
 
@@ -402,7 +467,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
         BoatRacingMiniGame br = plugin.getBoatRacingMiniGame();
         Player player = offlinePlayer.getPlayer();
 
-        // ── Estado global ─────────────────────────────────────────────────────
         if (params.equals("br_running")) return String.valueOf(br.isRunning());
 
         if (params.equals("br_state")) return switch (br.getState()) {
@@ -415,10 +479,8 @@ public class AniEventExpansion extends PlaceholderExpansion {
 
         if (params.equals("br_totallaps")) return String.valueOf(br.getConfig().getTotalLaps());
 
-        // ── Top N en tiempo real ──────────────────────────────────────────────
-        // %anievent_br_top_1_name%   %anievent_br_top_1_lap%   %anievent_br_top_1_laptime%
         if (params.startsWith("br_top_")) {
-            String[] parts = params.split("_"); // br_top_N_field
+            String[] parts = params.split("_");
             if (parts.length != 4) return "-";
             int pos; try { pos = Integer.parseInt(parts[2]); } catch (NumberFormatException e) { return "-"; }
             if (pos < 1 || pos > 8) return "-";
@@ -444,7 +506,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
             };
         }
 
-        // ── Placeholders del jugador ──────────────────────────────────────────
         if (player == null) return switch (params) {
             case "br_lap", "br_laps", "br_position", "br_position_num",
                  "br_gridpos", "br_racepos"           -> "-";
@@ -457,90 +518,63 @@ public class AniEventExpansion extends PlaceholderExpansion {
         RacerData rd = br.getRacerData(player);
 
         return switch (params) {
-
-            // Vuelta actual
             case "br_lap" -> {
                 if (rd == null || rd.getCurrentLap() == 0) yield "-";
                 yield String.valueOf(rd.getCurrentLap());
             }
-
-            // "Vuelta 2/3"
             case "br_laps" -> {
                 if (rd == null || rd.getCurrentLap() == 0) yield "-";
                 yield "Vuelta " + rd.getCurrentLap() + "/" + br.getConfig().getTotalLaps();
             }
-
-            // Tiempo transcurrido en la vuelta actual
             case "br_laptime" -> {
                 if (rd == null || !br.isRunning()) yield "--:--.---";
                 yield rd.getCurrentLapTimeFormatted();
             }
-
-            // Mejor vuelta del jugador
             case "br_bestlap" -> {
                 if (rd == null) yield "--:--.---";
                 yield rd.getBestLapFormatted();
             }
-
-            // Tiempo de la última vuelta completada
             case "br_lastlap" -> {
                 if (rd == null || rd.getLastLapTimeMs() == 0) yield "--:--.---";
                 yield RacerData.formatTime(rd.getLastLapTimeMs());
             }
-
-            // Posición en tiempo real con #
             case "br_position" -> {
                 if (rd == null || !br.isRunning()) yield "-";
                 yield "#" + br.getRealTimePosition(player.getUniqueId());
             }
-
-            // Solo el número
             case "br_position_num" -> {
                 if (rd == null || !br.isRunning()) yield "-";
                 yield String.valueOf(br.getRealTimePosition(player.getUniqueId()));
             }
-
-            // Tiempo de clasificación
             case "br_qualytime" -> {
                 if (rd == null) yield "--:--.---";
                 yield rd.getQualyTimeFormatted();
             }
-
-            // Posición de parrilla tras la qualy
             case "br_gridpos" -> {
                 if (rd == null || rd.getQualyPosition() == 0) yield "-";
                 yield "#" + rd.getQualyPosition();
             }
-
-            // true si el jugador ya terminó la carrera
             case "br_finished" -> {
                 if (rd == null) yield "false";
                 yield String.valueOf(rd.isRaceFinished());
             }
-
-            // Posición final (solo si terminó)
             case "br_racepos" -> {
                 if (rd == null || !rd.isRaceFinished()) yield "-";
                 yield "#" + rd.getRacePosition();
             }
-
-            // Diferencia con el jugador inmediatamente delante (+X.XXXs)
             case "br_gap" -> {
                 if (rd == null || !br.isRunning()) yield "-";
                 List<UUID> positions = br.getRealTimePositions();
                 int myPos = positions.indexOf(player.getUniqueId());
-                if (myPos <= 0) yield "—"; // es el líder
+                if (myPos <= 0) yield "—";
                 UUID aheadUUID = positions.get(myPos - 1);
                 RacerData ahead = br.getRacers().get(aheadUUID);
                 if (ahead == null) yield "-";
-                // Diferencia basada en tiempo de vuelta actual (aproximación)
                 long myTime    = System.currentTimeMillis() - rd.getBestLapTimeMs();
                 long aheadTime = System.currentTimeMillis() - ahead.getBestLapTimeMs();
                 long diff = Math.abs(myTime - aheadTime);
                 yield "+" + String.format("%.3f", diff / 1000.0) + "s";
             }
-
-            // Diferencia con el líder
             case "br_interval" -> {
                 if (rd == null || !br.isRunning()) yield "-";
                 List<UUID> positions = br.getRealTimePositions();
@@ -553,47 +587,23 @@ public class AniEventExpansion extends PlaceholderExpansion {
                 long diff = Math.abs(rd.getBestLapTimeMs() - leader.getBestLapTimeMs());
                 yield "+" + String.format("%.3f", diff / 1000.0) + "s";
             }
-
             default -> null;
         };
     }
 
-    // ── Equipo por ID (para hologramas) ──────────────────────────────────────
-    //
-    // Formato: %anievent_teamid_<id>_<campo>%
-    //
-    //   %anievent_teamid_rojo_name%        Nombre del equipo con id "rojo"
-    //   %anievent_teamid_rojo_color%       Color legacy del equipo (&c, &9...)
-    //   %anievent_teamid_rojo_score%       Puntaje global del equipo
-    //   %anievent_teamid_rojo_members%     Miembros separados por coma
-    //   %anievent_teamid_rojo_size%        Cantidad de miembros
-    //   %anievent_teamid_rojo_rank%        Posición en el ranking global (#1, #2...)
-    //
-    // Para Frozen Heist (puntos locales del minijuego):
-    //   %anievent_teamid_rojo_fh_score%    Puntos del equipo en el Frozen Heist actual
-    //   %anievent_teamid_rojo_fh_flag%     Estado de la bandera: En base / Robada / Caída
-    //   %anievent_teamid_rojo_fh_rank%     Posición en el ranking del Frozen Heist (#1...)
+    // ── Equipo por ID ─────────────────────────────────────────────────────────
 
     private String resolveTeamById(String params) {
-        // formato: teamid_<id>_<campo>
-        // El id puede tener guiones (ej: equipo-rojo), así que tomamos todo
-        // entre el primer _ y el último _ como el id, y el campo es lo último
-        String withoutPrefix = params.substring("teamid_".length()); // "<id>_<campo>"
+        String withoutPrefix = params.substring("teamid_".length());
         int lastUnderscore = withoutPrefix.lastIndexOf('_');
         if (lastUnderscore <= 0) return null;
 
         String teamId = withoutPrefix.substring(0, lastUnderscore);
         String field  = withoutPrefix.substring(lastUnderscore + 1);
 
-        // Campos de FH con sub-campo: teamid_<id>_fh_<campo>
-        // En ese caso field sería "fh" y necesitamos mirar más adelante
-        if (field.equals("fh")) return null; // incompleto, ignorar
+        if (field.equals("fh")) return null;
 
-        // Detectar campos de FH: teamid_<id>_fh_score / fh_flag / fh_rank
         if (teamId.endsWith("_fh")) {
-            // Recalcular: el id es todo antes de "_fh_<campo>"
-            // params = teamid_<id>_fh_<campo>
-            // Buscar "_fh_" en withoutPrefix
             int fhIdx = withoutPrefix.lastIndexOf("_fh_");
             if (fhIdx > 0) {
                 teamId = withoutPrefix.substring(0, fhIdx);
@@ -605,22 +615,18 @@ public class AniEventExpansion extends PlaceholderExpansion {
         Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeam(finalTeamId);
 
         return switch (field) {
-            // ── Campos globales del equipo ─────────────────────────────────
-            case "name" -> teamOpt.map(EventTeam::getDisplayName).orElse("-");
-            case "color" -> teamOpt.map(t -> namedColorToLegacy(t.getColor().toString())).orElse("&f");
-            case "score" -> teamOpt.map(t ->
-                    String.valueOf(plugin.getScoreManager().getScore(t))).orElse("0");
+            case "name"    -> teamOpt.map(EventTeam::getDisplayName).orElse("-");
+            case "color"   -> teamOpt.map(t -> namedColorToLegacy(t.getColor().toString())).orElse("&f");
+            case "score"   -> teamOpt.map(t -> String.valueOf(plugin.getScoreManager().getScore(t))).orElse("0");
             case "members" -> teamOpt.map(t -> {
                 var names = t.getOnlinePlayers().stream().map(Player::getName).toList();
                 return names.isEmpty() ? "ninguno" : String.join(", ", names);
             }).orElse("ninguno");
-            case "size" -> teamOpt.map(t -> String.valueOf(t.getMemberCount())).orElse("0");
-            case "rank" -> teamOpt.map(t -> {
+            case "size"    -> teamOpt.map(t -> String.valueOf(t.getMemberCount())).orElse("0");
+            case "rank"    -> teamOpt.map(t -> {
                 int rank = plugin.getScoreManager().getRank(t);
                 return rank == -1 ? "-" : "#" + rank;
             }).orElse("-");
-
-            // ── Campos del Frozen Heist ────────────────────────────────────
             case "fh_score" -> {
                 var fh = plugin.getFrozenHeistMiniGame();
                 if (!fh.isRunning()) yield "0";
@@ -647,7 +653,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
                     if (ranked.get(i).getTeam().getId().equals(finalTeamId)) yield "#" + (i + 1);
                 yield "-";
             }
-
             default -> null;
         };
     }
@@ -701,7 +706,7 @@ public class AniEventExpansion extends PlaceholderExpansion {
     }
 
     private String getProgressBar(int percent) {
-        int totalBars = 10;
+        int totalBars  = 10;
         int filledBars = (int) Math.round((percent / 100.0) * totalBars);
         StringBuilder bar = new StringBuilder();
         String color = percent < 50 ? "&c" : percent < 80 ? "&e" : "&a";

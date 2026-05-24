@@ -10,13 +10,14 @@ import org.bukkit.entity.Boat;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
+import org.falmdev.anieventmanager.managers.MiniGame;
 import org.falmdev.anieventmanager.model.EventTeam;
 
 import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class BoatRacingMiniGame {
+public class BoatRacingMiniGame implements MiniGame {
 
     public enum State { IDLE, PADDOCK, QUALY, RACE, FINISHED }
 
@@ -26,23 +27,66 @@ public class BoatRacingMiniGame {
 
     private State state = State.IDLE;
 
-    // UUID → datos del corredor
     private final Map<UUID, RacerData> racers    = new LinkedHashMap<>();
-    // Orden de la parrilla (UUID en orden de salida)
     private final List<UUID>           gridOrder = new ArrayList<>();
-    // Botes activos
     private final List<Boat>           boats     = new ArrayList<>();
 
     private BukkitTask qualyTimerTask;
     private int        qualyTimeLeft;
     private int        raceFinishCount = 0;
 
-    // Región de la pista construida al iniciar
     private TrackRegion trackRegion;
 
     public BoatRacingMiniGame(Anieventmanager plugin) {
         this.plugin = plugin;
         this.config = new BoatRacingConfig(plugin);
+    }
+
+    // ── MiniGame interface ────────────────────────────────────────────────────
+
+    @Override public String getId()          { return "boatracing"; }
+    @Override public String getDisplayName() { return "Boat Racing"; }
+    @Override public String getStateName()   { return state.name(); }
+    @Override public boolean isIdle()        { return state == State.IDLE; }
+
+    /**
+     * Boat Racing tiene dos fases activas: QUALY y RACE.
+     * El manager considera ambas como "en curso".
+     */
+    @Override
+    public boolean isRunning() {
+        return state == State.RACE || state == State.QUALY || state == State.PADDOCK;
+    }
+
+    /**
+     * sendToLobby en Boat Racing equivale a sendToPaddock.
+     */
+    @Override
+    public boolean sendToLobby() {
+        return sendToPaddock();
+    }
+
+    /**
+     * start() en Boat Racing inicia la qualy directamente desde IDLE.
+     * Si ya está en PADDOCK, usa startQualy() manualmente desde el comando.
+     */
+    @Override
+    public boolean start() {
+        if (state == State.IDLE) {
+            boolean paddock = sendToPaddock();
+            if (!paddock) return false;
+        }
+        return startQualy();
+    }
+
+    @Override
+    public void reloadConfig() {
+        config.reload();
+    }
+
+    @Override
+    public String validateConfig() {
+        return config.validate();
     }
 
     // ── Paddock ───────────────────────────────────────────────────────────────
@@ -84,7 +128,6 @@ public class BoatRacingMiniGame {
         trackRegion = config.buildTrackRegion();
         state       = State.QUALY;
 
-        // Spawnear en parrilla y congelar
         spawnOnGrid(new ArrayList<>(racers.keySet()));
         if (listener != null) listener.setFrozen(true);
 
@@ -92,7 +135,6 @@ public class BoatRacingMiniGame {
         broadcastAll(Component.text("Cruza la meta para comenzar tu vuelta cronometrada.",
                 NamedTextColor.YELLOW));
 
-        // Title de advertencia: mirá las luces
         Title preTitle = Title.title(
                 Component.text("🏎 CLASIFICACIÓN", NamedTextColor.GOLD),
                 Component.text("Cuando las luces se apaguen... ¡cruza la meta!", NamedTextColor.GRAY),
@@ -104,7 +146,6 @@ public class BoatRacingMiniGame {
 
         if (listener != null) listener.startGridActionBar();
 
-        // Esperar 3 segundos y arrancar las luces
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             new BoatRacingLights(plugin, config.getLights(), () -> {
                 if (listener != null) {
@@ -116,7 +157,7 @@ public class BoatRacingMiniGame {
                         NamedTextColor.GREEN));
                 startQualyTimer();
             }).start();
-        }, 60L); // 3 segundos
+        }, 60L);
 
         return true;
     }
@@ -160,7 +201,6 @@ public class BoatRacingMiniGame {
         removeAllBoats();
         state = State.PADDOCK;
 
-        // Ordenar por tiempo de qualy
         List<RacerData> sorted = new ArrayList<>(racers.values());
         sorted.sort((a, b) -> {
             if (a.isQualyFinished() && b.isQualyFinished())
@@ -183,7 +223,6 @@ public class BoatRacingMiniGame {
         broadcastAll(Component.text("Usa /em boatracing startrace para iniciar la carrera.",
                 NamedTextColor.GRAY));
 
-        // Devolver al paddock
         Location paddock = config.getPaddockSpawn();
         if (paddock != null) racers.keySet().stream()
                 .map(Bukkit::getPlayer).filter(Objects::nonNull)
@@ -209,25 +248,17 @@ public class BoatRacingMiniGame {
         broadcastAll(Component.text("━━━ CARRERA — " + config.getTotalLaps()
                 + " VUELTAS ━━━", NamedTextColor.GOLD));
 
-        // Title de advertencia: mirá las luces
         Title preTitle = Title.title(
                 Component.text("🏎 ¡PREPÁRATE!", NamedTextColor.YELLOW),
                 Component.text("Cuando las luces se apaguen... ¡ARRANCA!", NamedTextColor.GRAY),
-                Title.Times.times(
-                        Duration.ofMillis(300),
-                        Duration.ofSeconds(4),
-                        Duration.ofMillis(500)
-                )
+                Title.Times.times(Duration.ofMillis(300), Duration.ofSeconds(4), Duration.ofMillis(500))
         );
-        // Mostrar el title solo a los corredores
         racers.keySet().stream()
                 .map(Bukkit::getPlayer).filter(Objects::nonNull)
                 .forEach(p -> p.showTitle(preTitle));
 
-        // Iniciar actionbar de espera (muestra posición de parrilla mientras esperan)
         if (listener != null) listener.startGridActionBar();
 
-        // Esperar 3 segundos para que lean el title, luego arrancar las luces
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             new BoatRacingLights(plugin, config.getLights(), () -> {
                 if (listener != null) {
@@ -236,8 +267,6 @@ public class BoatRacingMiniGame {
                     listener.startRaceActionBar();
                     listener.startCheckpointTick();
                 }
-                // NO llamar startRace() aquí — se inicia al cruzar la meta por primera vez
-
                 Title go = Title.title(
                         Component.text("🚦 GO!", NamedTextColor.GREEN),
                         Component.text("¡" + config.getTotalLaps() + " vueltas!", NamedTextColor.WHITE),
@@ -248,7 +277,7 @@ public class BoatRacingMiniGame {
                         .forEach(p -> p.showTitle(go));
                 broadcastAll(Component.text("━━━ ¡LA CARRERA COMENZÓ! ━━━", NamedTextColor.GREEN));
             }).start();
-        }, 60L); // 3 segundos para leer el title
+        }, 60L);
 
         return true;
     }
@@ -259,7 +288,6 @@ public class BoatRacingMiniGame {
 
         Player p = Bukkit.getPlayer(uuid);
 
-        // Primer cruce de meta → inicia el cronómetro de vuelta 1
         if (!rd.isRaceStarted()) {
             rd.startRace();
             if (p != null) p.sendMessage(Component.text(
@@ -267,7 +295,6 @@ public class BoatRacingMiniGame {
             return;
         }
 
-        // Cruces siguientes → completan vuelta
         boolean done = rd.completeLap(config.getTotalLaps());
 
         if (done) {
@@ -278,7 +305,6 @@ public class BoatRacingMiniGame {
             if (p != null) {
                 p.sendMessage(Component.text(
                         "🏁 ¡Terminaste en posición " + raceFinishCount + "!", NamedTextColor.GOLD));
-                // Enviar al paddock en modo espectador
                 sendFinishedRacerToPaddock(p);
             }
             if (raceFinishCount >= racers.size()) finishRace();
@@ -289,16 +315,15 @@ public class BoatRacingMiniGame {
         }
     }
 
-    /** Envía a un piloto que terminó la carrera al paddock en modo espectador */
     private void sendFinishedRacerToPaddock(Player p) {
         Location paddock = config.getPaddockSpawn();
         if (paddock == null) return;
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            p.setGameMode(org.bukkit.GameMode.SPECTATOR);
+            p.setGameMode(GameMode.SPECTATOR);
             p.teleport(paddock);
             p.sendMessage(Component.text(
                     "Serás espectador hasta que termine la carrera.", NamedTextColor.GRAY));
-        }, 60L); // 3 segundos de delay para ver el title
+        }, 60L);
     }
 
     private void finishRace() {
@@ -311,7 +336,6 @@ public class BoatRacingMiniGame {
 
         broadcastAll(Component.text("━━━ FIN DE CARRERA ━━━", NamedTextColor.GOLD));
 
-        // Asignar posición a los que no terminaron
         List<RacerData> dnf = racers.values().stream()
                 .filter(rd -> !rd.isRaceFinished()).toList();
         for (RacerData rd : dnf) {
@@ -319,7 +343,6 @@ public class BoatRacingMiniGame {
             rd.setRacePosition(raceFinishCount);
         }
 
-        // Sumar puntos al equipo de cada corredor
         Map<String, Integer> teamScores = new HashMap<>();
         racers.values().forEach(rd -> {
             int pts = config.getScoreForPosition(rd.getRacePosition());
@@ -339,7 +362,6 @@ public class BoatRacingMiniGame {
             }
         });
 
-        // Clasificación individual
         broadcastAll(Component.text("━━━ Clasificación individual ━━━", NamedTextColor.GOLD));
         racers.values().stream()
                 .sorted(Comparator.comparingInt(RacerData::getRacePosition))
@@ -349,14 +371,13 @@ public class BoatRacingMiniGame {
 
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             removeAllBoats();
-            // Devolver a todos al paddock en modo adventure (sin espectador)
             Location paddock = config.getPaddockSpawn();
             if (paddock != null) {
                 racers.keySet().stream()
                         .map(Bukkit::getPlayer)
                         .filter(Objects::nonNull)
                         .forEach(p -> {
-                            p.setGameMode(org.bukkit.GameMode.ADVENTURE);
+                            p.setGameMode(GameMode.ADVENTURE);
                             p.teleport(paddock);
                         });
             }
@@ -364,6 +385,7 @@ public class BoatRacingMiniGame {
         }, 200L);
     }
 
+    @Override
     public void forceStop() {
         if (qualyTimerTask != null && !qualyTimerTask.isCancelled()) qualyTimerTask.cancel();
         if (listener != null) {
@@ -380,7 +402,7 @@ public class BoatRacingMiniGame {
                     .map(Bukkit::getPlayer)
                     .filter(Objects::nonNull)
                     .forEach(p -> {
-                        p.setGameMode(org.bukkit.GameMode.ADVENTURE);
+                        p.setGameMode(GameMode.ADVENTURE);
                         p.teleport(paddock);
                     });
         }
@@ -443,12 +465,11 @@ public class BoatRacingMiniGame {
 
     public void registerListener(BoatRacingListener l) { this.listener = l; }
 
-    public State              getState()       { return state; }
-    public boolean            isRunning()      { return state == State.RACE || state == State.QUALY; }
-    public BoatRacingConfig   getConfig()      { return config; }
-    public TrackRegion        getTrackRegion() { return trackRegion; }
-    public Map<UUID,RacerData> getRacers()     { return Collections.unmodifiableMap(racers); }
-    public RacerData          getRacerData(Player p) { return racers.get(p.getUniqueId()); }
+    public State               getState()       { return state; }
+    public BoatRacingConfig    getConfig()      { return config; }
+    public TrackRegion         getTrackRegion() { return trackRegion; }
+    public Map<UUID,RacerData> getRacers()      { return Collections.unmodifiableMap(racers); }
+    public RacerData           getRacerData(Player p) { return racers.get(p.getUniqueId()); }
 
     private void broadcastAll(Component msg) {
         Bukkit.getOnlinePlayers().forEach(p -> p.sendMessage(msg));

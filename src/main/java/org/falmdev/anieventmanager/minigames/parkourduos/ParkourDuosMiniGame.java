@@ -9,21 +9,13 @@ import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
+import org.falmdev.anieventmanager.managers.MiniGame;
 import org.falmdev.anieventmanager.model.EventTeam;
 
 import java.time.Duration;
 import java.util.*;
 
-/**
- * Minijuego Parkour Duos.
- *
- * Estados:
- *  IDLE       → Sin partida
- *  COUNTDOWN  → Cuenta regresiva
- *  RUNNING    → Partida en curso
- *  FINISHED   → Finalizando (mostrando resultados)
- */
-public class ParkourDuosMiniGame {
+public class ParkourDuosMiniGame implements MiniGame {
 
     public enum State { IDLE, COUNTDOWN, RUNNING, FINISHED }
 
@@ -36,10 +28,8 @@ public class ParkourDuosMiniGame {
 
     private State state = State.IDLE;
 
-    // teamId → datos de la partida
     private final Map<String, TeamParkourData> teamData = new HashMap<>();
 
-    // Orden en que los equipos terminaron (para ranking)
     private int finishCounter = 0;
 
     private BukkitTask timerTask;
@@ -51,12 +41,58 @@ public class ParkourDuosMiniGame {
         this.plugin  = plugin;
         this.config  = new ParkourDuosConfig(plugin);
         this.chainManager = new ChainManager(plugin,
-                true, // en ParkourDuos siempre activa
+                true,
                 config.getChainMaxDistance());
+    }
+
+    // ── MiniGame interface ────────────────────────────────────────────────────
+
+    @Override public String getId()          { return "parkourduos"; }
+    @Override public String getDisplayName() { return "Parkour Duos"; }
+    @Override public String getStateName()   { return state.name(); }
+    @Override public boolean isIdle()        { return state == State.IDLE; }
+
+    @Override
+    public boolean isRunning() {
+        return state == State.RUNNING || state == State.COUNTDOWN;
+    }
+
+    /**
+     * Parkour Duos no tiene lobby: sendToLobby teletransporta al spawn lobby
+     * sin iniciar la partida.
+     */
+    @Override
+    public boolean sendToLobby() {
+        Location lobby = config.getLobby();
+        if (lobby == null) return false;
+        for (EventTeam team : plugin.getTeamManager().getAllTeams()) {
+            for (Player p : team.getOnlinePlayers()) {
+                p.teleport(lobby);
+                p.setGameMode(GameMode.ADVENTURE);
+            }
+        }
+        return true;
+    }
+
+    @Override
+    public void reloadConfig() {
+        config.reload();
+    }
+
+    @Override
+    public String validateConfig() {
+        String global = config.validateGlobal();
+        if (global != null) return global;
+        for (EventTeam team : plugin.getTeamManager().getAllTeams()) {
+            String err = config.validateTeam(team.getId());
+            if (err != null) return err;
+        }
+        return null;
     }
 
     // ── Start ─────────────────────────────────────────────────────────────────
 
+    @Override
     public boolean start() {
         if (state != State.IDLE) return false;
 
@@ -69,7 +105,6 @@ public class ParkourDuosMiniGame {
         Collection<EventTeam> teams = plugin.getTeamManager().getAllTeams();
         if (teams.isEmpty()) return false;
 
-        // Validar que cada equipo tenga su configuración
         for (EventTeam team : teams) {
             String err = config.validateTeam(team.getId());
             if (err != null) {
@@ -82,7 +117,6 @@ public class ParkourDuosMiniGame {
         finishCounter = 0;
         teamData.clear();
 
-        // Teletransportar al lobby y poner en adventure
         Location lobby = config.getLobby();
         for (EventTeam team : teams) {
             for (Player p : team.getOnlinePlayers()) {
@@ -91,13 +125,11 @@ public class ParkourDuosMiniGame {
             }
         }
 
-        // Crear datos de partida por equipo
         for (EventTeam team : teams) {
             List<ParkourCheckpoint> cps = config.getCheckpoints(team.getId());
             teamData.put(team.getId(), new TeamParkourData(team, cps));
         }
 
-        // Registrar listener
         if (gameListener != null) {
             org.bukkit.event.HandlerList.unregisterAll(gameListener);
         }
@@ -109,11 +141,11 @@ public class ParkourDuosMiniGame {
         return true;
     }
 
+    @Override
     public void forceStop() {
         cleanup();
         broadcastAll(Component.text("Parkour Duos detenido por un admin.", NamedTextColor.RED));
 
-        // Teleportar al lobby
         Location lobby = config.getLobby();
         for (EventTeam team : plugin.getTeamManager().getAllTeams()) {
             for (Player p : team.getOnlinePlayers()) {
@@ -165,26 +197,22 @@ public class ParkourDuosMiniGame {
     private void beginGame() {
         state = State.RUNNING;
 
-        // Teletransportar a cada equipo a sus spawnpoints
         for (EventTeam team : plugin.getTeamManager().getAllTeams()) {
             List<Player> members = team.getOnlinePlayers();
             Location sp1 = config.getTeamSpawn1(team.getId());
             Location sp2 = config.getTeamSpawn2(team.getId());
-            if (sp1 != null && members.size() > 0) members.get(0).teleport(sp1);
-            if (sp2 != null && members.size() > 1) members.get(1).teleport(sp2);
-            if (sp1 != null && members.size() == 1) members.get(0).teleport(sp1);
-
-            for (Player p : members) p.setGameMode(GameMode.ADVENTURE);
+            if (sp1 != null && !members.isEmpty())   members.get(0).teleport(sp1);
+            if (sp2 != null && members.size() > 1)   members.get(1).teleport(sp2);
+            if (sp1 != null && members.size() == 1)  members.get(0).teleport(sp1);
+            members.forEach(p -> p.setGameMode(GameMode.ADVENTURE));
         }
 
-        // Iniciar chain y checkpoints
         chainManager.setMaxDistance(config.getChainMaxDistance());
         chainManager.startForTeams(new ArrayList<>(plugin.getTeamManager().getAllTeams()));
 
         checkpointManager = new CheckpointManager(plugin, this);
         checkpointManager.start();
 
-        // Título de inicio
         Title go = Title.title(
                 Component.text("¡YA!", NamedTextColor.GREEN),
                 Component.text("¡Completa el parkour!", NamedTextColor.WHITE),
@@ -223,7 +251,6 @@ public class ParkourDuosMiniGame {
         if (finishing) return;
         finishing = true;
 
-        // Ranking por: terminaron primero, luego por checkpoints
         List<TeamParkourData> ranking = new ArrayList<>(teamData.values());
         ranking.sort((a, b) -> {
             if (a.isFinished() && b.isFinished())
@@ -249,15 +276,11 @@ public class ParkourDuosMiniGame {
 
     // ── Finish por equipo ─────────────────────────────────────────────────────
 
-    /**
-     * Llamado por CheckpointManager cuando un equipo llega al finish.
-     */
     public void onTeamFinished(EventTeam team, TeamParkourData data) {
         if (data.isFinished()) return;
         finishCounter++;
         data.markFinished(finishCounter);
 
-        // Score interno según posición
         int score = config.getScoreForPlace(finishCounter);
         data.setInternalScore(data.getInternalScore() + score);
 
@@ -273,7 +296,6 @@ public class ParkourDuosMiniGame {
                 .append(Component.text(" terminó el parkour en posición #" + finishCounter + "!",
                         NamedTextColor.GREEN)));
 
-        // Si todos los equipos terminaron, finalizar
         long done = teamData.values().stream().filter(TeamParkourData::isFinished).count();
         if (done >= teamData.size()) {
             if (timerTask != null && !timerTask.isCancelled()) timerTask.cancel();
@@ -296,14 +318,12 @@ public class ParkourDuosMiniGame {
             TeamParkourData data = ranking.get(i);
             EventTeam team = data.getTeam();
 
-            // Score global = internal score ya acumulado
             int globalScore = data.getInternalScore();
             plugin.getScoreManager().addScore(team, globalScore);
 
             broadcastAll(Component.text("  +" + globalScore + " pts → ", NamedTextColor.YELLOW)
                     .append(Component.text(team.getDisplayName(), team.getColor())));
 
-            // Teleportar al lobby
             for (Player p : team.getOnlinePlayers()) {
                 p.getInventory().clear();
                 if (lobby != null) p.teleport(lobby);
@@ -333,12 +353,11 @@ public class ParkourDuosMiniGame {
 
     // ── Getters ───────────────────────────────────────────────────────────────
 
-    public State                    getState()       { return state; }
-    public boolean                  isRunning()      { return state == State.RUNNING; }
-    public ParkourDuosConfig        getConfig()      { return config; }
-    public ChainManager             getChainManager(){ return chainManager; }
-    public Map<String, TeamParkourData> getTeamData(){ return teamData; }
-    public int                      getTimeLeftSeconds() { return timeLeftSeconds; }
+    public State                        getState()           { return state; }
+    public ParkourDuosConfig            getConfig()          { return config; }
+    public ChainManager                 getChainManager()    { return chainManager; }
+    public Map<String, TeamParkourData> getTeamData()        { return teamData; }
+    public int                          getTimeLeftSeconds() { return timeLeftSeconds; }
 
     public String getTimeLeftFormatted() {
         int mins = timeLeftSeconds / 60;

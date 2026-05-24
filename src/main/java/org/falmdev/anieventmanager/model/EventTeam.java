@@ -11,7 +11,7 @@ import java.util.UUID;
 public class EventTeam {
 
     private final String id;
-    private final String displayName;
+    private String displayName;                       // ya no es final
     private final NamedTextColor color;
     private final List<UUID> members = new ArrayList<>();
 
@@ -54,6 +54,14 @@ public class EventTeam {
     public NamedTextColor getColor()  { return color; }
     public List<UUID> getMembers()    { return List.copyOf(members); }
     public int getMemberCount()       { return members.size(); }
+
+    /**
+     * Cambia el displayName del equipo. La persistencia debe hacerla quien lo llama
+     * (típicamente {@code TeamManager.renameTeam(id, newName)}).
+     */
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
+    }
 
     @Override
     public String toString() { return displayName; }

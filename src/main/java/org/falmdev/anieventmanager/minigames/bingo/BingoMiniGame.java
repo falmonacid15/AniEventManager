@@ -11,12 +11,13 @@ import org.bukkit.inventory.meta.trim.TrimMaterial;
 import org.bukkit.inventory.meta.trim.TrimPattern;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
+import org.falmdev.anieventmanager.managers.MiniGame;
 import org.falmdev.anieventmanager.model.EventTeam;
 
 import java.time.Duration;
 import java.util.*;
 
-public class BingoMiniGame {
+public class BingoMiniGame implements MiniGame {
 
     public enum State { IDLE, COUNTDOWN, RUNNING, FINISHED }
 
@@ -38,11 +39,36 @@ public class BingoMiniGame {
         this.config = new BingoConfig(plugin);
     }
 
+    // ── MiniGame interface ────────────────────────────────────────────────────
+
+    @Override public String getId()          { return "bingo"; }
+    @Override public String getDisplayName() { return "Bingo"; }
+    @Override public String getStateName()   { return state.name(); }
+    @Override public boolean isIdle()        { return state == State.IDLE; }
+
+    @Override
+    public boolean isRunning() {
+        return state == State.RUNNING || state == State.COUNTDOWN;
+    }
+
+    /** sendToLobby en Bingo equivale a sendToSpawn. */
+    @Override
+    public boolean sendToLobby() {
+        return sendToSpawn();
+    }
+
+    @Override
+    public void reloadConfig() {
+        config.reload();
+    }
+
+    @Override
+    public String validateConfig() {
+        return config.validate();
+    }
+
     // ── Ciclo de vida ─────────────────────────────────────────────────────────
 
-    /**
-     * Teletransporta a todos los jugadores al spawn del bingo.
-     */
     public boolean sendToSpawn() {
         Location spawn = config.getSpawn();
         if (spawn == null) return false;
@@ -56,6 +82,7 @@ public class BingoMiniGame {
         return true;
     }
 
+    @Override
     public boolean start() {
         if (state != State.IDLE) return false;
 
@@ -68,7 +95,6 @@ public class BingoMiniGame {
         finishing = false;
         cards.clear();
 
-        // Teletransportar al spawn si está configurado
         Location spawn = config.getSpawn();
         if (spawn != null) {
             for (EventTeam team : teams) {
@@ -79,19 +105,16 @@ public class BingoMiniGame {
             }
         }
 
-        // Crear tarjetas
         List<BingoTask> taskPool = config.loadTasks();
         for (EventTeam team : teams) {
             cards.put(team.getId(), new BingoCard(team, cloneTasks(taskPool)));
         }
 
-        // Desregistrar listener anterior si existe (evita acumulación entre partidas)
         if (gameListener != null) {
             org.bukkit.event.HandlerList.unregisterAll(gameListener);
             gameListener = null;
         }
 
-        // Registrar listeners
         gameListener = new BingoListener(plugin, this);
         plugin.getServer().getPluginManager().registerEvents(gameListener, plugin);
 
@@ -100,6 +123,7 @@ public class BingoMiniGame {
         return true;
     }
 
+    @Override
     public void forceStop() {
         cancelTasks();
         if (gameListener != null) {
@@ -122,17 +146,7 @@ public class BingoMiniGame {
 
     // ── Intro + Countdown ─────────────────────────────────────────────────────
 
-    /**
-     * Muestra la pantalla de introducción del minijuego,
-     * luego la cuenta regresiva, y finalmente inicia la partida.
-     *
-     * Secuencia:
-     *   1. Título "BINGO" con descripción (4 segundos)
-     *   2. Cuenta regresiva 5...4...3...2...1
-     *   3. "¡YA!" y partida comienza
-     */
     private void showIntroAndCountdown() {
-        // Pantalla de introducción
         Title intro = Title.title(
                 Component.text("BINGO", NamedTextColor.GOLD),
                 Component.text("Completa todas las tareas antes de que acabe el tiempo",
@@ -151,8 +165,7 @@ public class BingoMiniGame {
                 .append(Component.text("/bingo", NamedTextColor.WHITE))
                 .append(Component.text(" para ver tu tarjeta en cualquier momento.", NamedTextColor.GRAY)));
 
-        // Iniciar countdown después de 4 segundos (cuando termina el intro)
-        Bukkit.getScheduler().runTaskLater(plugin, () -> startCountdown(), 80L);
+        Bukkit.getScheduler().runTaskLater(plugin, this::startCountdown, 80L);
     }
 
     private void startCountdown() {
@@ -325,7 +338,6 @@ public class BingoMiniGame {
     // ── Utilidades ────────────────────────────────────────────────────────────
 
     public BingoCard getCard(EventTeam team) { return cards.get(team.getId()); }
-    public boolean   isRunning()             { return state == State.RUNNING; }
     public State     getState()              { return state; }
     public BingoConfig getConfig()           { return config; }
     public int       getTimeLeftSeconds()    { return timeLeftSeconds; }
@@ -385,34 +397,30 @@ public class BingoMiniGame {
         TrimPattern silencePattern = Registry.TRIM_PATTERN.get(org.bukkit.NamespacedKey.minecraft("silence"));
         ArmorTrim trim = new ArmorTrim(trimMat, silencePattern);
 
-        // Helmet
         ItemStack helmet = new ItemStack(Material.NETHERITE_HELMET);
         ArmorMeta helmetMeta = (ArmorMeta) helmet.getItemMeta();
         helmetMeta.setTrim(trim);
-        helmetMeta.addEnchant(org.bukkit.enchantments.Enchantment.PROTECTION,       4, true);
-        helmetMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,       3, true);
-        helmetMeta.addEnchant(org.bukkit.enchantments.Enchantment.RESPIRATION,      3, true);
-        helmetMeta.addEnchant(org.bukkit.enchantments.Enchantment.AQUA_AFFINITY,    1, true);
+        helmetMeta.addEnchant(org.bukkit.enchantments.Enchantment.PROTECTION,    4, true);
+        helmetMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,    3, true);
+        helmetMeta.addEnchant(org.bukkit.enchantments.Enchantment.RESPIRATION,   3, true);
+        helmetMeta.addEnchant(org.bukkit.enchantments.Enchantment.AQUA_AFFINITY, 1, true);
         helmet.setItemMeta(helmetMeta);
 
-        // Chestplate
         ItemStack chestplate = new ItemStack(Material.NETHERITE_CHESTPLATE);
         ArmorMeta chestMeta = (ArmorMeta) chestplate.getItemMeta();
         chestMeta.setTrim(trim);
-        chestMeta.addEnchant(org.bukkit.enchantments.Enchantment.PROTECTION,  4, true);
-        chestMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,  3, true);
+        chestMeta.addEnchant(org.bukkit.enchantments.Enchantment.PROTECTION, 4, true);
+        chestMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING, 3, true);
         chestplate.setItemMeta(chestMeta);
 
-        // Leggings
         ItemStack leggings = new ItemStack(Material.NETHERITE_LEGGINGS);
         ArmorMeta legMeta = (ArmorMeta) leggings.getItemMeta();
         legMeta.setTrim(trim);
-        legMeta.addEnchant(org.bukkit.enchantments.Enchantment.PROTECTION,    4, true);
-        legMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,    3, true);
-        legMeta.addEnchant(org.bukkit.enchantments.Enchantment.SWIFT_SNEAK,   3, true);
+        legMeta.addEnchant(org.bukkit.enchantments.Enchantment.PROTECTION,  4, true);
+        legMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,  3, true);
+        legMeta.addEnchant(org.bukkit.enchantments.Enchantment.SWIFT_SNEAK, 3, true);
         leggings.setItemMeta(legMeta);
 
-        // Boots
         ItemStack boots = new ItemStack(Material.NETHERITE_BOOTS);
         ArmorMeta bootsMeta = (ArmorMeta) boots.getItemMeta();
         bootsMeta.setTrim(trim);
@@ -427,42 +435,37 @@ public class BingoMiniGame {
         player.getInventory().setLeggings(leggings);
         player.getInventory().setBoots(boots);
 
-        // ── Herramientas
         ItemStack sword = new ItemStack(Material.NETHERITE_SWORD);
         var swordMeta = sword.getItemMeta();
-        swordMeta.addEnchant(org.bukkit.enchantments.Enchantment.SHARPNESS,   5, true);
-        swordMeta.addEnchant(org.bukkit.enchantments.Enchantment.SWEEPING_EDGE,  3, true);
-        swordMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,  3, true);
-        swordMeta.addEnchant(org.bukkit.enchantments.Enchantment.LOOTING,     3, true);
+        swordMeta.addEnchant(org.bukkit.enchantments.Enchantment.SHARPNESS,    5, true);
+        swordMeta.addEnchant(org.bukkit.enchantments.Enchantment.SWEEPING_EDGE,3, true);
+        swordMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,   3, true);
+        swordMeta.addEnchant(org.bukkit.enchantments.Enchantment.LOOTING,      3, true);
         sword.setItemMeta(swordMeta);
 
         ItemStack axe = new ItemStack(Material.NETHERITE_AXE);
         var axeMeta = axe.getItemMeta();
-        axeMeta.addEnchant(org.bukkit.enchantments.Enchantment.SHARPNESS,   5, true);
-        axeMeta.addEnchant(org.bukkit.enchantments.Enchantment.EFFICIENCY,  5, true);
-        axeMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,  3, true);
+        axeMeta.addEnchant(org.bukkit.enchantments.Enchantment.SHARPNESS,  5, true);
+        axeMeta.addEnchant(org.bukkit.enchantments.Enchantment.EFFICIENCY, 5, true);
+        axeMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING, 3, true);
         axe.setItemMeta(axeMeta);
 
         ItemStack pickaxe = new ItemStack(Material.NETHERITE_PICKAXE);
         var pickMeta = pickaxe.getItemMeta();
-        pickMeta.addEnchant(org.bukkit.enchantments.Enchantment.EFFICIENCY,  5, true);
-        pickMeta.addEnchant(org.bukkit.enchantments.Enchantment.FORTUNE,     3, true);
-        pickMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,  3, true);
+        pickMeta.addEnchant(org.bukkit.enchantments.Enchantment.EFFICIENCY, 5, true);
+        pickMeta.addEnchant(org.bukkit.enchantments.Enchantment.FORTUNE,    3, true);
+        pickMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING, 3, true);
         pickaxe.setItemMeta(pickMeta);
 
         ItemStack shovel = new ItemStack(Material.NETHERITE_SHOVEL);
         var shovelMeta = shovel.getItemMeta();
-        shovelMeta.addEnchant(org.bukkit.enchantments.Enchantment.EFFICIENCY,  5, true);
-        shovelMeta.addEnchant(org.bukkit.enchantments.Enchantment.FORTUNE,     3, true);
-        shovelMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,  3, true);
+        shovelMeta.addEnchant(org.bukkit.enchantments.Enchantment.EFFICIENCY, 5, true);
+        shovelMeta.addEnchant(org.bukkit.enchantments.Enchantment.FORTUNE,    3, true);
+        shovelMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING, 3, true);
         shovel.setItemMeta(shovelMeta);
 
-        // ── Dar al inventario ─────────────────────────────────────────────────────
         player.getInventory().addItem(
-                sword,
-                axe,
-                pickaxe,
-                shovel,
+                sword, axe, pickaxe, shovel,
                 new ItemStack(Material.GOLDEN_CARROT, 64),
                 new ItemStack(Material.TORCH, 64)
         );

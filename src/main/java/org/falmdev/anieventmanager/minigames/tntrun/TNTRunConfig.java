@@ -38,6 +38,7 @@ import java.util.List;
  * settings:
  *   block-remove-delay:  10   ← ticks antes de que caiga el bloque
  *   countdown-seconds:   5
+ *   end-delay-seconds:   30   ← segundos que el ganador permanece en la arena
  *   double-jump-enabled: true
  *   double-jump-cooldown: 5   ← segundos de cooldown entre dobles saltos
  *   score-first:   10
@@ -138,10 +139,6 @@ public class TNTRunConfig {
 
     // ── Configuración de arena ────────────────────────────────────────────────
 
-    /**
-     * Tamaño de la arena en bloques (lado del cuadrado o diámetro del círculo).
-     * MODIFICAR con /em tntrun setsize <n>.
-     */
     public int getArenaSize() {
         return yaml.getInt("arena.size", TNTRunArena.ArenaConfig.defaults().arenaSize());
     }
@@ -151,10 +148,6 @@ public class TNTRunConfig {
         save();
     }
 
-    /**
-     * Forma de la arena: SQUARE (cuadrado) o CIRCLE (círculo).
-     * MODIFICAR con /em tntrun setshape <square|circle>.
-     */
     public TNTRunArena.Shape getArenaShape() {
         String raw = yaml.getString("arena.shape", "SQUARE").toUpperCase();
         try {
@@ -169,10 +162,6 @@ public class TNTRunConfig {
         save();
     }
 
-    /**
-     * Número de capas de TNT+SAND (mínimo 1).
-     * MODIFICAR con /em tntrun setlayers <n>.
-     */
     public int getLayerCount() {
         return yaml.getInt("arena.layer-count", TNTRunArena.ArenaConfig.defaults().layerCount());
     }
@@ -182,10 +171,6 @@ public class TNTRunConfig {
         save();
     }
 
-    /**
-     * Bloques de AIR entre capas (mínimo 1).
-     * MODIFICAR con /em tntrun setlayergap <n>.
-     */
     public int getLayerGap() {
         return yaml.getInt("arena.layer-gap", TNTRunArena.ArenaConfig.defaults().layerGap());
     }
@@ -195,10 +180,6 @@ public class TNTRunConfig {
         save();
     }
 
-    /**
-     * Altura de la cúpula sobre el nivel del jugador (mínimo 5).
-     * MODIFICAR con /em tntrun setdomeheight <n>.
-     */
     public int getDomeHeight() {
         return yaml.getInt("arena.dome-height", TNTRunArena.ArenaConfig.defaults().domeHeight());
     }
@@ -208,10 +189,6 @@ public class TNTRunConfig {
         save();
     }
 
-    /**
-     * Construye el {@link TNTRunArena.ArenaConfig} con los valores actuales.
-     * Úsalo para crear un {@link TNTRunArena}.
-     */
     public TNTRunArena.ArenaConfig buildArenaConfig() {
         return new TNTRunArena.ArenaConfig(
                 getArenaSize(),
@@ -235,7 +212,7 @@ public class TNTRunConfig {
         save();
     }
 
-    /** Segundos de cuenta regresiva antes de iniciar. */
+    /** Segundos de cuenta regresiva antes de iniciar. Default: 5. */
     public int getCountdownSeconds() { return yaml.getInt("settings.countdown-seconds", 5); }
 
     public void setCountdownSeconds(int seconds) {
@@ -243,12 +220,27 @@ public class TNTRunConfig {
         save();
     }
 
+    /**
+     * Segundos que el ganador (y los espectadores) permanecen en la arena
+     * antes de que todos sean devueltos al lobby. Default: 30.
+     * MODIFICAR con /em tntrun setenddelay <segundos>.
+     */
+    public int getEndDelaySeconds() {
+        return yaml.getInt("settings.end-delay-seconds", 30);
+    }
+
+    public void setEndDelaySeconds(int seconds) {
+        yaml.set("settings.end-delay-seconds", Math.max(5, seconds));
+        save();
+    }
+
+    /** Convierte el end-delay de segundos a ticks de Bukkit (×20). */
+    public long getEndDelayTicks() {
+        return getEndDelaySeconds() * 20L;
+    }
+
     // ── Doble salto ───────────────────────────────────────────────────────────
 
-    /**
-     * Habilita o deshabilita el doble salto durante la partida.
-     * Default: true.
-     */
     public boolean isDoubleJumpEnabled() {
         return yaml.getBoolean("settings.double-jump-enabled", true);
     }
@@ -258,10 +250,6 @@ public class TNTRunConfig {
         save();
     }
 
-    /**
-     * Cooldown en segundos entre dobles saltos consecutivos.
-     * Default: 5 segundos.
-     */
     public int getDoubleJumpCooldown() {
         return yaml.getInt("settings.double-jump-cooldown", 5);
     }
@@ -295,11 +283,6 @@ public class TNTRunConfig {
 
     // ── Validación ────────────────────────────────────────────────────────────
 
-    /**
-     * Verifica que la configuración mínima esté completa para poder iniciar.
-     *
-     * @return {@code null} si todo está bien, o un mensaje de error si falta algo.
-     */
     public String validate() {
         if (getWorld() == null)
             return "El mundo no está configurado. Usa /em tntrun setworld.";

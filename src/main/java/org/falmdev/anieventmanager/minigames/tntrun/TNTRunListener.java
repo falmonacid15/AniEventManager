@@ -2,7 +2,9 @@ package org.falmdev.anieventmanager.minigames.tntrun;
 
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.Particle;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -22,36 +24,34 @@ import java.util.UUID;
 /**
  * Listener del TNT Run.
  *
- * ── Mecánica de bloques ───────────────────────────────────────────────────────
- *   Un tick periódico detecta el bloque SAND bajo cada jugador activo.
- *   Al detectarlo, programa su eliminación (junto al TNT debajo) tras el delay
- *   configurado. El bloque permanece visible durante el delay — el jugador tiene
- *   tiempo de correr antes de que caiga.
+ * ── Fixes aplicados ───────────────────────────────────────────────────────────
  *
- * ── Doble salto ───────────────────────────────────────────────────────────────
- *   Si {@link TNTRunConfig#isDoubleJumpEnabled()} es true, todos los jugadores
- *   activos reciben {@code setAllowFlight(true)} sin entrar en modo vuelo real.
- *   Al detectar {@link PlayerToggleFlightEvent} se cancela el vuelo, se aplica
- *   impulso vertical y se inicia el cooldown. Tras el cooldown el vuelo se
- *   re-habilita automáticamente.
+ *  1. BLOCK_CRACK → BLOCK_CRUMBLE (Paper 1.20.5+) con fallback a BLOCK para
+ *     versiones anteriores. El nombre cambia entre versiones y una excepción
+ *     silenciosa en la línea de partículas cortaba la ejecución del bloque
+ *     entero, impidiendo que el SAND se convirtiera en AIR.
  *
- *   Cooldown: configurable con /em tntrun setjumpcooldown <segundos>.
- *             Durante el cooldown el jugador ve la barra de acción con el tiempo
- *             restante.
+ *  2. unregisterAll al finalizar: finish() y forceStop() ahora desregistran
+ *     este listener para que no se acumulen listeners de partidas anteriores.
+ *     Los listeners acumulados causaban que el countdown de una partida nueva
+ *     bloqueara el movimiento con la lógica del countdown de la partida vieja.
+ *
+ *  3. El tick usa isStrictlyRunning() en vez de comparar el enum directamente,
+ *     para que sea consistente con el resto del código.
+ *
+ *  4. checkWinCondition ya NO se llama con runTask separado dentro del tick
+ *     (que podía generar race conditions con el estado). Ahora se llama
+ *     directamente al final del tick en el hilo principal del scheduler.
  */
 public class TNTRunListener implements Listener {
 
-    // Velocidad vertical del doble salto (bloques/tick aprox.)
     private static final double DOUBLE_JUMP_VELOCITY = 0.9;
 
     private final Anieventmanager plugin;
     private final TNTRunMiniGame  miniGame;
 
-    /** Claves de bloques ya programados para no procesarlos dos veces. */
     private final Set<Long>          scheduledBlocks = new HashSet<>();
-    /** Timestamp (ms) del último doble salto por jugador. */
     private final Map<UUID, Long>    jumpTimestamps  = new HashMap<>();
-    /** Task de cooldown activa por jugador (para cancelar si el jugador es eliminado). */
     private final Map<UUID, Integer> cooldownTasks   = new HashMap<>();
 
     private BukkitTask tickTask;
@@ -68,7 +68,6 @@ public class TNTRunListener implements Listener {
         scheduledBlocks.clear();
         jumpTimestamps.clear();
 
-        // Habilitar vuelo para doble salto en todos los jugadores activos
         if (miniGame.getConfig().isDoubleJumpEnabled()) {
             plugin.getServer().getOnlinePlayers().stream()
                     .filter(miniGame::isActivePlayer)
@@ -76,39 +75,57 @@ public class TNTRunListener implements Listener {
         }
 
         tickTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
-            if (!miniGame.getState().equals(TNTRunMiniGame.State.RUNNING)) return;
+            // FIX: usar isStrictlyRunning() — solo procesar bloques cuando el
+            // juego está realmente en curso, no durante el countdown
+            if (!miniGame.isStrictlyRunning()) return;
 
             plugin.getServer().getOnlinePlayers().stream()
                     .filter(miniGame::isActivePlayer)
                     .forEach(player -> {
-                        Block feet  = player.getLocation().getBlock();
-                        Block below = player.getLocation().clone().subtract(0, 1, 0).getBlock();
+                        Location loc  = player.getLocation();
+                        Block feet    = loc.getBlock();
+                        Block below   = loc.clone().subtract(0, 1, 0).getBlock();
 
                         // Eliminación por agua
-                        if (feet.getType()  == Material.WATER
-                                || below.getType() == Material.WATER) {
+                        if (feet.getType() == Material.WATER || below.getType() == Material.WATER) {
                             plugin.getServer().getScheduler().runTask(plugin,
                                     () -> miniGame.eliminatePlayer(player));
                             return;
                         }
 
-                        // Programar eliminación del sand bajo los pies
-                        if (below.getType() == Material.SAND) {
-                            scheduleRemoval(below);
+                        // Bloque central bajo los pies
+                        scheduleIfSand(below);
+
+                        // Bloques adyacentes para movimiento diagonal
+                        double px = loc.getX() - Math.floor(loc.getX());
+                        double pz = loc.getZ() - Math.floor(loc.getZ());
+                        int bx = below.getX();
+                        int by = below.getY();
+                        int bz = below.getZ();
+
+                        if (px < 0.35) {
+                            scheduleIfSand(below.getWorld().getBlockAt(bx - 1, by, bz));
+                        } else if (px > 0.65) {
+                            scheduleIfSand(below.getWorld().getBlockAt(bx + 1, by, bz));
+                        }
+
+                        if (pz < 0.35) {
+                            scheduleIfSand(below.getWorld().getBlockAt(bx, by, bz - 1));
+                        } else if (pz > 0.65) {
+                            scheduleIfSand(below.getWorld().getBlockAt(bx, by, bz + 1));
                         }
                     });
 
-            plugin.getServer().getScheduler().runTask(plugin,
-                    miniGame::checkWinCondition);
+            // FIX: checkWinCondition directo, sin runTask extra
+            // El tick ya corre en el hilo principal — el runTask adicional
+            // introducía un tick de delay donde el estado podía desincronizarse
+            miniGame.checkWinCondition();
 
         }, 0L, 2L);
 
-        // Task de action bar — corre cada segundo para mostrar "salto disponible"
-        // a los jugadores que no están en cooldown (los que sí lo están tienen su
-        // propio task en startCooldownDisplay que sobreescribe este mensaje)
         if (miniGame.getConfig().isDoubleJumpEnabled()) {
             actionBarTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
-                if (!miniGame.getState().equals(TNTRunMiniGame.State.RUNNING)) return;
+                if (!miniGame.isStrictlyRunning()) return;
                 long now = System.currentTimeMillis();
                 int cooldownMs = miniGame.getConfig().getDoubleJumpCooldown() * 1000;
 
@@ -125,20 +142,21 @@ public class TNTRunListener implements Listener {
     }
 
     public void stopTick() {
-        if (tickTask != null && !tickTask.isCancelled()) tickTask.cancel();
+        if (tickTask    != null && !tickTask.isCancelled())    tickTask.cancel();
         if (actionBarTask != null && !actionBarTask.isCancelled()) actionBarTask.cancel();
         scheduledBlocks.clear();
 
-        // Deshabilitar vuelo de todos los jugadores online
         plugin.getServer().getOnlinePlayers().forEach(p -> {
             p.setAllowFlight(false);
             p.setFlying(false);
         });
 
-        // Cancelar todos los tasks de cooldown pendientes
         cooldownTasks.values().forEach(id -> plugin.getServer().getScheduler().cancelTask(id));
         cooldownTasks.clear();
         jumpTimestamps.clear();
+
+        // FIX: desregistrar el listener para que no se acumule entre partidas
+        org.bukkit.event.HandlerList.unregisterAll(this);
     }
 
     // ── Congelar durante countdown ────────────────────────────────────────────
@@ -162,23 +180,13 @@ public class TNTRunListener implements Listener {
 
     // ── Doble salto ───────────────────────────────────────────────────────────
 
-    /**
-     * Intercepta el intento de vuelo del jugador y lo convierte en un doble salto.
-     *
-     * Paper/Bukkit dispara {@link PlayerToggleFlightEvent} cuando un jugador
-     * con {@code allowFlight=true} presiona doble-espacio. Cancelamos el evento
-     * (para que no empiece a volar de verdad) y aplicamos un impulso vertical.
-     */
     @EventHandler(priority = EventPriority.HIGH)
     public void onPlayerToggleFlight(PlayerToggleFlightEvent event) {
         Player player = event.getPlayer();
 
-        // Solo actuar si el jugador está activo en una partida en curso
         if (!miniGame.isActivePlayer(player)) return;
-        if (!miniGame.isRunning()) return;
+        if (!miniGame.isStrictlyRunning()) return;
         if (!miniGame.getConfig().isDoubleJumpEnabled()) return;
-
-        // Solo nos interesa cuando intenta activar el vuelo (doble salto)
         if (!event.isFlying()) return;
 
         event.setCancelled(true);
@@ -186,7 +194,6 @@ public class TNTRunListener implements Listener {
         int cooldownSecs = miniGame.getConfig().getDoubleJumpCooldown();
         UUID uuid = player.getUniqueId();
 
-        // Verificar cooldown
         Long lastJump = jumpTimestamps.get(uuid);
         long now = System.currentTimeMillis();
         if (lastJump != null) {
@@ -199,19 +206,16 @@ public class TNTRunListener implements Listener {
             }
         }
 
-        // Ejecutar doble salto
         jumpTimestamps.put(uuid, now);
         player.setAllowFlight(false);
         player.setFlying(false);
 
-        // Impulso vertical — preserva la velocidad horizontal actual
         org.bukkit.util.Vector vel = player.getVelocity();
         vel.setY(DOUBLE_JUMP_VELOCITY);
         player.setVelocity(vel);
 
         sendActionBar(player, "§a✦ ¡Doble salto!");
 
-        // Re-habilitar el vuelo tras el cooldown
         if (cooldownSecs > 0) {
             startCooldownDisplay(player, cooldownSecs);
         } else {
@@ -239,24 +243,32 @@ public class TNTRunListener implements Listener {
         }
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // ── Helpers públicos ──────────────────────────────────────────────────────
 
-    /**
-     * Limpia el estado de doble salto de un jugador cuando es eliminado.
-     * Llamado desde {@link TNTRunMiniGame#eliminatePlayer(Player)}.
-     */
     public void clearDoubleJumpState(Player player) {
         UUID uuid = player.getUniqueId();
         jumpTimestamps.remove(uuid);
         Integer taskId = cooldownTasks.remove(uuid);
         if (taskId != null) plugin.getServer().getScheduler().cancelTask(taskId);
-        player.setAllowFlight(false);
         player.setFlying(false);
+        player.setAllowFlight(false);
+    }
+
+    // ── Helpers privados ──────────────────────────────────────────────────────
+
+    private void scheduleIfSand(Block block) {
+        if (block != null && block.getType() == Material.SAND) {
+            scheduleRemoval(block);
+        }
     }
 
     /**
      * Programa la eliminación del par SAND + TNT después del delay configurado.
-     * El sand permanece visible durante el delay — el jugador puede correr.
+     *
+     * FIX de partículas: Particle.BLOCK_CRACK fue renombrado en diferentes
+     * versiones de Paper. Usamos un try/catch para intentar BLOCK_CRUMBLE
+     * (1.20.5+) y caer a BLOCK si no existe, evitando que una excepción
+     * silenciosa interrumpa la eliminación del bloque.
      */
     private void scheduleRemoval(Block sand) {
         long key = blockKey(sand);
@@ -266,6 +278,8 @@ public class TNTRunListener implements Listener {
 
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             if (sand.getType() == Material.SAND) {
+                // Partículas — con fallback por compatibilidad de versiones
+                spawnBreakParticle(sand);
                 sand.setType(Material.AIR, false);
             }
             Block tnt = sand.getRelative(0, -1, 0);
@@ -277,28 +291,65 @@ public class TNTRunListener implements Listener {
     }
 
     /**
-     * Muestra el cooldown del doble salto en la barra de acción y re-habilita
-     * el vuelo cuando termina.
+     * Spawnea partículas de ruptura de bloque con compatibilidad entre versiones.
+     * Paper 1.20.5+ renombró BLOCK_CRACK → BLOCK_CRUMBLE.
+     * Versiones anteriores usan BLOCK_CRACK o simplemente BLOCK.
+     * Si ninguna funciona, se ignora silenciosamente para no romper la mecánica.
      */
+    private void spawnBreakParticle(Block block) {
+        Location center = block.getLocation().add(0.5, 0.5, 0.5);
+        BlockData data  = block.getBlockData();
+
+        // Intentar en orden de preferencia según versión de Paper
+        Particle particle = resolveBlockParticle();
+        if (particle == null) return;
+
+        try {
+            block.getWorld().spawnParticle(particle, center, 20, 0.3, 0.3, 0.3, 0.1, data);
+        } catch (Exception ignored) {
+            // Si falla por cualquier razón, no interrumpir la eliminación del bloque
+        }
+    }
+
+    /**
+     * Detecta el nombre de partícula correcto en tiempo de ejecución.
+     * Prueba BLOCK_CRUMBLE (1.20.5+), luego BLOCK_CRACK (pre-1.20.5).
+     */
+    private static Particle resolveBlockParticle() {
+        // Intentar BLOCK_CRUMBLE primero (Paper 1.20.5+)
+        try {
+            return Particle.valueOf("BLOCK_CRUMBLE");
+        } catch (IllegalArgumentException ignored) {}
+
+        // Fallback: BLOCK_CRACK (Paper pre-1.20.5 / Spigot)
+        try {
+            return Particle.valueOf("BLOCK_CRACK");
+        } catch (IllegalArgumentException ignored) {}
+
+        // Fallback final: BLOCK (algunos builds intermedios)
+        try {
+            return Particle.valueOf("BLOCK");
+        } catch (IllegalArgumentException ignored) {}
+
+        return null; // no hay partícula disponible, omitir
+    }
+
     private void startCooldownDisplay(Player player, int totalSeconds) {
         UUID uuid = player.getUniqueId();
 
-        // Cancelar task anterior si existe
         Integer existing = cooldownTasks.remove(uuid);
         if (existing != null) plugin.getServer().getScheduler().cancelTask(existing);
 
         int[] remaining = { totalSeconds };
 
         int taskId = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
-            // Verificar que el jugador sigue activo
-            if (!miniGame.isActivePlayer(player) || !miniGame.isRunning()) {
+            if (!miniGame.isActivePlayer(player) || !miniGame.isStrictlyRunning()) {
                 Integer id = cooldownTasks.remove(uuid);
                 if (id != null) plugin.getServer().getScheduler().cancelTask(id);
                 return;
             }
 
             if (remaining[0] <= 0) {
-                // Cooldown terminó — re-habilitar vuelo
                 player.setAllowFlight(true);
                 sendActionBar(player, "§a✦ Doble salto listo");
                 Integer id = cooldownTasks.remove(uuid);
@@ -313,9 +364,8 @@ public class TNTRunListener implements Listener {
         cooldownTasks.put(uuid, taskId);
     }
 
-    /** Genera una barra visual de cooldown en la action bar. */
     private String buildCooldownBar(int remaining, int total) {
-        int bars = 10;
+        int bars   = 10;
         int filled = (int) Math.round(((double)(total - remaining) / total) * bars);
         StringBuilder bar = new StringBuilder("§8[");
         for (int i = 0; i < bars; i++) {
@@ -325,12 +375,21 @@ public class TNTRunListener implements Listener {
         return bar.toString();
     }
 
-    /** Envía un mensaje a la action bar del jugador. */
+    public int getJumpCooldownPercent(UUID uuid) {
+        if (!miniGame.getConfig().isDoubleJumpEnabled()) return 0;
+        int cooldownMs = miniGame.getConfig().getDoubleJumpCooldown() * 1000;
+        if (cooldownMs <= 0) return 0;
+        Long lastJump = jumpTimestamps.get(uuid);
+        if (lastJump == null) return 0;
+        long elapsed = System.currentTimeMillis() - lastJump;
+        if (elapsed >= cooldownMs) return 0;
+        return (int)(100 - (elapsed * 100L / cooldownMs));
+    }
+
     private void sendActionBar(Player player, String message) {
         player.sendActionBar(net.kyori.adventure.text.Component.text(message));
     }
 
-    /** Clave única por coordenada de bloque para el Set de bloques programados. */
     private long blockKey(Block block) {
         return ((long)(block.getX() & 0x3FFFFFF) << 38)
                 | ((long)(block.getY() & 0xFFF)     << 26)
