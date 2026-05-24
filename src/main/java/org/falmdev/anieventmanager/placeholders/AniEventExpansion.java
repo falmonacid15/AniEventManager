@@ -119,6 +119,7 @@ public class AniEventExpansion extends PlaceholderExpansion {
         if (params.startsWith("fh_"))        return resolveFrozenHeist(offlinePlayer, params);
         if (params.startsWith("br_"))        return resolveBoatRacing(offlinePlayer, params);
         if (params.startsWith("teamid_"))    return resolveTeamById(params);
+        if (params.startsWith("pd_")) return resolveParkourDuos(offlinePlayer, params);
 
         Player player = offlinePlayer.getPlayer();
 
@@ -156,6 +157,51 @@ public class AniEventExpansion extends PlaceholderExpansion {
                 return rank == -1 ? "-" : "#" + rank;
             }).orElse("-");
             default -> null;
+        };
+    }
+
+    private String resolveParkourDuos(OfflinePlayer offlinePlayer, String params) {
+        var pd = plugin.getParkourDuosMiniGame();
+
+        if (params.equals("pd_running")) return String.valueOf(pd.isRunning());
+        if (params.equals("pd_state")) return switch (pd.getState()) {
+            case IDLE      -> "En espera";
+            case COUNTDOWN -> "Iniciando";
+            case RUNNING   -> "En juego";
+            case FINISHED  -> "Finalizado";
+        };
+        if (params.equals("pd_time")) return pd.isRunning() ? pd.getTimeLeftFormatted() : "--:--";
+
+        Player player = offlinePlayer.getPlayer();
+        if (player == null) return switch (params) {
+            case "pd_checkpoint", "pd_checkpoints", "pd_players_in_cp",
+                 "pd_rank", "pd_score" -> "-";
+            case "pd_progress"  -> "-/-";
+            case "pd_finished"  -> "false";
+            default             -> null;
+        };
+
+        Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeamOf(player);
+        if (teamOpt.isEmpty()) return switch (params) {
+            case "pd_checkpoint", "pd_checkpoints", "pd_players_in_cp",
+                 "pd_rank", "pd_score" -> "-";
+            case "pd_progress"  -> "-/-";
+            case "pd_finished"  -> "false";
+            default             -> null;
+        };
+
+        var data = pd.getDataFor(teamOpt.get());
+        if (data == null) return "-";
+
+        return switch (params) {
+            case "pd_checkpoint"    -> String.valueOf(data.getCompletedCheckpoints() + 1);
+            case "pd_checkpoints"   -> String.valueOf(data.getTotalCheckpoints());
+            case "pd_progress"      -> (data.getCompletedCheckpoints() + 1) + "/" + data.getTotalCheckpoints();
+            case "pd_players_in_cp" -> data.getPlayersInCurrentCheckpoint() + "/2";
+            case "pd_finished"      -> String.valueOf(data.isFinished());
+            case "pd_rank"          -> data.isFinished() ? "#" + data.getFinishRank() : "-";
+            case "pd_score"         -> String.valueOf(data.getInternalScore());
+            default                 -> null;
         };
     }
 

@@ -24,6 +24,8 @@ import org.falmdev.anieventmanager.minigames.tntrun.TNTRunCommand;
 import org.falmdev.anieventmanager.minigames.tntrun.TNTRunMiniGame;
 import org.falmdev.anieventmanager.placeholders.AniEventExpansion;
 import org.falmdev.anieventmanager.minigames.bingo.BingoWallManager;
+import org.falmdev.anieventmanager.minigames.parkourduos.ParkourDuosMiniGame;
+import org.falmdev.anieventmanager.minigames.parkourduos.ParkourDuosCommand;
 
 public final class Anieventmanager extends JavaPlugin implements Listener {
 
@@ -31,16 +33,23 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
 
     private TeamManager         teamManager;
     private ScoreManager        scoreManager;
+
     private TNTRunMiniGame      tntRunMiniGame;
     private TNTRunCommand       tntRunCommand;
+
     private BingoMiniGame       bingoMiniGame;
     private BingoWallManager bingoWallManager;
     private BingoCommand        bingoCommand;
     private BingoEditGUI        bingoEditGUI;
+
     private BoatRacingMiniGame  boatRacingMiniGame;
     private BoatRacingCommand   boatRacingCommand;
+
     private FrozenHeistMiniGame frozenHeistMiniGame;
     private FrozenHeistCommand  frozenHeistCommand;
+
+    private ParkourDuosMiniGame parkourDuosMiniGame;
+    private ParkourDuosCommand  parkourDuosCommand;
 
     @Override
     public void onEnable() {
@@ -66,6 +75,9 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
 
         this.frozenHeistMiniGame = new FrozenHeistMiniGame(this);
         this.frozenHeistCommand  = new FrozenHeistCommand(this, frozenHeistMiniGame);
+
+        this.parkourDuosMiniGame = new ParkourDuosMiniGame(this);
+        this.parkourDuosCommand  = new ParkourDuosCommand(this, parkourDuosMiniGame);
 
         // Comando principal /em
         EMCommand emCommand = new EMCommand(this);
@@ -115,6 +127,7 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
                     NamedTextColor.YELLOW));
         }
         bingoMiniGame.getConfig().reload();
+        parkourDuosMiniGame.getConfig().reload();
         player.sendMessage(Component.text("✔ Configuración recargada.", NamedTextColor.GREEN));
         getLogger().info("Configuración recargada por " + player.getName());
     }
@@ -133,4 +146,6 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
     public BoatRacingCommand  getBoatRacingCommand()  { return boatRacingCommand; }
     public FrozenHeistMiniGame getFrozenHeistMiniGame() { return frozenHeistMiniGame; }
     public FrozenHeistCommand  getFrozenHeistCommand()  { return frozenHeistCommand; }
+    public ParkourDuosMiniGame getParkourDuosMiniGame() { return parkourDuosMiniGame; }
+    public ParkourDuosCommand  getParkourDuosCommand()  { return parkourDuosCommand; }
 }
