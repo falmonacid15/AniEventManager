@@ -13,26 +13,23 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
 import org.falmdev.anieventmanager.Anieventmanager;
+import org.falmdev.anieventmanager.utils.gui.GuiUtil;
+import org.falmdev.anieventmanager.utils.gui.ItemBuilder;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 /**
  * GUI de edición de una tarea del bingo.
  *
- * Layout (36 slots = 4 filas x 9 columnas):
- *   Fila 0: borders
- *   Fila 1: border | ICON(10) | border | TITLE(12) | border | DESC(14) | border | RESET(16) | border
- *   Fila 2: borders
- *   Fila 3: borders con INFO(28) en el centro
+ * Layout (36 slots = 4 filas):
+ *   Fila 1: ICON(10) | TITLE(12) | DESC(14) | RESET(16)
+ *   Fila 3: INFO(28)
  *
- * Descripción: soporta saltos de línea usando \n en el chat.
- *   Ejemplo: "Primera línea\nSegunda línea\n&aTercera en verde"
+ * Descripción soporta saltos de línea con \n. Ejemplo:
+ *   "Primera línea\nSegunda línea\n&aTercera en verde"
  */
 public class BingoEditGUI implements Listener {
 
@@ -41,6 +38,8 @@ public class BingoEditGUI implements Listener {
     private static final int SLOT_DESC  = 14;
     private static final int SLOT_RESET = 16;
     private static final int SLOT_INFO  = 28;
+
+    private static final String TITLE_PREFIX = "Editar tarea: ";
 
     private final Anieventmanager plugin;
     private final BingoConfig config;
@@ -57,10 +56,12 @@ public class BingoEditGUI implements Listener {
 
     public void open(Player player, BingoTask task) {
         Inventory inv = Bukkit.createInventory(null, 36,
-                Component.text("Editar tarea: ", NamedTextColor.GOLD)
+                Component.text(TITLE_PREFIX, NamedTextColor.GOLD)
                         .append(Component.text(task.getId(), NamedTextColor.YELLOW)));
 
-        fillBorders(inv);
+        // Llenar con borders grises y luego setear los items custom
+        GuiUtil.fillAll(inv, Material.GRAY_STAINED_GLASS_PANE);
+
         inv.setItem(SLOT_ICON,  buildIconSlot(task));
         inv.setItem(SLOT_TITLE, buildTitleSlot(task));
         inv.setItem(SLOT_DESC,  buildDescSlot(task));
@@ -76,14 +77,12 @@ public class BingoEditGUI implements Listener {
     public void onInventoryClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
 
-        String titlePlain = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
-                .plainText().serialize(event.getView().title());
-
-        if (!titlePlain.startsWith("Editar tarea: ")) return;
+        String titlePlain = GuiUtil.getTitle(event.getView());
+        if (!titlePlain.startsWith(TITLE_PREFIX)) return;
 
         event.setCancelled(true);
 
-        String taskId = titlePlain.replace("Editar tarea: ", "").trim();
+        String taskId = titlePlain.replace(TITLE_PREFIX, "").trim();
         int slot = event.getRawSlot();
 
         BingoTask task = config.loadTasks().stream()
@@ -97,7 +96,6 @@ public class BingoEditGUI implements Listener {
         }
 
         switch (slot) {
-
             case SLOT_ICON -> {
                 ItemStack hand = player.getInventory().getItemInMainHand();
                 if (hand.getType().isAir()) {
@@ -112,7 +110,7 @@ public class BingoEditGUI implements Listener {
                         .append(Component.text(hand.getType().name().toLowerCase()
                                 .replace('_', ' '), NamedTextColor.WHITE))
                         .append(Component.text(".", NamedTextColor.GREEN)));
-                plugin.getServer().getScheduler().runTask(plugin, () -> open(player, task));
+                Bukkit.getScheduler().runTask(plugin, () -> open(player, task));
             }
 
             case SLOT_TITLE -> {
@@ -151,7 +149,7 @@ public class BingoEditGUI implements Listener {
                 task.setIcon(null);
                 config.saveTask(task);
                 player.sendMessage(Component.text("✔ Icono reseteado al default.", NamedTextColor.GREEN));
-                plugin.getServer().getScheduler().runTask(plugin, () -> open(player, task));
+                Bukkit.getScheduler().runTask(plugin, () -> open(player, task));
             }
         }
     }
@@ -163,21 +161,23 @@ public class BingoEditGUI implements Listener {
         Player player = event.getPlayer();
         UUID uid = player.getUniqueId();
 
-        // Título
         if (awaitingTitle.containsKey(uid)) {
             event.setCancelled(true);
             String taskId = awaitingTitle.remove(uid);
-            String input  = event.getMessage().trim();
+            String input = event.getMessage().trim();
 
             if (input.equalsIgnoreCase("cancelar")) {
                 player.sendMessage(Component.text("Edición cancelada.", NamedTextColor.GRAY));
                 return;
             }
 
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
+            Bukkit.getScheduler().runTask(plugin, () -> {
                 BingoTask task = config.loadTasks().stream()
                         .filter(t -> t.getId().equals(taskId)).findFirst().orElse(null);
-                if (task == null) { player.sendMessage(Component.text("Tarea no encontrada.", NamedTextColor.RED)); return; }
+                if (task == null) {
+                    player.sendMessage(Component.text("Tarea no encontrada.", NamedTextColor.RED));
+                    return;
+                }
                 task.setDisplayName(input);
                 config.saveTask(task);
                 player.sendMessage(Component.text("✔ Título cambiado a: ", NamedTextColor.GREEN)
@@ -187,29 +187,29 @@ public class BingoEditGUI implements Listener {
             return;
         }
 
-        // Descripción
         if (awaitingDesc.containsKey(uid)) {
             event.setCancelled(true);
             String taskId = awaitingDesc.remove(uid);
-            String input  = event.getMessage().trim();
+            String input = event.getMessage().trim();
 
             if (input.equalsIgnoreCase("cancelar")) {
                 player.sendMessage(Component.text("Edición cancelada.", NamedTextColor.GRAY));
                 return;
             }
 
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
+            Bukkit.getScheduler().runTask(plugin, () -> {
                 BingoTask task = config.loadTasks().stream()
                         .filter(t -> t.getId().equals(taskId)).findFirst().orElse(null);
-                if (task == null) { player.sendMessage(Component.text("Tarea no encontrada.", NamedTextColor.RED)); return; }
+                if (task == null) {
+                    player.sendMessage(Component.text("Tarea no encontrada.", NamedTextColor.RED));
+                    return;
+                }
 
                 if (input.equalsIgnoreCase("borrar")) {
                     task.setDescription("");
                     config.saveTask(task);
                     player.sendMessage(Component.text("✔ Descripción eliminada.", NamedTextColor.GREEN));
                 } else {
-                    // Reemplazar \n literal por el separador interno
-                    // El jugador escribe "línea1\nlínea2", se guarda con \n real
                     String processed = input.replace("\\n", "\n");
                     task.setDescription(processed);
                     config.saveTask(task);
@@ -223,133 +223,82 @@ public class BingoEditGUI implements Listener {
     // ── Construcción de slots ─────────────────────────────────────────────────
 
     private ItemStack buildIconSlot(BingoTask task) {
-        Material mat  = task.hasCustomIcon() ? task.getIcon() : Material.ITEM_FRAME;
-        ItemStack item = new ItemStack(mat);
-        ItemMeta  meta = item.getItemMeta();
-        meta.displayName(Component.text("Cambiar icono", NamedTextColor.GOLD)
-                .decoration(TextDecoration.ITALIC, false));
-        List<Component> lore = new ArrayList<>();
-        lore.add(Component.empty());
-        lore.add(Component.text("Icono actual: ", NamedTextColor.GRAY)
-                .decoration(TextDecoration.ITALIC, false)
-                .append(Component.text(
-                        task.hasCustomIcon()
-                                ? task.getIcon().name().toLowerCase().replace('_', ' ')
-                                : "default (cristal)",
-                        NamedTextColor.WHITE).decoration(TextDecoration.ITALIC, false)));
-        lore.add(Component.empty());
-        lore.add(Component.text("Click con un ítem en mano", NamedTextColor.YELLOW)
-                .decoration(TextDecoration.ITALIC, false));
-        lore.add(Component.text("para usarlo como icono.", NamedTextColor.YELLOW)
-                .decoration(TextDecoration.ITALIC, false));
-        meta.lore(lore);
-        item.setItemMeta(meta);
-        return item;
+        Material mat = task.hasCustomIcon() ? task.getIcon() : Material.ITEM_FRAME;
+        String currentIcon = task.hasCustomIcon()
+                ? task.getIcon().name().toLowerCase().replace('_', ' ')
+                : "default (cristal)";
+
+        return ItemBuilder.of(mat)
+                .name("Cambiar icono", NamedTextColor.GOLD)
+                .emptyLine()
+                .lore(GuiUtil.noItalic(Component.text("Icono actual: ", NamedTextColor.GRAY)
+                        .append(Component.text(currentIcon, NamedTextColor.WHITE))))
+                .emptyLine()
+                .lore(NamedTextColor.YELLOW,
+                        "Click con un ítem en mano",
+                        "para usarlo como icono.")
+                .build();
     }
 
     private ItemStack buildTitleSlot(BingoTask task) {
-        ItemStack item = new ItemStack(Material.NAME_TAG);
-        ItemMeta  meta = item.getItemMeta();
-        meta.displayName(Component.text("Cambiar título", NamedTextColor.GOLD)
-                .decoration(TextDecoration.ITALIC, false));
-        List<Component> lore = new ArrayList<>();
-        lore.add(Component.empty());
-        lore.add(Component.text("Título actual: ", NamedTextColor.GRAY)
-                .decoration(TextDecoration.ITALIC, false)
-                .append(LegacyComponentSerializer.legacyAmpersand()
-                        .deserialize(task.getDisplayName())
-                        .decoration(TextDecoration.ITALIC, false)));
-        lore.add(Component.empty());
-        lore.add(Component.text("Click para escribir en el chat.", NamedTextColor.YELLOW)
-                .decoration(TextDecoration.ITALIC, false));
-        lore.add(Component.text("Soporta &a, &c, &l, etc.", NamedTextColor.GRAY)
-                .decoration(TextDecoration.ITALIC, false));
-        meta.lore(lore);
-        item.setItemMeta(meta);
-        return item;
+        return ItemBuilder.of(Material.NAME_TAG)
+                .name("Cambiar título", NamedTextColor.GOLD)
+                .emptyLine()
+                .lore(GuiUtil.noItalic(Component.text("Título actual: ", NamedTextColor.GRAY)
+                        .append(LegacyComponentSerializer.legacyAmpersand()
+                                .deserialize(task.getDisplayName())
+                                .decoration(TextDecoration.ITALIC, false))))
+                .emptyLine()
+                .lore(NamedTextColor.YELLOW, "Click para escribir en el chat.")
+                .lore("Soporta &a, &c, &l, etc.")
+                .build();
     }
 
     private ItemStack buildDescSlot(BingoTask task) {
-        ItemStack item = new ItemStack(Material.WRITABLE_BOOK);
-        ItemMeta  meta = item.getItemMeta();
-        meta.displayName(Component.text("Cambiar descripción", NamedTextColor.GOLD)
-                .decoration(TextDecoration.ITALIC, false));
-        List<Component> lore = new ArrayList<>();
-        lore.add(Component.empty());
+        ItemBuilder b = ItemBuilder.of(Material.WRITABLE_BOOK)
+                .name("Cambiar descripción", NamedTextColor.GOLD)
+                .emptyLine();
+
         if (task.hasDescription()) {
-            // Mostrar cada línea separada
             for (String line : task.getDescription().split("\n")) {
-                lore.add(LegacyComponentSerializer.legacyAmpersand()
+                b.lore(LegacyComponentSerializer.legacyAmpersand()
                         .deserialize(line)
                         .decoration(TextDecoration.ITALIC, false));
             }
         } else {
-            lore.add(Component.text("Sin descripción.", NamedTextColor.GRAY)
-                    .decoration(TextDecoration.ITALIC, false));
+            b.lore("Sin descripción.");
         }
-        lore.add(Component.empty());
-        lore.add(Component.text("Click para escribir en el chat.", NamedTextColor.YELLOW)
-                .decoration(TextDecoration.ITALIC, false));
-        lore.add(Component.text("Usa \\n para saltos de línea.", NamedTextColor.GRAY)
-                .decoration(TextDecoration.ITALIC, false));
-        lore.add(Component.text("Usa &a, &c, etc. para colores.", NamedTextColor.GRAY)
-                .decoration(TextDecoration.ITALIC, false));
-        lore.add(Component.text("'borrar' para eliminarla.", NamedTextColor.GRAY)
-                .decoration(TextDecoration.ITALIC, false));
-        meta.lore(lore);
-        item.setItemMeta(meta);
-        return item;
+
+        return b.emptyLine()
+                .lore(NamedTextColor.YELLOW, "Click para escribir en el chat.")
+                .lore("Usa \\n para saltos de línea.",
+                        "Usa &a, &c, etc. para colores.",
+                        "'borrar' para eliminarla.")
+                .build();
     }
 
     private ItemStack buildResetSlot(BingoTask task) {
-        ItemStack item = new ItemStack(Material.BARRIER);
-        ItemMeta  meta = item.getItemMeta();
-        meta.displayName(Component.text("Quitar icono personalizado", NamedTextColor.RED)
-                .decoration(TextDecoration.ITALIC, false));
-        List<Component> lore = new ArrayList<>();
-        lore.add(Component.empty());
+        ItemBuilder b = ItemBuilder.of(Material.BARRIER)
+                .name("Quitar icono personalizado", NamedTextColor.RED)
+                .emptyLine();
+
         if (task.hasCustomIcon()) {
-            lore.add(Component.text("Click para volver al cristal", NamedTextColor.YELLOW)
-                    .decoration(TextDecoration.ITALIC, false));
-            lore.add(Component.text("de color por defecto.", NamedTextColor.YELLOW)
-                    .decoration(TextDecoration.ITALIC, false));
+            b.lore(NamedTextColor.YELLOW,
+                    "Click para volver al cristal",
+                    "de color por defecto.");
         } else {
-            lore.add(Component.text("No hay icono personalizado.", NamedTextColor.GRAY)
-                    .decoration(TextDecoration.ITALIC, false));
+            b.lore("No hay icono personalizado.");
         }
-        meta.lore(lore);
-        item.setItemMeta(meta);
-        return item;
+        return b.build();
     }
 
     private ItemStack buildInfoSlot(BingoTask task) {
-        ItemStack item = new ItemStack(Material.PAPER);
-        ItemMeta  meta = item.getItemMeta();
-        meta.displayName(Component.text("Información", NamedTextColor.AQUA)
-                .decoration(TextDecoration.ITALIC, false));
-        List<Component> lore = new ArrayList<>();
-        lore.add(Component.empty());
-        lore.add(Component.text("ID: " + task.getId(), NamedTextColor.GRAY)
-                .decoration(TextDecoration.ITALIC, false));
-        lore.add(Component.text("Tipo: " + task.getType().name(), NamedTextColor.GRAY)
-                .decoration(TextDecoration.ITALIC, false));
-        lore.add(Component.text("Descripción: " + task.getShortDescription(),
-                NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
-        meta.lore(lore);
-        item.setItemMeta(meta);
-        return item;
-    }
-
-    private void fillBorders(Inventory inv) {
-        ItemStack border = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
-        ItemMeta  meta   = border.getItemMeta();
-        meta.displayName(Component.text(" ").decoration(TextDecoration.ITALIC, false));
-        border.setItemMeta(meta);
-        for (int i = 0; i < 36; i++) inv.setItem(i, border);
-        inv.setItem(SLOT_ICON,  null);
-        inv.setItem(SLOT_TITLE, null);
-        inv.setItem(SLOT_DESC,  null);
-        inv.setItem(SLOT_RESET, null);
-        inv.setItem(SLOT_INFO,  null);
+        return ItemBuilder.of(Material.PAPER)
+                .name("Información", NamedTextColor.AQUA)
+                .emptyLine()
+                .lore("ID: " + task.getId(),
+                        "Tipo: " + task.getType().name(),
+                        "Descripción: " + task.getShortDescription())
+                .build();
     }
 }

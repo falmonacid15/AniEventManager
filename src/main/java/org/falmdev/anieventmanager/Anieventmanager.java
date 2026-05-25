@@ -33,6 +33,11 @@ import org.falmdev.anieventmanager.placeholders.AniEventExpansion;
 import org.falmdev.anieventmanager.minigames.bingo.BingoWallManager;
 import org.falmdev.anieventmanager.minigames.parkourduos.ParkourDuosMiniGame;
 import org.falmdev.anieventmanager.minigames.parkourduos.ParkourDuosCommand;
+import org.falmdev.anieventmanager.cinematics.CinematicAdminGUI;
+import org.falmdev.anieventmanager.cinematics.CinematicListener;
+import org.falmdev.anieventmanager.cinematics.CinematicManager;
+import org.falmdev.anieventmanager.cinematics.CinematicWaypointGUI;
+import org.falmdev.anieventmanager.cinematics.CinematicEffects;
 
 import java.util.logging.Logger;
 
@@ -68,6 +73,11 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
     private ParkourDuosMiniGame parkourDuosMiniGame;
     private ParkourDuosCommand  parkourDuosCommand;
 
+    // Cinematicas
+    private CinematicManager    cinematicManager;
+    private CinematicAdminGUI   cinematicAdminGUI;
+    private CinematicWaypointGUI cinematicWaypointGUI;
+
     @Override
     public void onEnable() {
         instance = this;
@@ -87,6 +97,13 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
         logSection(log, "MiniGameManager");
         this.miniGameManager = new MiniGameManager(this);
         logDone(log, "MiniGameManager");
+
+        logSection(log, "CinematicManager");
+        this.cinematicManager     = new CinematicManager(this);
+        this.cinematicAdminGUI    = new CinematicAdminGUI(this);
+        this.cinematicWaypointGUI = new CinematicWaypointGUI(this);
+        logDone(log, "CinematicManager",
+                cinematicManager.getIds().size() + " cinematicas");
 
         logSection(log, "TeamLobbyManager");
         this.teamLobbyManager = new TeamLobbyManager(this);
@@ -164,6 +181,9 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
         Bukkit.getPluginManager().registerEvents(playerSelectorGUI, this);
         Bukkit.getPluginManager().registerEvents(confirmGUI, this);
         Bukkit.getPluginManager().registerEvents(new TeamLobbyListener(this), this);
+        Bukkit.getPluginManager().registerEvents(new CinematicListener(this), this);
+        Bukkit.getPluginManager().registerEvents(cinematicAdminGUI, this);
+        Bukkit.getPluginManager().registerEvents(cinematicWaypointGUI, this);
         Bukkit.getPluginManager().registerEvents(this, this);
         logDone(log, "Listeners");
 
@@ -179,10 +199,13 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
             new AniEventExpansion(this).register();
             log.info("  (PlaceholderAPI) -> Expansion registrada correctamente.");
         } else {
-            log.warning("  (PlaceholderAPI) -> No encontrado — los placeholders no estaran disponibles.");
+            log.warning("  (PlaceholderAPI) -> No encontrado...");
         }
 
-        // Una vez los mundos están cargados, refrescamos el lobby
+        // ── Cargar cinematicas AQUÍ (mundos ya disponibles) ──────────────────
+        cinematicManager.loadAll();
+        log.info("  (CinematicManager) -> Cinematicas cargadas post-world-load.");
+
         Bukkit.getScheduler().runTaskLater(this,
                 () -> teamLobbyManager.refreshAll(), 20L);
     }
@@ -287,4 +310,10 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
     public FrozenHeistCommand  getFrozenHeistCommand()  { return frozenHeistCommand; }
     public ParkourDuosMiniGame getParkourDuosMiniGame() { return parkourDuosMiniGame; }
     public ParkourDuosCommand  getParkourDuosCommand()  { return parkourDuosCommand; }
+    public CinematicManager    getCinematicManager()    { return cinematicManager; }
+    public CinematicAdminGUI   getCinematicAdminGUI()   { return cinematicAdminGUI; }
+    public CinematicWaypointGUI getCinematicWaypointGUI() { return cinematicWaypointGUI; }
+    public CinematicEffects getCinematicEffects() {
+        return cinematicManager.getEffects();
+    }
 }

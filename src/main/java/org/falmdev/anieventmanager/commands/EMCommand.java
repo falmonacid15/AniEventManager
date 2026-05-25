@@ -47,6 +47,7 @@ public class EMCommand implements CommandExecutor, TabCompleter {
             case "boatracing"  -> plugin.getBoatRacingCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
             case "frozenheist" -> plugin.getFrozenHeistCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
             case "pd"          -> plugin.getParkourDuosCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
+            case "cinematic" -> handleCinematic(player, Arrays.copyOfRange(args, 1, args.length));
             case "help"        -> sendHelp(player);
             case "reload"      -> plugin.reloadAll(player);
             default            -> player.sendMessage(Component.text("Subcomando desconocido. Usa ", NamedTextColor.RED)
@@ -260,7 +261,7 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         if (!(sender instanceof Player player) || !player.isOp()) return List.of();
 
         if (args.length == 1)
-            return filter(List.of("team", "score", "tntrun", "bingo", "boatracing", "frozenheist", "pd", "help", "reload"), args[0]);
+            return filter(List.of("team", "score", "tntrun", "bingo", "boatracing", "frozenheist", "pd", "cinematic", "help", "reload"), args[0]);
 
         if (args[0].equalsIgnoreCase("team")) {
             if (args.length == 2) return filter(List.of(
@@ -297,6 +298,13 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         if (args[0].equalsIgnoreCase("frozenheist"))
             return plugin.getFrozenHeistCommand().tabComplete(Arrays.copyOfRange(args, 1, args.length));
 
+         if (args[0].equalsIgnoreCase("cinematic")) {
+             if (args.length == 2) return filter(List.of(
+                     "create", "delete", "list", "record", "stop-record", "play", "stop", "gui"), args[1]);
+            if (args.length == 3 && List.of("delete", "record", "play").contains(args[1].toLowerCase()))
+                 return filter(new ArrayList<>(plugin.getCinematicManager().getIds()), args[2]);
+         }
+
         if (args[0].equalsIgnoreCase("pd"))
             return plugin.getParkourDuosCommand().tabComplete(Arrays.copyOfRange(args, 1, args.length));
 
@@ -313,6 +321,7 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(help("/em bingo ...",       "Minijuego Bingo"));
         player.sendMessage(help("/em boatracing ...",  "Minijuego Boat Racing"));
         player.sendMessage(help("/em frozenheist ...", "Minijuego Frozen Heist"));
+        player.sendMessage(help("/em cinematic ...", "Gestión de cinematicas"));
         player.sendMessage(help("/em pd ...",          "Minijuego Parkour Duos"));
         player.sendMessage(help("/em reload",          "Recarga la configuración"));
         player.sendMessage(help("/em help",            "Muestra esta ayuda"));
@@ -345,6 +354,127 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(help("/em score set <id> <pts>",    "Setea el puntaje exacto"));
         player.sendMessage(help("/em score reset <id|all>",    "Resetea puntaje(s)"));
         player.sendMessage(help("/em score list",              "Tabla de puntajes"));
+    }
+
+    private void handleCinematic(Player player, String[] args) {
+        if (args.length == 0) { sendCinematicHelp(player); return; }
+
+        switch (args[0].toLowerCase()) {
+
+            case "create" -> {
+                if (args.length < 3) {
+                    player.sendMessage(Component.text("Uso: /em cinematic create <id> <nombre>",
+                            NamedTextColor.YELLOW));
+                    return;
+                }
+                String id   = args[1].toLowerCase();
+                String name = joinFrom(args, 2);
+                var c = plugin.getCinematicManager().create(id, name);
+                if (c == null) {
+                    player.sendMessage(Component.text("✘ Ya existe una cinematica con la id '",
+                                    NamedTextColor.RED).append(Component.text(id, NamedTextColor.YELLOW))
+                            .append(Component.text("'.", NamedTextColor.RED)));
+                } else {
+                    player.sendMessage(Component.text("✔ Cinematica '", NamedTextColor.GREEN)
+                            .append(Component.text(name, NamedTextColor.YELLOW))
+                            .append(Component.text("' creada.", NamedTextColor.GREEN)));
+                }
+            }
+
+            case "delete" -> {
+                if (args.length < 2) {
+                    player.sendMessage(Component.text("Uso: /em cinematic delete <id>",
+                            NamedTextColor.YELLOW));
+                    return;
+                }
+                boolean ok = plugin.getCinematicManager().delete(args[1]);
+                player.sendMessage(ok
+                        ? Component.text("✔ Cinematica eliminada.", NamedTextColor.GREEN)
+                        : Component.text("✘ No se pudo eliminar (no existe o está en uso).",
+                        NamedTextColor.RED));
+            }
+
+            case "list" -> {
+                var all = plugin.getCinematicManager().getAllCinematics();
+                if (all.isEmpty()) {
+                    player.sendMessage(Component.text("No hay cinematicas creadas.", NamedTextColor.GRAY));
+                    return;
+                }
+                player.sendMessage(Component.text("━━━ Cinematicas (" + all.size() + ") ━━━",
+                        NamedTextColor.GOLD));
+                for (var c : all) {
+                    player.sendMessage(Component.text("  " + c.getId() + " → ", NamedTextColor.GRAY)
+                            .append(Component.text(c.getDisplayName(), NamedTextColor.YELLOW))
+                            .append(Component.text("  [" + c.getWaypoints().size() + " waypoints]",
+                                    NamedTextColor.DARK_GRAY))
+                            .append(Component.text("  " + c.getState().name(), NamedTextColor.GRAY)));
+                }
+            }
+
+            case "record" -> {
+                if (args.length < 2) {
+                    player.sendMessage(Component.text("Uso: /em cinematic record <id>",
+                            NamedTextColor.YELLOW));
+                    return;
+                }
+                var cOpt = plugin.getCinematicManager().get(args[1]);
+                if (cOpt.isEmpty()) {
+                    player.sendMessage(Component.text("✘ Cinematica no encontrada.", NamedTextColor.RED));
+                    return;
+                }
+                boolean ok = plugin.getCinematicManager().getRecorder()
+                        .startRecording(player, cOpt.get());
+                if (!ok) {
+                    player.sendMessage(Component.text(
+                            "✘ No se pudo iniciar la grabación (ya hay una activa o la cinematica no está IDLE).",
+                            NamedTextColor.RED));
+                }
+            }
+
+            case "stop-record" -> {
+                if (!plugin.getCinematicManager().getRecorder().isRecording()) {
+                    player.sendMessage(Component.text("No hay ninguna grabación activa.", NamedTextColor.GRAY));
+                    return;
+                }
+                plugin.getCinematicManager().getRecorder().stopRecording();
+            }
+
+            case "play" -> {
+                if (args.length < 2) {
+                    player.sendMessage(Component.text("Uso: /em cinematic play <id>",
+                            NamedTextColor.YELLOW));
+                    return;
+                }
+                boolean ok = plugin.getCinematicManager().play(args[1]);
+                player.sendMessage(ok
+                        ? Component.text("▶ Cinematica reproduciéndose.", NamedTextColor.GREEN)
+                        : Component.text("✘ No se pudo reproducir (no existe, muy pocos waypoints, o ya hay una activa).",
+                        NamedTextColor.RED));
+            }
+
+            case "stop" -> {
+                boolean ok = plugin.getCinematicManager().stop();
+                player.sendMessage(ok
+                        ? Component.text("■ Reproducción detenida.", NamedTextColor.YELLOW)
+                        : Component.text("No hay ninguna cinematica reproduciéndose.", NamedTextColor.GRAY));
+            }
+
+            case "gui" -> plugin.getCinematicAdminGUI().openList(player);
+
+            default -> sendCinematicHelp(player);
+        }
+    }
+
+    private void sendCinematicHelp(Player player) {
+        player.sendMessage(Component.text("━━━ /em cinematic ━━━", NamedTextColor.GOLD));
+        player.sendMessage(help("/em cinematic create <id> <nombre>", "Crea una cinematica"));
+        player.sendMessage(help("/em cinematic delete <id>",          "Elimina una cinematica"));
+        player.sendMessage(help("/em cinematic list",                  "Lista todas las cinematicas"));
+        player.sendMessage(help("/em cinematic record <id>",           "Inicia grabación con Magic Stick"));
+        player.sendMessage(help("/em cinematic stop-record",           "Termina la grabación actual"));
+        player.sendMessage(help("/em cinematic play <id>",             "Reproduce una cinematica (debug)"));
+        player.sendMessage(help("/em cinematic stop",                  "Detiene la reproducción"));
+        player.sendMessage(help("/em cinematic gui",                   "Abre el panel de administración"));
     }
 
     // ── Utilidades ────────────────────────────────────────────────────────────

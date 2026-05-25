@@ -13,11 +13,12 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
+import org.falmdev.anieventmanager.utils.gui.GuiUtil;
+import org.falmdev.anieventmanager.utils.gui.HeadUtil;
+import org.falmdev.anieventmanager.utils.gui.ItemBuilder;
 
 import java.time.Duration;
 import java.util.*;
@@ -51,7 +52,7 @@ public class BingoGUI implements Listener {
         Inventory inv = Bukkit.createInventory(new BingoHolder(config), 54,
                 Component.text("✦ Tarjeta de Bingo", NamedTextColor.GOLD));
 
-        fillBorders(inv);
+        GuiUtil.fillBorders(inv);
 
         Map<String, BingoTask> configTasks = config.loadTasks().stream()
                 .collect(Collectors.toMap(BingoTask::getId, t -> t));
@@ -74,7 +75,7 @@ public class BingoGUI implements Listener {
 
                 inv.setItem(GRID_SLOTS[i], buildTaskItem(inMemory, displayName, icon, description));
             } else {
-                inv.setItem(GRID_SLOTS[i], buildEmptySlot());
+                inv.setItem(GRID_SLOTS[i], GuiUtil.emptyPane());
             }
         }
 
@@ -93,68 +94,56 @@ public class BingoGUI implements Listener {
                    ? Material.LIME_STAINED_GLASS_PANE
                    : Material.RED_STAINED_GLASS_PANE);
 
-        ItemStack item = new ItemStack(mat);
-        ItemMeta  meta = item.getItemMeta();
-
-        // Nombre con color codes
-        Component nameComponent = LegacyComponentSerializer.legacyAmpersand()
-                .deserialize(displayName)
-                .decoration(TextDecoration.ITALIC, false);
-
+        // Construir el nombre — soporta &-codes via LegacyComponentSerializer
+        Component nameComponent;
         if (task.isCompleted() && !displayName.contains("&")) {
             nameComponent = Component.text(displayName, NamedTextColor.GREEN)
                     .decoration(TextDecoration.ITALIC, false);
+        } else {
+            nameComponent = LegacyComponentSerializer.legacyAmpersand()
+                    .deserialize(displayName)
+                    .decoration(TextDecoration.ITALIC, false);
         }
 
-        meta.displayName(nameComponent);
+        ItemBuilder b = ItemBuilder.of(mat).name(nameComponent);
 
-        List<Component> lore = new ArrayList<>();
-
-        // Descripción — soporta \n como saltos de línea reales
+        // Descripción
         if (description != null && !description.isEmpty()) {
-            lore.add(Component.empty());
+            b.emptyLine();
             for (String line : description.split("\n")) {
-                lore.add(LegacyComponentSerializer.legacyAmpersand()
+                b.lore(LegacyComponentSerializer.legacyAmpersand()
                         .deserialize(line)
                         .decoration(TextDecoration.ITALIC, false));
             }
         }
 
-        lore.add(Component.empty());
+        b.emptyLine();
 
         // Estado
         if (task.isCompleted()) {
-            lore.add(Component.text("✔ Completada", NamedTextColor.GREEN)
-                    .decoration(TextDecoration.ITALIC, false));
+            b.lore(NamedTextColor.GREEN, "✔ Completada");
         } else {
-            lore.add(Component.text("✘ Pendiente", NamedTextColor.RED)
-                    .decoration(TextDecoration.ITALIC, false));
+            b.lore(NamedTextColor.RED, "✘ Pendiente");
         }
 
-        // Progreso — tipos que usan barra
+        // Progreso
         boolean showProgress = switch (task.getType()) {
             case OBTAIN_ITEM, CRAFT_ITEM, KILL_MOB, TRADE_ANY, TRADE_ITEM -> true;
             default -> false;
         };
 
         if (showProgress) {
-            lore.add(Component.empty());
-            lore.add(Component.text("Progreso: ", NamedTextColor.GRAY)
-                    .decoration(TextDecoration.ITALIC, false)
+            b.emptyLine();
+            b.lore(GuiUtil.noItalic(Component.text("Progreso: ", NamedTextColor.GRAY)
                     .append(Component.text(task.getProgress() + "/" + task.getRequired(),
-                                    task.isCompleted() ? NamedTextColor.GREEN : NamedTextColor.YELLOW)
-                            .decoration(TextDecoration.ITALIC, false)));
-            lore.add(buildProgressBar(task.getProgress(), task.getRequired()));
+                            task.isCompleted() ? NamedTextColor.GREEN : NamedTextColor.YELLOW))));
+            b.lore(buildProgressBar(task.getProgress(), task.getRequired()));
         }
 
-        lore.add(Component.empty());
-        lore.add(Component.text("Tipo: " + prettyType(task.getType()), NamedTextColor.DARK_GRAY)
-                .decoration(TextDecoration.ITALIC, false));
+        b.emptyLine();
+        b.lore(NamedTextColor.DARK_GRAY, "Tipo: " + prettyType(task.getType()));
 
-        meta.lore(lore);
-        hideItemDetails(meta);
-        item.setItemMeta(meta);
-        return item;
+        return b.hideDetails().build();
     }
 
     private static Component buildProgressBar(int current, int required) {
@@ -162,96 +151,51 @@ public class BingoGUI implements Listener {
         int filled = required > 0 ? Math.min(bars, (current * bars) / required) : bars;
         int empty  = bars - filled;
 
-        Component bar = Component.text("  ", NamedTextColor.GRAY)
-                .decoration(TextDecoration.ITALIC, false);
+        Component bar = GuiUtil.noItalic(Component.text("  ", NamedTextColor.GRAY));
         for (int i = 0; i < filled; i++)
-            bar = bar.append(Component.text("█", NamedTextColor.GREEN)
-                    .decoration(TextDecoration.ITALIC, false));
+            bar = bar.append(GuiUtil.noItalic(Component.text("█", NamedTextColor.GREEN)));
         for (int i = 0; i < empty; i++)
-            bar = bar.append(Component.text("░", NamedTextColor.DARK_GRAY)
-                    .decoration(TextDecoration.ITALIC, false));
+            bar = bar.append(GuiUtil.noItalic(Component.text("░", NamedTextColor.DARK_GRAY)));
         return bar;
     }
 
     private static ItemStack buildInfoItem(BingoCard card) {
-        ItemStack item = new ItemStack(Material.NETHER_STAR);
-        ItemMeta  meta = item.getItemMeta();
-
-        meta.displayName(
-                Component.text("✦ ", NamedTextColor.GOLD)
-                        .append(Component.text(card.getTeam().getDisplayName(), card.getTeam().getColor()))
-                        .decoration(TextDecoration.ITALIC, false));
-
         int done    = card.getCompletedCount();
         int total   = card.getTotalTasks();
         int percent = card.getCompletionPercent();
 
-        List<Component> lore = new ArrayList<>();
-        lore.add(Component.empty());
-        lore.add(Component.text("Completadas: ", NamedTextColor.GRAY)
-                .decoration(TextDecoration.ITALIC, false)
-                .append(Component.text(done + "/" + total, NamedTextColor.YELLOW)
-                        .decoration(TextDecoration.ITALIC, false)));
-        lore.add(Component.text("Porcentaje: ", NamedTextColor.GRAY)
-                .decoration(TextDecoration.ITALIC, false)
-                .append(Component.text(percent + "%",
-                                percent == 100 ? NamedTextColor.GREEN : NamedTextColor.AQUA)
-                        .decoration(TextDecoration.ITALIC, false)));
-        lore.add(Component.empty());
-        lore.add(buildProgressBar(done, total));
+        String base64 = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvZTcxYTIyODVjOTFjNmM3Mjc0NzYwNDgxOWVlNTIyM2E5MGFhNTFlNmU3OWU0ZjlhZjY2MjhlYzhmMGRkN2RmYyJ9fX0=";
 
-        meta.lore(lore);
-        item.setItemMeta(meta);
-        return item;
+        return ItemBuilder.of(HeadUtil.fromBase64(base64))
+                .name(GuiUtil.noItalic(Component.text("✦ ", NamedTextColor.GOLD)
+                        .append(Component.text(card.getTeam().getDisplayName(), card.getTeam().getColor()))))
+                .emptyLine()
+                .lore(GuiUtil.label("Completadas",
+                        Component.text(done + "/" + total, NamedTextColor.YELLOW)))
+                .lore(GuiUtil.label("Porcentaje",
+                        Component.text(percent + "%",
+                                percent == 100 ? NamedTextColor.GREEN : NamedTextColor.AQUA)))
+                .emptyLine()
+                .lore(buildProgressBar(done, total))
+                .build();
     }
 
     private static ItemStack buildTeleportItem(BingoConfig config) {
-        ItemStack item = new ItemStack(Material.BEACON);
-        ItemMeta  meta = item.getItemMeta();
-        meta.displayName(Component.text("✦ Teletransportarse al spawn", NamedTextColor.AQUA)
-                .decoration(TextDecoration.ITALIC, false));
-        List<Component> lore = new ArrayList<>();
-        lore.add(Component.empty());
+        ItemBuilder b = ItemBuilder.of(Material.BEACON)
+                .name("✦ Teletransportarse al spawn", NamedTextColor.AQUA)
+                .emptyLine();
+
         if (config.getSpawn() != null) {
-            org.bukkit.Location s = config.getSpawn();
-            lore.add(Component.text("Click para ir al spawn del Bingo.", NamedTextColor.YELLOW)
-                    .decoration(TextDecoration.ITALIC, false));
-            lore.add(Component.empty());
-            lore.add(Component.text(String.format("%.1f, %.1f, %.1f", s.getX(), s.getY(), s.getZ()),
-                    NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false));
+            Location s = config.getSpawn();
+            b.lore(NamedTextColor.YELLOW, "Click para ir al spawn del Bingo.");
+            b.emptyLine();
+            b.lore(NamedTextColor.DARK_GRAY,
+                    String.format("%.1f, %.1f, %.1f", s.getX(), s.getY(), s.getZ()));
         } else {
-            lore.add(Component.text("Spawn no configurado.", NamedTextColor.RED)
-                    .decoration(TextDecoration.ITALIC, false));
+            b.lore(NamedTextColor.RED, "Spawn no configurado.");
         }
-        meta.lore(lore);
-        hideItemDetails(meta);
-        item.setItemMeta(meta);
-        return item;
-    }
 
-    private static ItemStack buildEmptySlot() {
-        ItemStack item = new ItemStack(Material.BLACK_STAINED_GLASS_PANE);
-        ItemMeta  meta = item.getItemMeta();
-        meta.displayName(Component.text(" ").decoration(TextDecoration.ITALIC, false));
-        item.setItemMeta(meta);
-        return item;
-    }
-
-    private static void fillBorders(Inventory inv) {
-        ItemStack border = new ItemStack(Material.BLACK_STAINED_GLASS_PANE);
-        ItemMeta  meta   = border.getItemMeta();
-        meta.displayName(Component.text(" ").decoration(TextDecoration.ITALIC, false));
-        border.setItemMeta(meta);
-
-        for (int i = 0; i < 9; i++) inv.setItem(i, border);
-        for (int row = 1; row <= 5; row++) {
-            inv.setItem(row * 9,     border);
-            inv.setItem(row * 9 + 1, border);
-            inv.setItem(row * 9 + 6, border);
-            inv.setItem(row * 9 + 7, border);
-            inv.setItem(row * 9 + 8, border);
-        }
-        for (int i = 45; i < 54; i++) inv.setItem(i, border);
+        return b.hideDetails().build();
     }
 
     // ── Listener ──────────────────────────────────────────────────────────────
@@ -264,7 +208,7 @@ public class BingoGUI implements Listener {
             if (event.getRawSlot() != TELEPORT_SLOT) return;
             if (!(event.getWhoClicked() instanceof Player player)) return;
 
-            org.bukkit.Location spawn = holder.getConfig().getSpawn();
+            Location spawn = holder.getConfig().getSpawn();
             if (spawn == null) {
                 player.sendMessage(Component.text(
                         "El spawn del Bingo no está configurado.", NamedTextColor.RED));
@@ -292,20 +236,18 @@ public class BingoGUI implements Listener {
         };
     }
 
-    private void startTeleportCountdown(Player player, org.bukkit.Location destination) {
+    private void startTeleportCountdown(Player player, Location destination) {
         UUID uid = player.getUniqueId();
         teleportOrigins.put(uid, player.getLocation().clone());
 
         int[] count = { 5 };
 
         BukkitTask task = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
-            // Verificar que el jugador sigue online
             if (!player.isOnline()) {
                 cancelTeleport(uid);
                 return;
             }
 
-            // Verificar que no se haya movido (comparar bloque XZ+Y)
             Location origin = teleportOrigins.get(uid);
             Location current = player.getLocation();
             if (origin != null && (
@@ -315,48 +257,28 @@ public class BingoGUI implements Listener {
                 cancelTeleport(uid);
                 player.sendMessage(Component.text(
                         "✘ Teletransporte cancelado por movimiento.", NamedTextColor.RED));
-                Title cancelTitle = Title.title(
+                player.showTitle(Title.title(
                         Component.text("✘ Cancelado", NamedTextColor.RED),
                         Component.text("Te moviste", NamedTextColor.GRAY),
-                        Title.Times.times(
-                                Duration.ofMillis(100),
-                                Duration.ofMillis(800),
-                                Duration.ofMillis(300)
-                        )
-                );
-                player.showTitle(cancelTitle);
+                        Title.Times.times(Duration.ofMillis(100), Duration.ofMillis(800), Duration.ofMillis(300))));
                 return;
             }
 
             if (count[0] > 0) {
-                // Mostrar countdown
-                Title countdown = Title.title(
+                player.showTitle(Title.title(
                         Component.text(String.valueOf(count[0]), NamedTextColor.YELLOW),
                         Component.text("No te muevas...", NamedTextColor.GRAY),
-                        Title.Times.times(
-                                Duration.ofMillis(50),
-                                Duration.ofMillis(900),
-                                Duration.ofMillis(50)
-                        )
-                );
-                player.showTitle(countdown);
+                        Title.Times.times(Duration.ofMillis(50), Duration.ofMillis(900), Duration.ofMillis(50))));
                 count[0]--;
             } else {
-                // Teletransportar
                 cancelTeleport(uid);
                 player.teleport(destination);
                 player.sendMessage(Component.text(
                         "✦ Teletransportado al spawn del Bingo.", NamedTextColor.AQUA));
-                Title goTitle = Title.title(
+                player.showTitle(Title.title(
                         Component.text("✦ ¡Listo!", NamedTextColor.GREEN),
                         Component.text("Spawn del Bingo", NamedTextColor.AQUA),
-                        Title.Times.times(
-                                Duration.ofMillis(100),
-                                Duration.ofMillis(1200),
-                                Duration.ofMillis(400)
-                        )
-                );
-                player.showTitle(goTitle);
+                        Title.Times.times(Duration.ofMillis(100), Duration.ofMillis(1200), Duration.ofMillis(400))));
             }
         }, 0L, 20L);
 
@@ -367,15 +289,5 @@ public class BingoGUI implements Listener {
         BukkitTask task = pendingTeleports.remove(uid);
         if (task != null && !task.isCancelled()) task.cancel();
         teleportOrigins.remove(uid);
-    }
-
-    private static void hideItemDetails(ItemMeta meta) {
-        meta.addItemFlags(
-                ItemFlag.HIDE_ATTRIBUTES,
-                ItemFlag.HIDE_ENCHANTS,
-                ItemFlag.HIDE_UNBREAKABLE,
-                ItemFlag.HIDE_DESTROYS,
-                ItemFlag.HIDE_PLACED_ON
-        );
     }
 }
