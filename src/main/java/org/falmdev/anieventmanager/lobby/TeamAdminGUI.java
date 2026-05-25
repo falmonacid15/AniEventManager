@@ -56,10 +56,11 @@ public class TeamAdminGUI implements Listener {
     private static final int SLOT_SCORE_REMOVE  = 16;
     private static final int SLOT_SCORE_SET     = 24;
     private static final int SLOT_SCORE_RESET   = 25;
-    private static final int SLOT_MEMBER_1      = 39;
-    private static final int SLOT_MEMBER_2      = 41;
-    private static final int SLOT_ADD_MEMBER    = 37;
-    private static final int SLOT_BACK          = 49;
+    private static final int SLOT_MEMBER_1      = 30;
+    private static final int SLOT_MEMBER_2      = 32;
+    private static final int SLOT_ADD_MEMBER    = 40;
+    private static final int SLOT_BACK          = 45;
+    private static final int SLOT_FRIENDLY_FIRE = 31;
 
     private final Anieventmanager plugin;
 
@@ -102,8 +103,37 @@ public class TeamAdminGUI implements Listener {
         List<Component> lore = new ArrayList<>();
         lore.add(Component.empty());
         lore.add(line("ID", Component.text(team.getId(), NamedTextColor.WHITE)));
-        lore.add(line("Miembros", Component.text(team.getMemberCount() + "/2",
-                team.getMemberCount() >= 2 ? NamedTextColor.RED : NamedTextColor.GREEN)));
+        Component.text("Miembros ", NamedTextColor.GRAY)
+                .append(Component.text("(" + team.getMemberCount() + "/2)",
+                        team.getMemberCount() >= 2 ? NamedTextColor.RED : NamedTextColor.GREEN));
+        List<Component> memberLines = new ArrayList<>();
+
+        for (UUID uuid : team.getMembers()) {
+            OfflinePlayer off = Bukkit.getOfflinePlayer(uuid);
+            String name = off.getName() != null
+                    ? off.getName()
+                    : uuid.toString().substring(0, 6);
+
+            memberLines.add(
+                    Component.text("   ", NamedTextColor.GRAY)
+                            .append(Component.text(
+                                    off.isOnline() ? " ●" : " ○",
+                                    off.isOnline() ? NamedTextColor.GREEN : NamedTextColor.DARK_GRAY
+                            ))
+                            .append(Component.text(name, NamedTextColor.WHITE))
+                            .decoration(TextDecoration.ITALIC, false)
+            );
+        }
+
+        if (memberLines.isEmpty()) {
+            memberLines.add(Component.text("  (sin miembros)", NamedTextColor.DARK_GRAY)
+                    .decoration(TextDecoration.ITALIC, false));
+        }
+
+        lore.add(Component.text("Miembros:", NamedTextColor.GRAY)
+                .decoration(TextDecoration.ITALIC, false));
+
+        lore.addAll(memberLines);
         lore.add(line("Puntos", Component.text(
                 plugin.getScoreManager().getScore(team), NamedTextColor.YELLOW)));
         lore.add(Component.empty());
@@ -129,6 +159,7 @@ public class TeamAdminGUI implements Listener {
         inv.setItem(SLOT_RENAME, buildSimpleButton(Material.NAME_TAG,
                 "Cambiar nombre", NamedTextColor.GOLD,
                 "Click para escribir el nuevo nombre en el chat."));
+        inv.setItem(SLOT_FRIENDLY_FIRE, buildFriendlyFireItem());
         inv.setItem(SLOT_DELETE, buildSimpleButton(Material.LAVA_BUCKET,
                 "Eliminar equipo", NamedTextColor.RED,
                 "Click para eliminar este equipo (pide confirmación)."));
@@ -238,6 +269,36 @@ public class TeamAdminGUI implements Listener {
         meta.displayName(Component.text("Slot vacío", NamedTextColor.DARK_GRAY)
                 .decoration(TextDecoration.ITALIC, false));
         item.setItemMeta(meta);
+        return item;
+    }
+
+    private ItemStack buildFriendlyFireItem() {
+        boolean enabled = plugin.getTeamManager().isFriendlyFireEnabled();
+
+        ItemStack item = new ItemStack(enabled ? Material.DIAMOND_SWORD : Material.SHIELD);
+        ItemMeta meta = item.getItemMeta();
+
+        meta.displayName(Component.text("⚔ Friendly Fire", NamedTextColor.RED, TextDecoration.BOLD)
+                .decoration(TextDecoration.ITALIC, false));
+
+        List<Component> lore = new ArrayList<>();
+        lore.add(Component.empty());
+
+        lore.add(Component.text("Estado: ", NamedTextColor.GRAY)
+                .append(Component.text(
+                        enabled ? "ACTIVADO" : "DESACTIVADO",
+                        enabled ? NamedTextColor.GREEN : NamedTextColor.RED,
+                        TextDecoration.BOLD
+                ))
+                .decoration(TextDecoration.ITALIC, false));
+
+        lore.add(Component.empty());
+        lore.add(Component.text("Click para cambiar estado.", NamedTextColor.YELLOW)
+                .decoration(TextDecoration.ITALIC, false));
+
+        meta.lore(lore);
+        item.setItemMeta(meta);
+
         return item;
     }
 
@@ -360,6 +421,23 @@ public class TeamAdminGUI implements Listener {
                             admin.sendMessage(Component.text("✔ Equipo eliminado.", NamedTextColor.GREEN));
                             openList(admin);
                         });
+            }
+
+            case SLOT_FRIENDLY_FIRE -> {
+                boolean current = plugin.getTeamManager().isFriendlyFireEnabled();
+                boolean newState = !current;
+
+                plugin.getTeamManager().setFriendlyFire(newState);
+
+                admin.sendMessage(Component.text("⚔ Friendly Fire ",
+                                NamedTextColor.GRAY)
+                        .append(Component.text(
+                                newState ? "activado" : "desactivado",
+                                newState ? NamedTextColor.GREEN : NamedTextColor.RED
+                        )));
+
+                // Refrescar GUI
+                openDetail(admin, team);
             }
 
             case SLOT_SCORE_ADD -> {

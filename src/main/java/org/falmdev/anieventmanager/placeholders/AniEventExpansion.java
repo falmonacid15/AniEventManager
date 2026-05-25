@@ -110,6 +110,7 @@ public class AniEventExpansion extends PlaceholderExpansion {
                 case "team_isfull"  -> "false";
                 case "team_score"   -> "0";
                 case "team_rank"    -> "-";
+
                 default             -> null;
             };
         }
@@ -132,6 +133,19 @@ public class AniEventExpansion extends PlaceholderExpansion {
                 int rank = plugin.getScoreManager().getRank(t);
                 return rank == -1 ? "-" : "#" + rank;
             }).orElse("-");
+            case "teams_players_total" -> {
+                int total = plugin.getTeamManager().getTeams().values().stream()
+                        .mapToInt(EventTeam::getMemberCount)
+                        .sum();
+                yield String.valueOf(total);
+            }
+
+            case "teams_with_players" -> {
+                long count = plugin.getTeamManager().getTeams().values().stream()
+                        .filter(team -> team.getMemberCount() > 0)
+                        .count();
+                yield String.valueOf(count);
+            }
             default -> null;
         };
     }

@@ -242,6 +242,10 @@ public class TeamManager {
         return teams.size();
     }
 
+    public Map<String, EventTeam> getTeams() {
+        return teams;
+    }
+
     // ── Utilidades ────────────────────────────────────────────────────────────
 
     private NamedTextColor parseColor(String colorStr) {
