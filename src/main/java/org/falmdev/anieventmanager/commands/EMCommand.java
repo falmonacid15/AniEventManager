@@ -51,6 +51,7 @@ public class EMCommand implements CommandExecutor, TabCompleter {
             case "pd"          -> plugin.getParkourDuosCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
             case "cinematic" -> handleCinematic(player, Arrays.copyOfRange(args, 1, args.length));
             case "help"        -> sendHelp(player);
+            case "gui" -> plugin.getEventManagerGUI().open(player);
             case "reload"      -> plugin.reloadAll(player);
             default            -> player.sendMessage(Component.text("Subcomando desconocido. Usa ", NamedTextColor.RED)
                     .append(Component.text("/em help", NamedTextColor.YELLOW)));
@@ -263,7 +264,7 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         if (!(sender instanceof Player player) || !player.isOp()) return List.of();
 
         if (args.length == 1)
-            return filter(List.of("team", "score", "tntrun", "bingo", "boatracing", "frozenheist", "pd", "cinematic", "help", "reload"), args[0]);
+            return filter(List.of("team", "score", "tntrun", "bingo", "boatracing", "frozenheist", "pd", "cinematic", "gui", "help", "reload"), args[0]);
 
         if (args[0].equalsIgnoreCase("team")) {
             if (args.length == 2) return filter(List.of(

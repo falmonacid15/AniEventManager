@@ -19,19 +19,19 @@ import org.falmdev.anieventmanager.lobby.TeamSelectionGUI;
 import org.falmdev.anieventmanager.managers.MiniGameManager;
 import org.falmdev.anieventmanager.managers.ScoreManager;
 import org.falmdev.anieventmanager.managers.TeamManager;
-import org.falmdev.anieventmanager.minigames.bingo.BingoCommand;
-import org.falmdev.anieventmanager.minigames.bingo.BingoEditGUI;
-import org.falmdev.anieventmanager.minigames.bingo.BingoGUI;
-import org.falmdev.anieventmanager.minigames.bingo.BingoMiniGame;
-import org.falmdev.anieventmanager.minigames.boatracing.BoatRacingCommand;
-import org.falmdev.anieventmanager.minigames.boatracing.BoatRacingListener;
-import org.falmdev.anieventmanager.minigames.boatracing.BoatRacingMiniGame;
+import org.falmdev.anieventmanager.minigames.bingo.*;
+import org.falmdev.anieventmanager.minigames.boatracing.*;
+import org.falmdev.anieventmanager.minigames.frozenheist.FrozenHeistAdminGUI;
 import org.falmdev.anieventmanager.minigames.frozenheist.FrozenHeistCommand;
+import org.falmdev.anieventmanager.minigames.frozenheist.FrozenHeistMagicStick;
 import org.falmdev.anieventmanager.minigames.frozenheist.FrozenHeistMiniGame;
+import org.falmdev.anieventmanager.minigames.parkourduos.ParkourDuosAdminGUI;
+import org.falmdev.anieventmanager.minigames.parkourduos.ParkourDuosMagicStick;
+import org.falmdev.anieventmanager.minigames.tntrun.TNTRunAdminGUI;
 import org.falmdev.anieventmanager.minigames.tntrun.TNTRunCommand;
+import org.falmdev.anieventmanager.minigames.tntrun.TNTRunMagicStick;
 import org.falmdev.anieventmanager.minigames.tntrun.TNTRunMiniGame;
 import org.falmdev.anieventmanager.placeholders.AniEventExpansion;
-import org.falmdev.anieventmanager.minigames.bingo.BingoWallManager;
 import org.falmdev.anieventmanager.minigames.parkourduos.ParkourDuosMiniGame;
 import org.falmdev.anieventmanager.minigames.parkourduos.ParkourDuosCommand;
 
@@ -51,6 +51,13 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
     private PlayerSelectorGUI playerSelectorGUI;
     private ConfirmGUI        confirmGUI;
 
+    private EventManagerGUI   eventManagerGUI;
+    private TNTRunAdminGUI tntRunAdminGUI;
+    private TNTRunMagicStick tntRunMagicStick;
+    private BingoAdminGUI   bingoAdminGUI;
+    private BingoMagicStick bingoMagicStick;
+
+
     // ── Minijuegos ────────────────────────────────────────────────────────────
     private TNTRunMiniGame      tntRunMiniGame;
     private TNTRunCommand       tntRunCommand;
@@ -62,12 +69,18 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
 
     private BoatRacingMiniGame  boatRacingMiniGame;
     private BoatRacingCommand   boatRacingCommand;
+    private BoatRacingAdminGUI boatRacingAdminGUI;
+    private BoatRacingMagicStick boatRacingMagicStick;
 
     private FrozenHeistMiniGame frozenHeistMiniGame;
     private FrozenHeistCommand  frozenHeistCommand;
+    private FrozenHeistAdminGUI frozenHeistAdminGUI;
+    private FrozenHeistMagicStick frozenHeistMagicStick;
 
     private ParkourDuosMiniGame parkourDuosMiniGame;
     private ParkourDuosCommand  parkourDuosCommand;
+    private ParkourDuosAdminGUI parkourDuosAdminGUI;
+    private ParkourDuosMagicStick parkourDuosMagicStick;
 
     // Cinematicas
     private CinematicManager    cinematicManager;
@@ -116,34 +129,49 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
 
         this.tntRunMiniGame = new TNTRunMiniGame(this);
         this.tntRunCommand  = new TNTRunCommand(this, tntRunMiniGame);
+        this.tntRunAdminGUI   = new TNTRunAdminGUI(this);
+        this.tntRunMagicStick = new TNTRunMagicStick(this);
         miniGameManager.register(tntRunMiniGame);
+
+
         logLoaded(log, "TNT Run");
 
         this.bingoMiniGame    = new BingoMiniGame(this);
         this.bingoCommand     = new BingoCommand(this, bingoMiniGame);
         this.bingoEditGUI     = new BingoEditGUI(this);
         this.bingoWallManager = new BingoWallManager(this);
+        this.bingoAdminGUI   = new BingoAdminGUI(this);
+        this.bingoMagicStick = new BingoMagicStick(this);
         miniGameManager.register(bingoMiniGame);
+
         logLoaded(log, "Bingo");
 
         this.boatRacingMiniGame = new BoatRacingMiniGame(this);
         this.boatRacingCommand  = new BoatRacingCommand(this, boatRacingMiniGame);
         BoatRacingListener boatRacingListener = new BoatRacingListener(this, boatRacingMiniGame);
         this.boatRacingMiniGame.registerListener(boatRacingListener);
+        this.boatRacingAdminGUI   = new BoatRacingAdminGUI(this);
+        this.boatRacingMagicStick = new BoatRacingMagicStick(this);
         miniGameManager.register(boatRacingMiniGame);
         logLoaded(log, "Boat Racing");
 
         this.frozenHeistMiniGame = new FrozenHeistMiniGame(this);
         this.frozenHeistCommand  = new FrozenHeistCommand(this, frozenHeistMiniGame);
+        this.frozenHeistAdminGUI   = new FrozenHeistAdminGUI(this);
+        this.frozenHeistMagicStick = new FrozenHeistMagicStick(this);
         miniGameManager.register(frozenHeistMiniGame);
         logLoaded(log, "Frozen Heist");
 
         this.parkourDuosMiniGame = new ParkourDuosMiniGame(this);
         this.parkourDuosCommand  = new ParkourDuosCommand(this, parkourDuosMiniGame);
+        this.parkourDuosAdminGUI   = new ParkourDuosAdminGUI(this);
+        this.parkourDuosMagicStick = new ParkourDuosMagicStick(this);
         miniGameManager.register(parkourDuosMiniGame);
         logLoaded(log, "Parkour Duos");
 
         logDone(log, "Minijuegos", miniGameManager.getIds().size() + " registrados en MiniGameManager");
+
+        this.eventManagerGUI = new EventManagerGUI(this);
 
         // ── Comandos ──────────────────────────────────────────────────────────
         logSection(log, "Comandos");
@@ -172,6 +200,8 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
         Bukkit.getPluginManager().registerEvents(bingoEditGUI, this);
         Bukkit.getPluginManager().registerEvents(bingoWallManager, this);
         Bukkit.getPluginManager().registerEvents(boatRacingListener, this);
+        Bukkit.getPluginManager().registerEvents(boatRacingAdminGUI,   this);
+        Bukkit.getPluginManager().registerEvents(boatRacingMagicStick, this);
         Bukkit.getPluginManager().registerEvents(teamSelectionGUI, this);
         Bukkit.getPluginManager().registerEvents(teamAdminGUI, this);
         Bukkit.getPluginManager().registerEvents(playerSelectorGUI, this);
@@ -179,7 +209,16 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
         Bukkit.getPluginManager().registerEvents(new TeamLobbyListener(this), this);
         Bukkit.getPluginManager().registerEvents(new CinematicListener(this), this);
         Bukkit.getPluginManager().registerEvents(cinematicAdminGUI, this);
-        Bukkit.getPluginManager().registerEvents(cinematicMarkerGUI, this);;
+        Bukkit.getPluginManager().registerEvents(cinematicMarkerGUI, this);
+        Bukkit.getPluginManager().registerEvents(frozenHeistAdminGUI,   this);
+        Bukkit.getPluginManager().registerEvents(frozenHeistMagicStick, this);
+        Bukkit.getPluginManager().registerEvents(eventManagerGUI,   this);
+        Bukkit.getPluginManager().registerEvents(tntRunAdminGUI,    this);
+        Bukkit.getPluginManager().registerEvents(tntRunMagicStick,  this);
+        Bukkit.getPluginManager().registerEvents(bingoAdminGUI,   this);
+        Bukkit.getPluginManager().registerEvents(bingoMagicStick, this);
+        Bukkit.getPluginManager().registerEvents(parkourDuosAdminGUI,   this);
+        Bukkit.getPluginManager().registerEvents(parkourDuosMagicStick, this);
         Bukkit.getPluginManager().registerEvents(this, this);
         logDone(log, "Listeners");
 
@@ -283,9 +322,14 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
         return GRAY + "  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500" + RESET;
     }
 
+    public CinematicEffects getCinematicEffects() {
+        return cinematicManager.getEffects();
+    }
+
     // ── Getters ───────────────────────────────────────────────────────────────
 
     public static Anieventmanager getInstance()      { return instance; }
+    public EventManagerGUI   getEventManagerGUI()   { return eventManagerGUI; }
     public TeamManager      getTeamManager()         { return teamManager; }
     public ScoreManager     getScoreManager()        { return scoreManager; }
     public MiniGameManager  getMiniGameManager()     { return miniGameManager; }
@@ -296,20 +340,31 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
     public ConfirmGUI        getConfirmGUI()         { return confirmGUI; }
     public TNTRunMiniGame   getTNTRunMiniGame()      { return tntRunMiniGame; }
     public TNTRunCommand    getTNTRunCommand()       { return tntRunCommand; }
+    public TNTRunAdminGUI    getTNTRunAdminGUI()     { return tntRunAdminGUI; }
+    public TNTRunMagicStick  getTNTRunMagicStick()  { return tntRunMagicStick; }
     public BingoMiniGame    getBingoMiniGame()       { return bingoMiniGame; }
     public BingoCommand     getBingoCommand()        { return bingoCommand; }
     public BingoEditGUI     getBingoEditGUI()        { return bingoEditGUI; }
     public BingoWallManager getBingoWallManager()    { return bingoWallManager; }
+
     public BoatRacingMiniGame  getBoatRacingMiniGame()  { return boatRacingMiniGame; }
     public BoatRacingCommand   getBoatRacingCommand()   { return boatRacingCommand; }
+    public BoatRacingAdminGUI   getBoatRacingAdminGUI()   { return boatRacingAdminGUI; }
+    public BoatRacingMagicStick getBoatRacingMagicStick() { return boatRacingMagicStick; }
+
     public FrozenHeistMiniGame getFrozenHeistMiniGame() { return frozenHeistMiniGame; }
     public FrozenHeistCommand  getFrozenHeistCommand()  { return frozenHeistCommand; }
+
     public ParkourDuosMiniGame getParkourDuosMiniGame() { return parkourDuosMiniGame; }
     public ParkourDuosCommand  getParkourDuosCommand()  { return parkourDuosCommand; }
+    public ParkourDuosAdminGUI   getParkourDuosAdminGUI()   { return parkourDuosAdminGUI; }
+    public ParkourDuosMagicStick getParkourDuosMagicStick() { return parkourDuosMagicStick; }
+
     public CinematicManager    getCinematicManager()    { return cinematicManager; }
     public CinematicAdminGUI   getCinematicAdminGUI()   { return cinematicAdminGUI; }
     public CinematicMarkerGUI getCinematicMarkerGUI() { return cinematicMarkerGUI; }
-    public CinematicEffects getCinematicEffects() {
-        return cinematicManager.getEffects();
-    }
+    public BingoAdminGUI   getBingoAdminGUI()   { return bingoAdminGUI; }
+    public BingoMagicStick getBingoMagicStick() { return bingoMagicStick; }
+    public FrozenHeistAdminGUI   getFrozenHeistAdminGUI()   { return frozenHeistAdminGUI; }
+    public FrozenHeistMagicStick getFrozenHeistMagicStick() { return frozenHeistMagicStick; }
 }

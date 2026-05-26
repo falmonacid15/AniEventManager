@@ -4,8 +4,12 @@ import com.comphenix.protocol.PacketType;
 import com.comphenix.protocol.ProtocolLibrary;
 import com.comphenix.protocol.ProtocolManager;
 import com.comphenix.protocol.events.PacketContainer;
+import com.comphenix.protocol.wrappers.EnumWrappers;
+import com.comphenix.protocol.wrappers.Pair;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.falmdev.anieventmanager.Anieventmanager;
 
 import java.util.*;
@@ -13,21 +17,17 @@ import java.util.*;
 /**
  * Efectos visuales de cinematica via ProtocolLib.
  *
- * FIX Bug 2: eliminado el envío de UPDATE_HEALTH con health=0.
- * En Paper 1.21 ese packet efectivamente mata al jugador aunque esté
- * en SPECTATOR, porque el servidor procesa el daño antes de verificar
- * el gamemode. Solo ocultamos la XP bar, que no tiene side effects.
- *
- * Lo que hace ahora:
- *  - Oculta XP bar (EXPERIENCE packet con valores 0)
- *  - Oculta jugadores (ENTITY_DESTROY con sus IDs)
- *  - Oculta mano (ENTITY_EQUIPMENT con AIR)
+ * Efectos aplicados:
+ *  1. Bandas negras (letterbox) — via packet de equipamiento falso con calabaza.
+ *     El RP reemplaza pumpkinblur.png con las bandas. Completamente client-side.
+ *  2. XP bar oculta
+ *  3. Jugadores ocultos
+ *  4. Mano oculta
  */
 public class CinematicEffects {
 
     private final Anieventmanager plugin;
     private final ProtocolManager protocolManager;
-
     private final Set<UUID> activeViewers = new HashSet<>();
 
     public CinematicEffects(Anieventmanager plugin) {
@@ -35,13 +35,25 @@ public class CinematicEffects {
         this.protocolManager = ProtocolLibrary.getProtocolManager();
     }
 
-    // ── API pública ───────────────────────────────────────────────────────────
-
     public void apply(Player player) {
         activeViewers.add(player.getUniqueId());
+        // Nota: showLetterbox() NO se llama aquí.
+        // Se llama desde CinematicPlayer con un delay de 2 ticks via applyLetterbox(),
+        // para que el packet de calabaza llegue DESPUÉS del packet de SPECTATOR
+        // que limpia el equipamiento del jugador.
         hideXPBar(player);
         hideOtherPlayers(player);
         hideHand(player);
+    }
+
+    /**
+     * Envía solo el packet de letterbox (calabaza).
+     * Llamar con runTaskLater 2 ticks después de apply() para que no
+     * sea sobreescrito por el packet de equipamiento de SPECTATOR.
+     */
+    public void applyLetterbox(Player player) {
+        if (!activeViewers.contains(player.getUniqueId())) return;
+        showLetterbox(player);
     }
 
     public void applyAll(List<Player> players) {
@@ -50,6 +62,7 @@ public class CinematicEffects {
 
     public void restore(Player player) {
         activeViewers.remove(player.getUniqueId());
+        hideLetterbox(player);
         restoreXPBar(player);
         restoreOtherPlayers(player);
         restoreHand(player);
@@ -63,19 +76,53 @@ public class CinematicEffects {
         return activeViewers.contains(player.getUniqueId());
     }
 
-    // ── XP Bar ───────────────────────────────────────────────────────────────
-    // NOTA: NO ocultamos la barra de vida (UPDATE_HEALTH) porque en Paper 1.21
-    // enviar health=0 mata al jugador independientemente del gamemode.
-    // La barra de vida ya no es visible en SPECTATOR de todas formas.
+    // ── 1. Letterbox via pumpkin packet ───────────────────────────────────────
+
+    /**
+     * Envía un packet de equipamiento falso que pone una calabaza tallada
+     * en el slot de cabeza del jugador — solo en el cliente, el servidor
+     * no sabe nada de esto.
+     *
+     * El resourcepack (updated_Cinematic_Bars.zip) reemplaza pumpkinblur.png
+     * con las bandas negras cinematográficas, así que al "ponerse" la calabaza
+     * el jugador ve las bandas en lugar del overlay original.
+     */
+    private void showLetterbox(Player player) {
+        sendHelmetPacket(player, new ItemStack(Material.CARVED_PUMPKIN));
+    }
+
+    /**
+     * Restaura el helmet real del jugador enviando otro packet de equipamiento.
+     */
+    private void hideLetterbox(Player player) {
+        ItemStack realHelmet = player.getInventory().getHelmet();
+        sendHelmetPacket(player, realHelmet != null ? realHelmet : new ItemStack(Material.AIR));
+    }
+
+    private void sendHelmetPacket(Player player, ItemStack helmet) {
+        try {
+            PacketContainer packet = protocolManager.createPacket(
+                    PacketType.Play.Server.ENTITY_EQUIPMENT);
+            packet.getIntegers().write(0, player.getEntityId());
+            packet.getSlotStackPairLists().write(0,
+                    Collections.singletonList(
+                            new Pair<>(EnumWrappers.ItemSlot.HEAD, helmet)));
+            protocolManager.sendServerPacket(player, packet);
+        } catch (Exception e) {
+            plugin.getLogger().warning("[CinematicEffects] letterbox: " + e.getMessage());
+        }
+    }
+
+    // ── 2. XP Bar ─────────────────────────────────────────────────────────────
 
     private void hideXPBar(Player player) {
         try {
-            PacketContainer xpPacket = protocolManager.createPacket(
+            PacketContainer p = protocolManager.createPacket(
                     PacketType.Play.Server.EXPERIENCE);
-            xpPacket.getFloat().write(0, 0f);   // experienceBar
-            xpPacket.getIntegers().write(0, 0); // level
-            xpPacket.getIntegers().write(1, 0); // totalExperience
-            protocolManager.sendServerPacket(player, xpPacket);
+            p.getFloat().write(0, 0f);
+            p.getIntegers().write(0, 0);
+            p.getIntegers().write(1, 0);
+            protocolManager.sendServerPacket(player, p);
         } catch (Exception e) {
             plugin.getLogger().warning("[CinematicEffects] hideXPBar: " + e.getMessage());
         }
@@ -83,33 +130,30 @@ public class CinematicEffects {
 
     private void restoreXPBar(Player player) {
         try {
-            PacketContainer xpPacket = protocolManager.createPacket(
+            PacketContainer p = protocolManager.createPacket(
                     PacketType.Play.Server.EXPERIENCE);
-            xpPacket.getFloat().write(0, player.getExp());
-            xpPacket.getIntegers().write(0, player.getLevel());
-            xpPacket.getIntegers().write(1, player.getTotalExperience());
-            protocolManager.sendServerPacket(player, xpPacket);
+            p.getFloat().write(0, player.getExp());
+            p.getIntegers().write(0, player.getLevel());
+            p.getIntegers().write(1, player.getTotalExperience());
+            protocolManager.sendServerPacket(player, p);
         } catch (Exception e) {
             plugin.getLogger().warning("[CinematicEffects] restoreXPBar: " + e.getMessage());
         }
     }
 
-    // ── Ocultar jugadores ─────────────────────────────────────────────────────
+    // ── 3. Jugadores ──────────────────────────────────────────────────────────
 
     private void hideOtherPlayers(Player viewer) {
         try {
-            List<Integer> entityIds = new ArrayList<>();
-            for (Player other : Bukkit.getOnlinePlayers()) {
-                if (!other.getUniqueId().equals(viewer.getUniqueId())) {
-                    entityIds.add(other.getEntityId());
-                }
-            }
-            if (entityIds.isEmpty()) return;
-
-            PacketContainer removePacket = protocolManager.createPacket(
+            List<Integer> ids = new ArrayList<>();
+            for (Player o : Bukkit.getOnlinePlayers())
+                if (!o.getUniqueId().equals(viewer.getUniqueId()))
+                    ids.add(o.getEntityId());
+            if (ids.isEmpty()) return;
+            PacketContainer p = protocolManager.createPacket(
                     PacketType.Play.Server.ENTITY_DESTROY);
-            removePacket.getIntLists().write(0, entityIds);
-            protocolManager.sendServerPacket(viewer, removePacket);
+            p.getIntLists().write(0, ids);
+            protocolManager.sendServerPacket(viewer, p);
         } catch (Exception e) {
             plugin.getLogger().warning("[CinematicEffects] hideOtherPlayers: " + e.getMessage());
         }
@@ -117,37 +161,27 @@ public class CinematicEffects {
 
     private void restoreOtherPlayers(Player viewer) {
         try {
-            for (Player other : Bukkit.getOnlinePlayers()) {
-                if (!other.getUniqueId().equals(viewer.getUniqueId())) {
-                    protocolManager.updateEntity(other,
-                            Collections.singletonList(viewer));
-                }
-            }
+            for (Player o : Bukkit.getOnlinePlayers())
+                if (!o.getUniqueId().equals(viewer.getUniqueId()))
+                    protocolManager.updateEntity(o, Collections.singletonList(viewer));
         } catch (Exception e) {
             plugin.getLogger().warning("[CinematicEffects] restoreOtherPlayers: " + e.getMessage());
         }
     }
 
-    // ── Ocultar mano ─────────────────────────────────────────────────────────
+    // ── 4. Mano ───────────────────────────────────────────────────────────────
 
     private void hideHand(Player player) {
         try {
-            PacketContainer equipPacket = protocolManager.createPacket(
+            PacketContainer p = protocolManager.createPacket(
                     PacketType.Play.Server.ENTITY_EQUIPMENT);
-            equipPacket.getIntegers().write(0, player.getEntityId());
-
-            List<com.comphenix.protocol.wrappers.Pair<
-                    com.comphenix.protocol.wrappers.EnumWrappers.ItemSlot,
-                    org.bukkit.inventory.ItemStack>> slots = Arrays.asList(
-                    new com.comphenix.protocol.wrappers.Pair<>(
-                            com.comphenix.protocol.wrappers.EnumWrappers.ItemSlot.MAINHAND,
-                            new org.bukkit.inventory.ItemStack(org.bukkit.Material.AIR)),
-                    new com.comphenix.protocol.wrappers.Pair<>(
-                            com.comphenix.protocol.wrappers.EnumWrappers.ItemSlot.OFFHAND,
-                            new org.bukkit.inventory.ItemStack(org.bukkit.Material.AIR))
-            );
-            equipPacket.getSlotStackPairLists().write(0, slots);
-            protocolManager.sendServerPacket(player, equipPacket);
+            p.getIntegers().write(0, player.getEntityId());
+            p.getSlotStackPairLists().write(0, Arrays.asList(
+                    new Pair<>(EnumWrappers.ItemSlot.MAINHAND,
+                            new ItemStack(Material.AIR)),
+                    new Pair<>(EnumWrappers.ItemSlot.OFFHAND,
+                            new ItemStack(Material.AIR))));
+            protocolManager.sendServerPacket(player, p);
         } catch (Exception e) {
             plugin.getLogger().warning("[CinematicEffects] hideHand: " + e.getMessage());
         }
@@ -155,22 +189,15 @@ public class CinematicEffects {
 
     private void restoreHand(Player player) {
         try {
-            PacketContainer equipPacket = protocolManager.createPacket(
+            PacketContainer p = protocolManager.createPacket(
                     PacketType.Play.Server.ENTITY_EQUIPMENT);
-            equipPacket.getIntegers().write(0, player.getEntityId());
-
-            List<com.comphenix.protocol.wrappers.Pair<
-                    com.comphenix.protocol.wrappers.EnumWrappers.ItemSlot,
-                    org.bukkit.inventory.ItemStack>> slots = Arrays.asList(
-                    new com.comphenix.protocol.wrappers.Pair<>(
-                            com.comphenix.protocol.wrappers.EnumWrappers.ItemSlot.MAINHAND,
+            p.getIntegers().write(0, player.getEntityId());
+            p.getSlotStackPairLists().write(0, Arrays.asList(
+                    new Pair<>(EnumWrappers.ItemSlot.MAINHAND,
                             player.getInventory().getItemInMainHand()),
-                    new com.comphenix.protocol.wrappers.Pair<>(
-                            com.comphenix.protocol.wrappers.EnumWrappers.ItemSlot.OFFHAND,
-                            player.getInventory().getItemInOffHand())
-            );
-            equipPacket.getSlotStackPairLists().write(0, slots);
-            protocolManager.sendServerPacket(player, equipPacket);
+                    new Pair<>(EnumWrappers.ItemSlot.OFFHAND,
+                            player.getInventory().getItemInOffHand())));
+            protocolManager.sendServerPacket(player, p);
         } catch (Exception e) {
             plugin.getLogger().warning("[CinematicEffects] restoreHand: " + e.getMessage());
         }

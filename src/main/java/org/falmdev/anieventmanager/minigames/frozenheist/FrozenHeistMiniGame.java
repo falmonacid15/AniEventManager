@@ -42,6 +42,10 @@ public class FrozenHeistMiniGame implements MiniGame {
         this.config = new FrozenHeistConfig(plugin);
     }
 
+    public void openAdminGUI(Player player) {
+        plugin.getFrozenHeistAdminGUI().open(player);
+    }
+
     // ── MiniGame interface ────────────────────────────────────────────────────
 
     @Override public String getId()          { return "frozenheist"; }

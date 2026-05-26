@@ -126,6 +126,11 @@ public class ParkourDuosConfig {
         };
     }
 
+    public void setScorePerCheckpoint(int v) {
+        yaml.set("settings.score-per-checkpoint", v);
+        save();
+    }
+
     // ── Lobby ─────────────────────────────────────────────────────────────────
 
     public Location getLobby() {

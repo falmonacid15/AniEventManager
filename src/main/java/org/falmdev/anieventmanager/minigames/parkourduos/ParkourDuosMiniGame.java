@@ -45,6 +45,10 @@ public class ParkourDuosMiniGame implements MiniGame {
                 config.getChainMaxDistance());
     }
 
+    public void openAdminGUI(Player player) {
+        plugin.getParkourDuosAdminGUI().open(player);
+    }
+
     // ── MiniGame interface ────────────────────────────────────────────────────
 
     @Override public String getId()          { return "parkourduos"; }

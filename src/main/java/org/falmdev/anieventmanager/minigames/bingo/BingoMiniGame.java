@@ -4,6 +4,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.title.Title;
 import org.bukkit.*;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ArmorMeta;
 import org.bukkit.inventory.meta.trim.ArmorTrim;
@@ -469,6 +470,10 @@ public class BingoMiniGame implements MiniGame {
                 new ItemStack(Material.GOLDEN_CARROT, 64),
                 new ItemStack(Material.TORCH, 64)
         );
+    }
+
+    public void openAdminGUI(Player player) {
+        plugin.getBingoAdminGUI().open(player);
     }
 
     private BingoCard dummyCard(EventTeam team) {

@@ -42,6 +42,10 @@ public class BoatRacingMiniGame implements MiniGame {
         this.config = new BoatRacingConfig(plugin);
     }
 
+    public void openAdminGUI(Player player) {
+        plugin.getBoatRacingAdminGUI().open(player);
+    }
+
     // ── MiniGame interface ────────────────────────────────────────────────────
 
     @Override public String getId()          { return "boatracing"; }

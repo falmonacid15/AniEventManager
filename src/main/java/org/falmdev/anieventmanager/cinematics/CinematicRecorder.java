@@ -88,6 +88,12 @@ public class CinematicRecorder {
     private boolean        nextFrameIsCut     = false;
     private RecordingSpeed currentSpeed       = RecordingSpeed.V3;
 
+    /**
+     * true = recibió las tijeras pero todavía no empezó a grabar.
+     * El timer no corre hasta que el admin haga click izquierdo.
+     */
+    private boolean        readyToRecord      = false;
+
     /** Último frame grabado — base del lerp de suavizado. */
     private CinematicFrame lastFrame = null;
 
@@ -139,13 +145,19 @@ public class CinematicRecorder {
         admin.setFlying(true);
         applySpeed(admin, currentSpeed);
 
-        admin.sendMessage(Component.text("⏺ Grabando ", NamedTextColor.RED)
-                .append(Component.text(cinematic.getDisplayName(), NamedTextColor.YELLOW))
+        readyToRecord = true;
+
+        admin.sendMessage(Component.text("✦ Listo para grabar ", NamedTextColor.YELLOW)
+                .append(Component.text(cinematic.getDisplayName(), NamedTextColor.GOLD))
                 .append(Component.text(" — " + formatTicks(durationTicks), NamedTextColor.GRAY)));
         admin.sendMessage(Component.text(
-                "  Slot 0: Tijeras  |  Slots 1-5: Velocidades de vuelo",
+                "  Click izquierdo con las tijeras para comenzar.",
+                NamedTextColor.GREEN));
+        admin.sendMessage(Component.text(
+                "  Slots 1-5: Velocidades de vuelo  |  Click derecho: Cancelar",
                 NamedTextColor.GRAY));
 
+        // Actionbar de espera — se actualiza en el task
         task = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             Player p = Bukkit.getPlayer(recordingAdmin);
             if (p == null || !p.isOnline()) { stopRecording(); return; }
@@ -156,7 +168,15 @@ public class CinematicRecorder {
             if (slotSpeed != null && slotSpeed != currentSpeed) {
                 currentSpeed = slotSpeed;
                 applySpeed(p, currentSpeed);
-                refreshSpeedItems(p); // actualizar resaltado visual
+                refreshSpeedItems(p);
+            }
+
+            // Si todavía está en estado "listo", mostrar actionbar de espera y no grabar
+            if (readyToRecord) {
+                p.sendActionBar(Component.text("✦ Listo — Click izquierdo con las tijeras para comenzar",
+                        NamedTextColor.GREEN).decoration(
+                        net.kyori.adventure.text.format.TextDecoration.ITALIC, false));
+                return;
             }
 
             if (!paused) {
@@ -203,12 +223,24 @@ public class CinematicRecorder {
         return true;
     }
 
-    /** Pausa o reanuda (tijera izquierda). */
+    /** Click izquierdo con tijeras — iniciar grabación o pausar/reanudar. */
     public void togglePause(Player admin) {
         if (!isRecordingAdmin(admin)) return;
+
+        // Primera vez: pasar de "listo" a "grabando"
+        if (readyToRecord) {
+            readyToRecord = false;
+            admin.sendMessage(Component.text("⏺ Grabando ", NamedTextColor.RED)
+                    .append(Component.text(recordingCinematic.getDisplayName(),
+                            NamedTextColor.YELLOW))
+                    .append(Component.text(" — " + formatTicks(totalTicks),
+                            NamedTextColor.GRAY)));
+            return;
+        }
+
+        // Grabación en curso: pausar o reanudar
         paused = !paused;
         if (paused) {
-            // Velocidad libre durante la pausa (no afecta al suavizado)
             admin.setFlySpeed(0.1f);
             admin.sendMessage(Component.text(
                     "⏸ Pausado — moví a la nueva posición y presioná tijera izq. para continuar.",
@@ -253,6 +285,7 @@ public class CinematicRecorder {
         paused             = false;
         nextFrameIsCut     = false;
         lastFrame          = null;
+        readyToRecord      = false;
         savedHotbar        = null;
         savedGameMode      = null;
     }
