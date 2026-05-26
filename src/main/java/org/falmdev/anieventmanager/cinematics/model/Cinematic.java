@@ -2,28 +2,28 @@ package org.falmdev.anieventmanager.cinematics.model;
 
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.falmdev.anieventmanager.utils.LocationUtil;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
 
 /**
- * Una cinematica completa.
- *
- * Persistida en {@code plugins/AniEventManager/cinematics/<id>.yml}.
+ * Una cinematica con grabación continua (un frame por tick).
  *
  * Estructura YAML:
  *
  *   displayName: "Intro del evento"
- *   waypoints:
- *     - world: world
- *       x: 0.0 ... yaw: 0.0 pitch: 0.0
- *       tickOffset: 0
+ *   timeStart: -1
+ *   timeEnd:   -1
+ *   frames:
+ *     - "0.5000,64.0000,-10.5000,90.00,-5.00"
+ *     - "0.5100,64.0000,-10.4900,90.10,-5.00"
+ *     - "0.5200,64.0000,-10.4800,90.20,-5.00,cut"   # corte de escena
+ *     ...
+ *   markers:
+ *     - tick: 40
  *       titleMain: "&6Bienvenidos"
- *       titleSub: "&7Al Ani Event"
+ *       titleSub:  "&7Al Ani Event"
  *       actionbar: ""
  *       fadeIn: 10
  *       stay: 60
@@ -34,7 +34,12 @@ public class Cinematic {
     private final String id;
     private String displayName;
     private CinematicState state = CinematicState.IDLE;
-    private final List<CinematicWaypoint> waypoints = new ArrayList<>();
+
+    private final List<CinematicFrame>  frames  = new ArrayList<>();
+    private final List<CinematicMarker> markers = new ArrayList<>();
+
+    private long timeStart = -1;
+    private long timeEnd   = -1;
 
     private final File file;
 
@@ -44,124 +49,174 @@ public class Cinematic {
         this.file        = file;
     }
 
-    // ── Waypoints ─────────────────────────────────────────────────────────────
+    // ── Frames ────────────────────────────────────────────────────────────────
 
-    public void addWaypoint(CinematicWaypoint waypoint) {
-        waypoints.add(waypoint);
-        waypoints.sort(Comparator.comparingInt(CinematicWaypoint::getTickOffset));
-        reindexWaypoints();
+    public void addFrame(CinematicFrame frame) {
+        frames.add(frame);
     }
 
-    public boolean removeWaypoint(int index) {
-        if (index < 0 || index >= waypoints.size()) return false;
-        waypoints.remove(index);
-        reindexWaypoints();
-        return true;
+    public void clearFrames() {
+        frames.clear();
     }
 
-    private void reindexWaypoints() {
-        for (int i = 0; i < waypoints.size(); i++) waypoints.get(i).setIndex(i);
+    public List<CinematicFrame> getFrames() {
+        return Collections.unmodifiableList(frames);
     }
 
-    /** Tick total de la cinematica (tick del último waypoint). */
-    public int getTotalTicks() {
-        if (waypoints.isEmpty()) return 0;
-        return waypoints.get(waypoints.size() - 1).getTickOffset();
+    public CinematicFrame getFrame(int tick) {
+        if (tick < 0 || tick >= frames.size()) return null;
+        return frames.get(tick);
     }
+
+    public int getTotalFrames() { return frames.size(); }
+
+    /** Duración en ticks. */
+    public int getTotalTicks() { return frames.size(); }
+
+    /** Duración en segundos. */
+    public double getDurationSeconds() { return frames.size() / 20.0; }
+
+    // ── Markers ───────────────────────────────────────────────────────────────
+
+    public void addMarker(CinematicMarker marker) {
+        // Solo un marker por tick
+        markers.removeIf(m -> m.getTick() == marker.getTick());
+        markers.add(marker);
+        markers.sort(Comparator.comparingInt(CinematicMarker::getTick));
+    }
+
+    public boolean removeMarker(int tick) {
+        return markers.removeIf(m -> m.getTick() == tick);
+    }
+
+    public Optional<CinematicMarker> getMarkerAt(int tick) {
+        return markers.stream().filter(m -> m.getTick() == tick).findFirst();
+    }
+
+    public List<CinematicMarker> getMarkers() {
+        return Collections.unmodifiableList(markers);
+    }
+
+    // ── Tiempo del mundo ──────────────────────────────────────────────────────
+
+    public boolean hasTimeControl() { return timeStart >= 0 && timeEnd >= 0; }
+
+    public long getWorldTimeAt(int currentTick) {
+        if (!hasTimeControl() || getTotalTicks() <= 0) return -1;
+        double progress = Math.max(0.0, Math.min(1.0,
+                (double) currentTick / getTotalTicks()));
+        long start = timeStart, end = timeEnd;
+        long range = end >= start ? end - start : 24000L - start + end;
+        long result = (start + (long)(range * progress)) % 24000L;
+        return result < 0 ? result + 24000L : result;
+    }
+
+    public long getTimeStart()       { return timeStart; }
+    public long getTimeEnd()         { return timeEnd; }
+    public void setTimeStart(long t) { this.timeStart = t; }
+    public void setTimeEnd(long t)   { this.timeEnd = t; }
+    public void clearTimeControl()   { this.timeStart = -1; this.timeEnd = -1; }
 
     // ── Persistencia ──────────────────────────────────────────────────────────
 
     public void save() {
         FileConfiguration yaml = new YamlConfiguration();
         yaml.set("displayName", displayName);
+        yaml.set("timeStart",   timeStart);
+        yaml.set("timeEnd",     timeEnd);
 
-        List<java.util.Map<String, Object>> waypointList = new ArrayList<>();
-        for (CinematicWaypoint wp : waypoints) {
-            java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
-            map.put("world",      wp.getLocation().getWorld().getName());
-            map.put("x",         wp.getLocation().getX());
-            map.put("y",         wp.getLocation().getY());
-            map.put("z",         wp.getLocation().getZ());
-            map.put("yaw",       (double) wp.getLocation().getYaw());
-            map.put("pitch",     (double) wp.getLocation().getPitch());
-            map.put("tickOffset", wp.getTickOffset());
-            map.put("titleMain",  wp.getTitleMain() != null ? wp.getTitleMain() : "");
-            map.put("titleSub",   wp.getTitleSub()  != null ? wp.getTitleSub()  : "");
-            map.put("actionbar",  wp.getActionbar() != null ? wp.getActionbar() : "");
-            map.put("fadeIn",     wp.getTitleFadeIn());
-            map.put("stay",       wp.getTitleStay());
-            map.put("fadeOut",    wp.getTitleFadeOut());
-            waypointList.add(map);
+        // Frames como lista de strings compactos
+        List<String> frameList = new ArrayList<>(frames.size());
+        for (CinematicFrame f : frames) frameList.add(f.serialize());
+        yaml.set("frames", frameList);
+
+        // Markers
+        List<Map<String, Object>> markerList = new ArrayList<>();
+        for (CinematicMarker m : markers) {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("tick",      m.getTick());
+            map.put("titleMain", m.getTitleMain()  != null ? m.getTitleMain()  : "");
+            map.put("titleSub",  m.getTitleSub()   != null ? m.getTitleSub()   : "");
+            map.put("actionbar", m.getActionbar()  != null ? m.getActionbar()  : "");
+            map.put("fadeIn",    m.getTitleFadeIn());
+            map.put("stay",      m.getTitleStay());
+            map.put("fadeOut",   m.getTitleFadeOut());
+            markerList.add(map);
         }
-        yaml.set("waypoints", waypointList);
+        yaml.set("markers", markerList);
 
-        try {
-            yaml.save(file);
-        } catch (IOException e) {
+        try { yaml.save(file); }
+        catch (IOException e) {
             System.err.println("[AniEventManager] No se pudo guardar cinematica: " + id);
         }
     }
 
-    /**
-     * Carga o recarga los waypoints desde el archivo YAML.
-     * Llama esto al cargar el plugin o después de un /em reload.
-     */
     public void load() {
         if (!file.exists()) return;
         FileConfiguration yaml = YamlConfiguration.loadConfiguration(file);
 
         this.displayName = yaml.getString("displayName", id);
-        waypoints.clear();
+        this.timeStart   = yaml.getLong("timeStart", -1);
+        this.timeEnd     = yaml.getLong("timeEnd",   -1);
 
-        List<?> rawList = yaml.getList("waypoints");
-        if (rawList == null) return;
-
-        for (Object raw : rawList) {
-            if (!(raw instanceof java.util.Map<?, ?> map)) continue;
-
-            try {
-                org.bukkit.Location loc = LocationUtil.fromMap((java.util.Map<?, ?>) map);
-                if (loc == null) continue;
-
-                int tickOffset = toInt(map.get("tickOffset"), 0);
-                CinematicWaypoint wp = new CinematicWaypoint(loc, tickOffset);
-
-                String titleMain = (String) map.get("titleMain");
-                String titleSub  = (String) map.get("titleSub");
-                String actionbar = (String) map.get("actionbar");
-
-                wp.setTitleMain(titleMain  != null && !titleMain.isBlank()  ? titleMain  : null);
-                wp.setTitleSub( titleSub   != null && !titleSub.isBlank()   ? titleSub   : null);
-                wp.setActionbar(actionbar  != null && !actionbar.isBlank()  ? actionbar  : null);
-                wp.setTitleFadeIn( toInt(map.get("fadeIn"),  10));
-                wp.setTitleStay(   toInt(map.get("stay"),    60));
-                wp.setTitleFadeOut(toInt(map.get("fadeOut"), 10));
-
-                waypoints.add(wp);
-            } catch (Exception e) {
-                System.err.println("[AniEventManager] Waypoint inválido en cinematica " + id + ": " + e.getMessage());
+        // Cargar frames
+        frames.clear();
+        List<String> frameList = yaml.getStringList("frames");
+        for (String s : frameList) {
+            try { frames.add(CinematicFrame.deserialize(s)); }
+            catch (Exception e) {
+                System.err.println("[AniEventManager] Frame inválido en " + id + ": " + s);
             }
         }
 
-        waypoints.sort(Comparator.comparingInt(CinematicWaypoint::getTickOffset));
-        reindexWaypoints();
+        // Cargar markers
+        markers.clear();
+        List<?> rawMarkers = yaml.getList("markers");
+        if (rawMarkers != null) {
+            for (Object raw : rawMarkers) {
+                if (!(raw instanceof Map<?, ?> map)) continue;
+                try {
+                    int tick = toInt(map.get("tick"), 0);
+                    if (tick < 0 || tick >= frames.size()) continue;
+
+                    CinematicMarker m = new CinematicMarker(tick);
+                    String titleMain = str(map.get("titleMain"));
+                    String titleSub  = str(map.get("titleSub"));
+                    String actionbar = str(map.get("actionbar"));
+                    m.setTitleMain(!titleMain.isBlank() ? titleMain : null);
+                    m.setTitleSub( !titleSub.isBlank()  ? titleSub  : null);
+                    m.setActionbar(!actionbar.isBlank() ? actionbar : null);
+                    m.setTitleFadeIn( toInt(map.get("fadeIn"),  10));
+                    m.setTitleStay(   toInt(map.get("stay"),    60));
+                    m.setTitleFadeOut(toInt(map.get("fadeOut"), 10));
+                    markers.add(m);
+                } catch (Exception e) {
+                    System.err.println("[AniEventManager] Marker inválido en " + id);
+                }
+            }
+        }
+        markers.sort(Comparator.comparingInt(CinematicMarker::getTick));
     }
 
     private int toInt(Object o, int def) {
         if (o instanceof Number n) return n.intValue();
-        try { return Integer.parseInt(String.valueOf(o)); } catch (Exception e) { return def; }
+        try { return Integer.parseInt(String.valueOf(o)); }
+        catch (Exception e) { return def; }
+    }
+
+    private String str(Object o) {
+        return o != null ? o.toString() : "";
     }
 
     // ── Getters / setters ─────────────────────────────────────────────────────
 
-    public String           getId()          { return id; }
-    public String           getDisplayName() { return displayName; }
-    public void             setDisplayName(String name) { this.displayName = name; }
-    public CinematicState   getState()       { return state; }
-    public void             setState(CinematicState s) { this.state = s; }
-    public List<CinematicWaypoint> getWaypoints() { return java.util.Collections.unmodifiableList(waypoints); }
-    public File             getFile()        { return file; }
-    public boolean          isIdle()         { return state == CinematicState.IDLE; }
-    public boolean          isPlaying()      { return state == CinematicState.PLAYING; }
-    public boolean          isRecording()    { return state == CinematicState.RECORDING; }
+    public String         getId()          { return id; }
+    public String         getDisplayName() { return displayName; }
+    public void           setDisplayName(String name) { this.displayName = name; }
+    public CinematicState getState()       { return state; }
+    public void           setState(CinematicState s) { this.state = s; }
+    public File           getFile()        { return file; }
+    public boolean        isIdle()         { return state == CinematicState.IDLE; }
+    public boolean        isPlaying()      { return state == CinematicState.PLAYING; }
+    public boolean        isRecording()    { return state == CinematicState.RECORDING; }
 }

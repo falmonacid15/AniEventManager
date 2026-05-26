@@ -1,16 +1,19 @@
 package org.falmdev.anieventmanager.cinematics;
 
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.title.Title;
-import org.bukkit.Bukkit;
-import org.bukkit.GameMode;
-import org.bukkit.Location;
+import org.bukkit.*;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
 import org.falmdev.anieventmanager.cinematics.model.Cinematic;
-import org.falmdev.anieventmanager.cinematics.model.CinematicWaypoint;
+import org.falmdev.anieventmanager.cinematics.model.CinematicFrame;
+import org.falmdev.anieventmanager.cinematics.model.CinematicMarker;
+import org.falmdev.anieventmanager.utils.gui.ItemBuilder;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -20,19 +23,19 @@ import java.util.*;
 /**
  * Reproductor de cinematicas.
  *
- * Filosofía: reproducir exactamente lo que se grabó con el magic stick.
- * La posición y rotación en cada tick se calculan con interpolación lineal
- * simple entre el waypoint anterior y el siguiente, usando el tickOffset
- * de cada uno como referencia de tiempo.
- *
- * Smoothness: se usa connection.teleport() vía reflection para enviar
- * posiciones sin el handshake de confirmación de Player#teleport().
- * El cliente de Minecraft recibe las posiciones y las interpola a su
- * propio framerate (60fps), produciendo movimiento suave.
- *
- * Sin spline, sin easing, sin substeps — la ruta es exactamente la grabada.
+ * Modos de reproducción:
+ *  - Normal: oculta HUD, jugadores, mano. Para todos los jugadores con equipo.
+ *  - Debug: no oculta nada. Solo para el admin que lo inicia. Muestra en
+ *    actionbar el tick actual y permite pausar/agregar markers desde el hotbar.
  */
 public class CinematicPlayer {
+
+    // ── Constantes del modo debug ─────────────────────────────────────────────
+
+    public static final String DEBUG_PAUSE_NAME   = "⏸ Pausar";
+    public static final String DEBUG_RESUME_NAME  = "▶ Reanudar";
+    public static final String DEBUG_MARKER_NAME  = "+ Agregar Marker";
+    public static final String DEBUG_STOP_NAME    = "■ Detener";
 
     private final Anieventmanager plugin;
     private final CinematicEffects effects;
@@ -40,11 +43,24 @@ public class CinematicPlayer {
     private BukkitTask task;
     private Cinematic  current;
     private Runnable   onFinish;
+    private World      timeWorld;
+    private long       savedWorldTime = -1;
 
+    // ── Estado de debug ───────────────────────────────────────────────────────
+    private boolean  debugMode   = false;
+    private UUID     debugAdmin  = null;
+    private boolean  debugPaused = false;
+    private int      debugTick   = 0;
+
+    /** Hotbar original del admin en modo debug. */
+    private ItemStack[] savedDebugHotbar = null;
+    private GameMode    savedDebugGM     = null;
+
+    // ── Audiencia normal ──────────────────────────────────────────────────────
     private final Map<UUID, GameMode> savedGameModes = new HashMap<>();
     private final Map<UUID, Location> savedLocations = new HashMap<>();
 
-    // Reflection cache — se resuelve una vez al primer uso
+    // Reflection cache
     private Method  methodGetHandle   = null;
     private Method  methodTeleportNMS = null;
     private Field   fieldConnection   = null;
@@ -57,151 +73,235 @@ public class CinematicPlayer {
 
     // ── API pública ───────────────────────────────────────────────────────────
 
-    public boolean isPlaying() { return task != null; }
+    public boolean isPlaying()   { return task != null; }
+    public boolean isDebugMode() { return debugMode; }
+    public boolean isDebugPaused() { return debugPaused; }
+    public int     getDebugTick()  { return debugTick; }
 
     public Optional<Cinematic> getCurrentCinematic() {
         return Optional.ofNullable(current);
     }
 
+    // ── Reproducción normal ───────────────────────────────────────────────────
+
     public void play(Cinematic cinematic, Runnable onFinish) {
+        play(cinematic, onFinish, false, null);
+    }
+
+    // ── Reproducción debug ────────────────────────────────────────────────────
+
+    /**
+     * Inicia la reproducción en modo debug para un admin específico.
+     * No oculta HUD ni jugadores. Muestra tick en actionbar.
+     * El hotbar del admin muestra controles: pausa, reanudar, agregar marker, detener.
+     */
+    public void playDebug(Cinematic cinematic, Player admin, Runnable onFinish) {
+        play(cinematic, onFinish, true, admin);
+    }
+
+    // ── Implementación común ──────────────────────────────────────────────────
+
+    private void play(Cinematic cinematic, Runnable onFinish,
+                      boolean debug, Player debugAdminPlayer) {
         if (task != null) stop();
 
-        this.current  = cinematic;
-        this.onFinish = onFinish;
+        this.current    = cinematic;
+        this.onFinish   = onFinish;
+        this.debugMode  = debug;
+        this.debugTick  = 0;
+        this.debugPaused = false;
+        this.debugAdmin = debugAdminPlayer != null
+                ? debugAdminPlayer.getUniqueId() : null;
 
-        List<CinematicWaypoint> waypoints = new ArrayList<>(cinematic.getWaypoints());
-        int totalTicks = cinematic.getTotalTicks();
+        List<CinematicFrame>  frames  = cinematic.getFrames();
+        List<CinematicMarker> markers = cinematic.getMarkers();
+        int totalFrames = frames.size();
+        if (totalFrames == 0) { finish(); return; }
 
-        // Preparar audiencia
-        List<Player> audience = getAudience();
-        savedGameModes.clear();
-        savedLocations.clear();
+        if (debug) {
+            // ── Modo debug: solo el admin ─────────────────────────────────────
+            if (debugAdminPlayer == null) { finish(); return; }
+            setupDebugHotbar(debugAdminPlayer);
+            savedDebugGM = debugAdminPlayer.getGameMode();
+            debugAdminPlayer.setGameMode(GameMode.CREATIVE);
 
-        Location start = waypoints.get(0).getLocation();
-        for (Player p : audience) {
-            savedGameModes.put(p.getUniqueId(), p.getGameMode());
-            savedLocations.put(p.getUniqueId(), p.getLocation().clone());
-            p.setGameMode(GameMode.SPECTATOR);
-            p.teleport(start);
-        }
+            CinematicFrame first = frames.get(0);
+            Location startLoc = toLocation(first, cinematic);
+            if (startLoc != null) debugAdminPlayer.teleport(startLoc);
 
-        effects.applyAll(audience);
+        } else {
+            // ── Modo normal: todos con equipo ─────────────────────────────────
+            List<Player> audience = getAudience();
+            savedGameModes.clear();
+            savedLocations.clear();
 
-        int[] tick = { 0 };
-        Set<Integer> shownTitles = new HashSet<>();
+            CinematicFrame first = frames.get(0);
+            Location startLoc = toLocation(first, cinematic);
 
-        task = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            int currentTick = tick[0]++;
-            List<Player> live = getAudience();
-
-            // ── Calcular posición lineal en este tick ─────────────────────────
-            Location pos = lerpPosition(waypoints, currentTick, totalTicks);
-            for (Player p : live) {
-                sendPositionSmooth(p, pos);
+            for (Player p : audience) {
+                savedGameModes.put(p.getUniqueId(), p.getGameMode());
+                savedLocations.put(p.getUniqueId(), p.getLocation().clone());
+                p.setGameMode(GameMode.SPECTATOR);
+                if (startLoc != null) p.teleport(startLoc);
             }
+            effects.applyAll(audience);
 
-            // ── Mostrar textos en waypoints exactos ───────────────────────────
-            for (int i = 0; i < waypoints.size(); i++) {
-                CinematicWaypoint wp = waypoints.get(i);
-                if (wp.getTickOffset() == currentTick
-                        && !shownTitles.contains(i)
-                        && wp.hasText()) {
-                    shownTitles.add(i);
-                    showText(live, wp);
+            // Control de tiempo del mundo
+            if (cinematic.hasTimeControl() && startLoc != null) {
+                timeWorld = startLoc.getWorld();
+                if (timeWorld != null) {
+                    savedWorldTime = timeWorld.getTime();
+                    timeWorld.setGameRule(GameRules.ADVANCE_TIME, false);
+                    timeWorld.setTime(cinematic.getTimeStart());
                 }
             }
+        }
 
-            if (currentTick >= totalTicks) finish();
+        Set<Integer> shownMarkers = new HashSet<>();
+
+        task = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+
+            // ── Modo debug: manejar pausa ─────────────────────────────────────
+            if (debugMode) {
+                Player da = debugAdmin != null ? Bukkit.getPlayer(debugAdmin) : null;
+                if (da == null || !da.isOnline()) { finish(); return; }
+
+                if (debugPaused) {
+                    // Mostrar actionbar de pausa
+                    da.sendActionBar(buildDebugActionBar(debugTick, totalFrames, true));
+                    return; // no avanzar el tick
+                }
+
+                // Avanzar tick en debug
+                if (debugTick >= totalFrames) { finish(); return; }
+
+                CinematicFrame frame = frames.get(debugTick);
+                sendPositionSmooth(da, frame, cinematic);
+                da.sendActionBar(buildDebugActionBar(debugTick, totalFrames, false));
+
+                // Markers en modo debug también
+                for (int i = 0; i < markers.size(); i++) {
+                    CinematicMarker m = markers.get(i);
+                    if (m.getTick() == debugTick && !shownMarkers.contains(i) && m.hasText()) {
+                        shownMarkers.add(i);
+                        showText(List.of(da), m);
+                    }
+                }
+
+                debugTick++;
+
+            } else {
+                // ── Modo normal ───────────────────────────────────────────────
+                if (debugTick >= totalFrames) { finish(); return; }
+
+                CinematicFrame frame = frames.get(debugTick);
+                List<Player> live = getAudience();
+
+                if (frame.isCut()) {
+                    Location cutLoc = toLocation(frame, cinematic);
+                    if (cutLoc != null) for (Player p : live) p.teleport(cutLoc);
+                } else {
+                    for (Player p : live) sendPositionSmooth(p, frame, cinematic);
+                }
+
+                if (timeWorld != null && cinematic.hasTimeControl()) {
+                    long wt = cinematic.getWorldTimeAt(debugTick);
+                    if (wt >= 0) timeWorld.setTime(wt);
+                }
+
+                for (int i = 0; i < markers.size(); i++) {
+                    CinematicMarker m = markers.get(i);
+                    if (m.getTick() == debugTick && !shownMarkers.contains(i) && m.hasText()) {
+                        shownMarkers.add(i);
+                        showText(live, m);
+                    }
+                }
+
+                debugTick++;
+            }
 
         }, 0L, 1L);
     }
 
-    public void stop() {
-        if (task != null) { task.cancel(); task = null; }
-        restoreAudience();
-        if (onFinish != null) { onFinish.run(); onFinish = null; }
-        current = null;
+    // ── Controles del modo debug ──────────────────────────────────────────────
+
+    public void toggleDebugPause() {
+        if (!debugMode) return;
+        debugPaused = !debugPaused;
+        updateDebugHotbar();
     }
 
-    // ── Interpolación lineal ──────────────────────────────────────────────────
-
-    /**
-     * Calcula la posición en el tick dado usando interpolación lineal simple
-     * entre el waypoint anterior y el siguiente.
-     *
-     * Esto reproduce exactamente la ruta grabada: si grabaste un giro a la
-     * izquierda, la cámara gira a la izquierda; si grabaste recto, va recto.
-     * La velocidad entre waypoints es constante (no hay aceleración/frenado).
-     */
-    private Location lerpPosition(List<CinematicWaypoint> waypoints,
-                                  int tick, int totalTicks) {
-        int size = waypoints.size();
-
-        // Límites
-        if (tick <= waypoints.get(0).getTickOffset()) {
-            return waypoints.get(0).getLocation().clone();
-        }
-        if (tick >= waypoints.get(size - 1).getTickOffset()) {
-            return waypoints.get(size - 1).getLocation().clone();
-        }
-
-        // Encontrar segmento activo: wp1 ≤ tick < wp2
-        int segIndex = 0;
-        for (int i = 0; i < size - 1; i++) {
-            if (tick >= waypoints.get(i).getTickOffset()
-                    && tick < waypoints.get(i + 1).getTickOffset()) {
-                segIndex = i;
-                break;
-            }
-        }
-
-        CinematicWaypoint wp1 = waypoints.get(segIndex);
-        CinematicWaypoint wp2 = waypoints.get(segIndex + 1);
-
-        int segStart = wp1.getTickOffset();
-        int segEnd   = wp2.getTickOffset();
-
-        // t ∈ [0.0, 1.0] dentro de este segmento
-        double t = (segEnd == segStart) ? 0.0
-                : (double)(tick - segStart) / (double)(segEnd - segStart);
-        t = Math.max(0.0, Math.min(1.0, t));
-
-        Location a = wp1.getLocation();
-        Location b = wp2.getLocation();
-
-        double x = lerp(a.getX(), b.getX(), t);
-        double y = lerp(a.getY(), b.getY(), t);
-        double z = lerp(a.getZ(), b.getZ(), t);
-
-        // Yaw con wrap-around para evitar rotaciones largas al cruzar ±180°
-        float yaw   = lerpAngle(a.getYaw(),   b.getYaw(),   (float) t);
-        float pitch = lerpAngle(a.getPitch(), b.getPitch(), (float) t);
-
-        return new Location(a.getWorld(), x, y, z, yaw, pitch);
-    }
-
-    private double lerp(double a, double b, double t) {
-        return a + (b - a) * t;
+    public boolean isDebugAdmin(Player p) {
+        return debugMode && p != null && p.getUniqueId().equals(debugAdmin);
     }
 
     /**
-     * Lerp de ángulo con wrap-around correcto.
-     * Evita que la cámara gire 350° cuando debería girar -10°.
+     * Agrega un marker en el tick actual del debug.
+     * Abre la GUI de edición del marker.
      */
-    private float lerpAngle(float a, float b, float t) {
-        float diff = b - a;
-        while (diff >  180f) diff -= 360f;
-        while (diff < -180f) diff += 360f;
-        return a + diff * (float) t;
+    public void addMarkerAtCurrentTick(Player admin) {
+        if (!debugMode || current == null) return;
+        CinematicMarker marker = new CinematicMarker(debugTick);
+        current.addMarker(marker);
+        current.save();
+        admin.sendMessage(Component.text(
+                "✔ Marker agregado en tick " + debugTick + "  (" +
+                        String.format("%.1fs", debugTick / 20.0) + ")",
+                NamedTextColor.GREEN));
+        // Abrir editor del marker después de un tick
+        Bukkit.getScheduler().runTaskLater(plugin, () ->
+                        plugin.getCinematicMarkerGUI().open(admin, current, marker,
+                                () -> {/* no volver a ningún lado, la debug sigue corriendo */}),
+                1L);
     }
 
     // ── Fin ───────────────────────────────────────────────────────────────────
 
+    public void stop() {
+        if (task != null) { task.cancel(); task = null; }
+        if (debugMode) restoreDebug();
+        else { restoreWorldTime(); restoreAudience(); }
+        if (onFinish != null) { onFinish.run(); onFinish = null; }
+        current = null;
+        debugMode = false;
+        debugAdmin = null;
+        debugPaused = false;
+        debugTick = 0;
+    }
+
     private void finish() {
         if (task != null) { task.cancel(); task = null; }
-        restoreAudience();
+        if (debugMode) restoreDebug();
+        else { restoreWorldTime(); restoreAudience(); }
         if (onFinish != null) { Runnable cb = onFinish; onFinish = null; cb.run(); }
         current = null;
+        debugMode = false;
+        debugAdmin = null;
+        debugPaused = false;
+        debugTick = 0;
+    }
+
+    private void restoreDebug() {
+        Player admin = debugAdmin != null ? Bukkit.getPlayer(debugAdmin) : null;
+        if (admin != null && admin.isOnline()) {
+            restoreDebugHotbar(admin);
+            if (savedDebugGM != null) admin.setGameMode(savedDebugGM);
+            admin.clearTitle();
+            admin.sendActionBar(Component.empty());
+            admin.sendMessage(Component.text(
+                    "■ Reproducción debug terminada.", NamedTextColor.YELLOW));
+        }
+        savedDebugHotbar = null;
+        savedDebugGM     = null;
+    }
+
+    private void restoreWorldTime() {
+        if (timeWorld != null && savedWorldTime >= 0) {
+            timeWorld.setTime(savedWorldTime);
+            timeWorld.setGameRule(GameRules.ADVANCE_TIME, true);
+        }
+        timeWorld = null;
+        savedWorldTime = -1;
     }
 
     private void restoreAudience() {
@@ -210,9 +310,7 @@ public class CinematicPlayer {
             Player p = Bukkit.getPlayer(uid);
             if (p != null && p.isOnline()) audience.add(p);
         }
-
         effects.restoreAll(audience);
-
         for (Player p : audience) {
             p.setGameMode(savedGameModes.get(p.getUniqueId()));
             Location ret = savedLocations.get(p.getUniqueId());
@@ -223,14 +321,126 @@ public class CinematicPlayer {
         savedLocations.clear();
     }
 
+    // ── Hotbar debug ──────────────────────────────────────────────────────────
+
+    private void setupDebugHotbar(Player admin) {
+        savedDebugHotbar = new ItemStack[4];
+        for (int i = 0; i < 4; i++) savedDebugHotbar[i] = admin.getInventory().getItem(i);
+
+        // Slot 0: pausa/play  Slot 1: agregar marker  Slot 2: detener
+        updateDebugHotbar(admin);
+        admin.getInventory().setHeldItemSlot(0);
+    }
+
+    private void updateDebugHotbar() {
+        Player admin = debugAdmin != null ? Bukkit.getPlayer(debugAdmin) : null;
+        if (admin != null) updateDebugHotbar(admin);
+    }
+
+    private void updateDebugHotbar(Player admin) {
+        // Slot 0: pause/resume
+        String pauseLabel = debugPaused ? DEBUG_RESUME_NAME : DEBUG_PAUSE_NAME;
+        NamedTextColor pauseColor = debugPaused ? NamedTextColor.GREEN : NamedTextColor.YELLOW;
+        admin.getInventory().setItem(0, ItemBuilder.of(
+                        debugPaused ? Material.LIME_DYE : Material.YELLOW_DYE)
+                .name(pauseLabel, pauseColor, TextDecoration.BOLD)
+                .emptyLine()
+                .lore(NamedTextColor.GRAY, "Click para " +
+                        (debugPaused ? "reanudar" : "pausar") + " la reproducción.")
+                .build());
+
+        // Slot 1: agregar marker en tick actual
+        admin.getInventory().setItem(1, ItemBuilder.of(Material.GLOW_INK_SAC)
+                .name(DEBUG_MARKER_NAME, NamedTextColor.GREEN, TextDecoration.BOLD)
+                .emptyLine()
+                .lore(NamedTextColor.GRAY, "Click para agregar un marker")
+                .lore("en el tick actual de la reproducción.")
+                .build());
+
+        // Slot 2: detener
+        admin.getInventory().setItem(2, ItemBuilder.of(Material.RED_DYE)
+                .name(DEBUG_STOP_NAME, NamedTextColor.RED, TextDecoration.BOLD)
+                .emptyLine()
+                .lore(NamedTextColor.GRAY, "Click para detener la reproducción.")
+                .build());
+    }
+
+    private void restoreDebugHotbar(Player admin) {
+        if (savedDebugHotbar == null) return;
+        for (int i = 0; i < savedDebugHotbar.length; i++)
+            admin.getInventory().setItem(i, savedDebugHotbar[i]);
+    }
+
+    /** Verifica si un item del hotbar de debug es uno de los botones de control. */
+    public boolean handleDebugHotbarClick(Player admin, int slot) {
+        if (!isDebugAdmin(admin)) return false;
+        return switch (slot) {
+            case 0 -> { toggleDebugPause(); yield true; }
+            case 1 -> { addMarkerAtCurrentTick(admin); yield true; }
+            case 2 -> { stop(); yield true; }
+            default -> false;
+        };
+    }
+
+    // ── Actionbar debug ───────────────────────────────────────────────────────
+
+    private Component buildDebugActionBar(int tick, int total, boolean paused) {
+        int bars   = 20;
+        int filled = total > 0 ? Math.min(bars, (tick * bars) / total) : 0;
+        int empty  = bars - filled;
+
+        String icon = paused ? "⏸" : "▶";
+        NamedTextColor iconColor = paused ? NamedTextColor.YELLOW : NamedTextColor.GREEN;
+
+        Component bar = Component.text(icon + " ", iconColor)
+                .decoration(TextDecoration.ITALIC, false)
+                .append(Component.text(
+                        String.format("Tick %d / %d  (%.1fs)", tick, total, tick / 20.0),
+                        NamedTextColor.WHITE))
+                .append(Component.text("  [", NamedTextColor.DARK_GRAY));
+
+        for (int i = 0; i < filled; i++)
+            bar = bar.append(Component.text("█",
+                    paused ? NamedTextColor.YELLOW : NamedTextColor.GREEN));
+        for (int i = 0; i < empty; i++)
+            bar = bar.append(Component.text("░", NamedTextColor.DARK_GRAY));
+
+        bar = bar.append(Component.text("]", NamedTextColor.DARK_GRAY));
+
+        // Mostrar el marker más cercano — construir fuera del lambda
+        if (current != null) {
+            Component markerText = current.getMarkers().stream()
+                    .filter(m -> m.getTick() >= tick)
+                    .findFirst()
+                    .map(m -> Component.text(
+                            "  → Marker en tick " + m.getTick() +
+                                    " (" + String.format("%.1fs", m.getTick() / 20.0) + ")",
+                            NamedTextColor.GOLD))
+                    .orElse(Component.empty());
+            bar = bar.append(markerText);
+        }
+
+        return bar;
+    }
+
+    // ── Conversión frame → Location ───────────────────────────────────────────
+
+    private Location toLocation(CinematicFrame frame, Cinematic cinematic) {
+        World world = plugin.getCinematicManager().getCinematicWorld(cinematic.getId());
+        if (world == null) return null;
+        return new Location(world,
+                frame.getX(), frame.getY(), frame.getZ(),
+                frame.getYaw(), frame.getPitch());
+    }
+
     // ── Reflection smooth teleport ────────────────────────────────────────────
 
-    /**
-     * Envía la posición vía connection.teleport() sin esperar confirmación
-     * del cliente. El cliente la recibe e interpola suavemente a su framerate.
-     */
-    private void sendPositionSmooth(Player player, Location loc) {
-        if (reflectionFailed) { player.teleport(loc); return; }
+    private void sendPositionSmooth(Player player, CinematicFrame frame, Cinematic cinematic) {
+        if (reflectionFailed) {
+            Location loc = toLocation(frame, cinematic);
+            if (loc != null) player.teleport(loc);
+            return;
+        }
         try {
             if (methodGetHandle == null) {
                 methodGetHandle = player.getClass().getMethod("getHandle");
@@ -239,8 +449,7 @@ public class CinematicPlayer {
             Object nmsPlayer = methodGetHandle.invoke(player);
 
             if (fieldConnection == null) {
-                fieldConnection = findField(nmsPlayer.getClass(),
-                        "connection", "playerConnection");
+                fieldConnection = findField(nmsPlayer.getClass(), "connection", "playerConnection");
                 if (fieldConnection == null)
                     throw new NoSuchFieldException("connection / playerConnection");
                 fieldConnection.setAccessible(true);
@@ -250,32 +459,29 @@ public class CinematicPlayer {
             if (methodTeleportNMS == null) {
                 methodTeleportNMS = findTeleportMethod(connection.getClass());
                 if (methodTeleportNMS == null)
-                    throw new NoSuchMethodException(
-                            "teleport(double,double,double,float,float,Set)");
+                    throw new NoSuchMethodException("teleport(d,d,d,f,f,Set)");
                 methodTeleportNMS.setAccessible(true);
             }
 
             methodTeleportNMS.invoke(connection,
-                    loc.getX(), loc.getY(), loc.getZ(),
-                    loc.getYaw(), loc.getPitch(),
-                    Set.of());
+                    frame.getX(), frame.getY(), frame.getZ(),
+                    frame.getYaw(), frame.getPitch(), Set.of());
 
         } catch (Exception e) {
             if (!reflectionFailed) {
                 reflectionFailed = true;
-                plugin.getLogger().warning("[CinematicPlayer] Reflection falló, " +
-                        "usando Player#teleport() como fallback: " + e.getMessage());
+                plugin.getLogger().warning("[CinematicPlayer] Reflection falló: " + e.getMessage());
             }
-            player.teleport(loc);
+            Location loc = toLocation(frame, cinematic);
+            if (loc != null) player.teleport(loc);
         }
     }
 
     private Field findField(Class<?> clazz, String... names) {
-        Set<String> nameSet = new HashSet<>(Arrays.asList(names));
+        Set<String> set = new HashSet<>(Arrays.asList(names));
         Class<?> c = clazz;
         while (c != null && c != Object.class) {
-            for (Field f : c.getDeclaredFields())
-                if (nameSet.contains(f.getName())) return f;
+            for (Field f : c.getDeclaredFields()) if (set.contains(f.getName())) return f;
             c = c.getSuperclass();
         }
         return null;
@@ -287,33 +493,30 @@ public class CinematicPlayer {
             for (Method m : c.getDeclaredMethods()) {
                 if (!m.getName().equals("teleport")) continue;
                 Class<?>[] p = m.getParameterTypes();
-                if (p.length == 6
-                        && p[0] == double.class && p[1] == double.class
-                        && p[2] == double.class && p[3] == float.class
-                        && p[4] == float.class  && p[5] == Set.class)
-                    return m;
+                if (p.length == 6 && p[0] == double.class && p[3] == float.class
+                        && p[5] == Set.class) return m;
             }
             c = c.getSuperclass();
         }
         return null;
     }
 
-    // ── Títulos y actionbar ───────────────────────────────────────────────────
+    // ── Textos ────────────────────────────────────────────────────────────────
 
-    private void showText(List<Player> audience, CinematicWaypoint wp) {
-        boolean hasTitle    = wp.getTitleMain() != null && !wp.getTitleMain().isBlank();
-        boolean hasSub      = wp.getTitleSub()  != null && !wp.getTitleSub().isBlank();
-        boolean hasActionbar = wp.getActionbar() != null && !wp.getActionbar().isBlank();
+    private void showText(List<Player> audience, CinematicMarker m) {
+        boolean hasTitle    = m.getTitleMain() != null && !m.getTitleMain().isBlank();
+        boolean hasSub      = m.getTitleSub()  != null && !m.getTitleSub().isBlank();
+        boolean hasActionbar = m.getActionbar() != null && !m.getActionbar().isBlank();
         for (Player p : audience) {
             if (hasTitle || hasSub) {
-                Component main = hasTitle ? legacy(wp.getTitleMain()) : Component.empty();
-                Component sub  = hasSub   ? legacy(wp.getTitleSub())  : Component.empty();
+                Component main = hasTitle ? legacy(m.getTitleMain()) : Component.empty();
+                Component sub  = hasSub   ? legacy(m.getTitleSub())  : Component.empty();
                 p.showTitle(Title.title(main, sub, Title.Times.times(
-                        Duration.ofMillis(wp.getTitleFadeIn()  * 50L),
-                        Duration.ofMillis(wp.getTitleStay()    * 50L),
-                        Duration.ofMillis(wp.getTitleFadeOut() * 50L))));
+                        Duration.ofMillis(m.getTitleFadeIn()  * 50L),
+                        Duration.ofMillis(m.getTitleStay()    * 50L),
+                        Duration.ofMillis(m.getTitleFadeOut() * 50L))));
             }
-            if (hasActionbar) p.sendActionBar(legacy(wp.getActionbar()));
+            if (hasActionbar) p.sendActionBar(legacy(m.getActionbar()));
         }
     }
 

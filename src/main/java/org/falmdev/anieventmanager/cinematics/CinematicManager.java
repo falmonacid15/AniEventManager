@@ -1,5 +1,7 @@
 package org.falmdev.anieventmanager.cinematics;
 
+import org.bukkit.World;
+import org.bukkit.entity.Player;
 import org.falmdev.anieventmanager.Anieventmanager;
 import org.falmdev.anieventmanager.cinematics.model.Cinematic;
 import org.falmdev.anieventmanager.cinematics.model.CinematicState;
@@ -8,17 +10,12 @@ import java.io.File;
 import java.util.*;
 
 /**
- * Registro central de cinematicas.
+ * Registro central de cinematicas v2.
  *
- * FIX Bug 3: loadAll() ya NO se llama en el constructor.
- * Se llama desde el ServerLoadEvent en Anieventmanager (cuando los mundos
- * ya están cargados). Esto resuelve el problema de que LocationUtil.fromMap()
- * llame Bukkit.getWorld() y reciba null porque el mundo todavía no está
- * disponible durante el onEnable().
- *
- * Cambio necesario en Anieventmanager.java:
- *   En el ServerLoadEvent, ANTES de refreshAll(), agregar:
- *     cinematicManager.loadAll();
+ * Cambios respecto a v1:
+ *  - Almacena el mundo de cada cinematica (necesario para convertir frames a Locations)
+ *  - El método play() requiere que la cinematica tenga al menos 1 frame
+ *  - CinematicRecorder ya no usa magic stick sino tijeras
  */
 public class CinematicManager {
 
@@ -26,6 +23,14 @@ public class CinematicManager {
     private final File cinematicsDir;
 
     private final LinkedHashMap<String, Cinematic> cinematics = new LinkedHashMap<>();
+
+    /**
+     * Mundo de cada cinematica (donde fue grabada).
+     * Necesario porque los frames no almacenan el nombre del mundo
+     * (para mantener el YAML compacto).
+     * Se guarda en un archivo separado: cinematics/<id>.world
+     */
+    private final Map<String, String> cinematicWorlds = new HashMap<>();
 
     private final CinematicEffects  effects;
     private final CinematicPlayer   player;
@@ -39,54 +44,74 @@ public class CinematicManager {
         this.effects  = new CinematicEffects(plugin);
         this.player   = new CinematicPlayer(plugin, effects);
         this.recorder = new CinematicRecorder(plugin);
-
-        // NO llamamos loadAll() aquí — los mundos no están cargados todavía.
-        // loadAll() se llama desde Anieventmanager.onServerLoad()
     }
 
     // ── Carga ─────────────────────────────────────────────────────────────────
 
     /**
-     * Carga todas las cinematicas desde disco.
-     * Llamar SOLO desde ServerLoadEvent, cuando los mundos ya están disponibles.
+     * Llamar desde ServerLoadEvent (mundos ya disponibles).
      */
     public void loadAll() {
         cinematics.clear();
-        File[] files = cinematicsDir.listFiles(f -> f.getName().endsWith(".yml"));
+        cinematicWorlds.clear();
+
+        File[] files = cinematicsDir.listFiles(f ->
+                f.getName().endsWith(".yml") && !f.getName().startsWith("_"));
         if (files == null) return;
 
-        int loaded = 0;
-        int failed = 0;
         for (File f : files) {
             String id = f.getName().replace(".yml", "").toLowerCase();
             Cinematic c = new Cinematic(id, id, f);
             c.load();
-            // Verificar que tenga al menos el displayName y no esté corrupta
             cinematics.put(id, c);
-            if (c.getWaypoints().isEmpty() && !isEmptyByDesign(f)) {
-                plugin.getLogger().warning("[CinematicManager] '" + id
-                        + "' cargó sin waypoints — puede que el mundo no esté disponible.");
-                failed++;
-            } else {
-                loaded++;
+
+            // Cargar el mundo desde el archivo .world
+            File worldFile = new File(cinematicsDir, id + ".world");
+            if (worldFile.exists()) {
+                try {
+                    String worldName = new String(
+                            java.nio.file.Files.readAllBytes(worldFile.toPath())).trim();
+                    cinematicWorlds.put(id, worldName);
+                } catch (Exception e) {
+                    plugin.getLogger().warning("[CinematicManager] No se pudo leer el mundo de "
+                            + id + ": " + e.getMessage());
+                }
             }
         }
-        plugin.getLogger().info("Cinematicas: " + loaded + " cargadas"
-                + (failed > 0 ? ", " + failed + " con problemas" : ""));
-    }
 
-    /** Detecta si el archivo YAML está vacío intencionalmente (cinematica recién creada). */
-    private boolean isEmptyByDesign(File f) {
-        try {
-            return f.length() < 50; // archivo casi vacío = recién creada
-        } catch (Exception e) {
-            return false;
-        }
+        plugin.getLogger().info("Cinematicas cargadas: " + cinematics.size());
     }
 
     public void reloadAll() {
         for (Cinematic c : cinematics.values()) {
             if (!c.isPlaying()) c.load();
+        }
+    }
+
+    // ── Mundo de la cinematica ────────────────────────────────────────────────
+
+    /**
+     * Obtiene el World en que fue grabada la cinematica.
+     * Usado por CinematicPlayer para convertir frames a Locations.
+     */
+    public World getCinematicWorld(String id) {
+        String worldName = cinematicWorlds.get(id.toLowerCase());
+        if (worldName == null) return null;
+        return org.bukkit.Bukkit.getWorld(worldName);
+    }
+
+    /**
+     * Guarda el mundo de una cinematica (llamado al terminar la grabación).
+     */
+    public void setCinematicWorld(String id, World world) {
+        cinematicWorlds.put(id.toLowerCase(), world.getName());
+        // Persistir en archivo .world
+        File worldFile = new File(cinematicsDir, id.toLowerCase() + ".world");
+        try {
+            java.nio.file.Files.writeString(worldFile.toPath(), world.getName());
+        } catch (Exception e) {
+            plugin.getLogger().warning("[CinematicManager] No se pudo guardar el mundo de "
+                    + id + ": " + e.getMessage());
         }
     }
 
@@ -108,7 +133,10 @@ public class CinematicManager {
         if (c.isPlaying()) return false;
         if (c.isRecording()) recorder.stopRecording();
         c.getFile().delete();
+        // Borrar también el archivo .world
+        new File(cinematicsDir, id.toLowerCase() + ".world").delete();
         cinematics.remove(id.toLowerCase());
+        cinematicWorlds.remove(id.toLowerCase());
         return true;
     }
 
@@ -124,26 +152,43 @@ public class CinematicManager {
         return Collections.unmodifiableSet(cinematics.keySet());
     }
 
+    // ── Grabación ─────────────────────────────────────────────────────────────
+
+    /**
+     * Inicia la grabación. El mundo se guarda al terminar desde CinematicListener.
+     */
+    public boolean startRecording(org.bukkit.entity.Player admin,
+                                  Cinematic cinematic, int durationTicks) {
+        return recorder.startRecording(admin, cinematic, durationTicks);
+    }
+
     // ── Reproducción ─────────────────────────────────────────────────────────
 
     public boolean play(String id) {
         Cinematic c = cinematics.get(id.toLowerCase());
         if (c == null) {
-            plugin.getLogger().warning("[CinematicManager] play(): cinematica '" + id
-                    + "' no encontrada. IDs disponibles: " + cinematics.keySet());
+            plugin.getLogger().warning("[CinematicManager] play(): '" + id
+                    + "' no encontrada.");
             return false;
         }
-        if (c.getWaypoints().size() < 2) {
-            plugin.getLogger().warning("[CinematicManager] play(): '"
-                    + id + "' tiene " + c.getWaypoints().size()
-                    + " waypoints (mínimo 2).");
+        if (c.getTotalFrames() < 1) {
+            plugin.getLogger().warning("[CinematicManager] play(): '" + id
+                    + "' no tiene frames grabados.");
             return false;
         }
-        if (c.isPlaying()) return false;
-        if (player.isPlaying()) return false;
+        if (c.isPlaying() || player.isPlaying()) return false;
 
         c.setState(CinematicState.PLAYING);
         player.play(c, () -> c.setState(CinematicState.IDLE));
+        return true;
+    }
+
+    public boolean playDebug(String id, Player admin) {
+        Cinematic c = cinematics.get(id.toLowerCase());
+        if (c == null || c.getTotalFrames() < 1) return false;
+        if (c.isPlaying() || player.isPlaying()) return false;
+        c.setState(CinematicState.PLAYING);
+        player.playDebug(c, admin, () -> c.setState(CinematicState.IDLE));
         return true;
     }
 
@@ -153,15 +198,9 @@ public class CinematicManager {
         return true;
     }
 
-    public boolean isAnyPlaying() { return player.isPlaying(); }
-
-    public Optional<Cinematic> getCurrentlyPlaying() {
-        return player.getCurrentCinematic();
-    }
-
-    // ── Grabación ─────────────────────────────────────────────────────────────
-
-    public CinematicEffects  getEffects()  { return effects; }
-    public CinematicPlayer   getPlayer()   { return player; }
-    public CinematicRecorder getRecorder() { return recorder; }
+    public boolean isAnyPlaying()                    { return player.isPlaying(); }
+    public Optional<Cinematic> getCurrentlyPlaying() { return player.getCurrentCinematic(); }
+    public CinematicEffects  getEffects()            { return effects; }
+    public CinematicPlayer   getPlayer()             { return player; }
+    public CinematicRecorder getRecorder()           { return recorder; }
 }

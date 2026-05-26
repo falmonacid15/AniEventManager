@@ -10,16 +10,19 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.falmdev.anieventmanager.Anieventmanager;
-import org.falmdev.anieventmanager.cinematics.model.CinematicWaypoint;
+import org.falmdev.anieventmanager.cinematics.model.Cinematic;
 
 /**
- * Listener del Magic Stick y eventos de grabación.
+ * Listener para grabación y modo debug.
  *
- * Click derecho en el aire  → agregar waypoint sin texto
- * Click derecho en bloque   → agregar waypoint + abrir CinematicWaypointGUI
- * Shift + click derecho     → terminar grabación
+ * Grabación:
+ *   Tijera izquierda → togglePause()
+ *   Tijera derecha   → stopRecording() + guardar mundo
  *
- * Si el admin se desconecta mientras graba, la grabación se guarda automáticamente.
+ * Modo debug:
+ *   Click en slot 0 (pausa/play) → toggleDebugPause()
+ *   Click en slot 1 (marker)     → addMarkerAtCurrentTick()
+ *   Click en slot 2 (detener)    → stop()
  */
 public class CinematicListener implements Listener {
 
@@ -31,48 +34,58 @@ public class CinematicListener implements Listener {
 
     @EventHandler
     public void onInteract(PlayerInteractEvent event) {
-        // Solo mano principal para no duplicar
         if (event.getHand() != EquipmentSlot.HAND) return;
 
         Player player = event.getPlayer();
-        CinematicRecorder recorder = plugin.getCinematicManager().getRecorder();
+        Action action = event.getAction();
 
+        // ── Modo debug: detectar clicks en los botones del hotbar ─────────────
+        CinematicPlayer cinematicPlayer = plugin.getCinematicManager().getPlayer();
+        if (cinematicPlayer.isDebugAdmin(player)) {
+            int slot = player.getInventory().getHeldItemSlot();
+            boolean handled = cinematicPlayer.handleDebugHotbarClick(player, slot);
+            if (handled) { event.setCancelled(true); return; }
+        }
+
+        // ── Grabación: detectar tijeras ───────────────────────────────────────
+        CinematicRecorder recorder = plugin.getCinematicManager().getRecorder();
         if (!recorder.isRecordingAdmin(player)) return;
-        if (!CinematicRecorder.isMagicStick(player.getInventory().getItemInMainHand())) return;
+        if (!CinematicRecorder.isRecordingShears(
+                player.getInventory().getItemInMainHand())) return;
 
         event.setCancelled(true);
 
-        Action action = event.getAction();
+        if (action == Action.LEFT_CLICK_AIR || action == Action.LEFT_CLICK_BLOCK) {
+            recorder.togglePause(player);
 
-        // Shift + cualquier click → terminar grabación
-        if (player.isSneaking() && (action == Action.RIGHT_CLICK_AIR
-                || action == Action.RIGHT_CLICK_BLOCK)) {
+        } else if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
+            Cinematic cinematic = recorder.getRecordingCinematic();
+            if (cinematic != null) {
+                plugin.getCinematicManager().setCinematicWorld(
+                        cinematic.getId(), player.getWorld());
+            }
             recorder.stopRecording();
-            return;
-        }
-
-        boolean clickedBlock = action == Action.RIGHT_CLICK_BLOCK;
-        boolean clickedAir   = action == Action.RIGHT_CLICK_AIR;
-
-        if (!clickedBlock && !clickedAir) return;
-
-        // Agregar waypoint
-        CinematicWaypoint wp = recorder.addWaypoint(player, clickedBlock);
-        if (wp == null) return;
-
-        if (clickedBlock) {
-            // Abrir editor de texto para este waypoint
-            // Hacerlo en el tick siguiente para no conflictar con el cancel del event
-            plugin.getServer().getScheduler().runTask(plugin, () ->
-                    plugin.getCinematicWaypointGUI().open(player,
-                            recorder.getRecordingCinematic(), wp));
         }
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
+        Player player = event.getPlayer();
+
+        // Si estaba en modo debug, detener
+        CinematicPlayer cinematicPlayer = plugin.getCinematicManager().getPlayer();
+        if (cinematicPlayer.isDebugAdmin(player)) {
+            cinematicPlayer.stop();
+        }
+
+        // Si estaba grabando, guardar y detener
         CinematicRecorder recorder = plugin.getCinematicManager().getRecorder();
-        if (recorder.isRecordingAdmin(event.getPlayer())) {
+        if (recorder.isRecordingAdmin(player)) {
+            Cinematic cinematic = recorder.getRecordingCinematic();
+            if (cinematic != null) {
+                plugin.getCinematicManager().setCinematicWorld(
+                        cinematic.getId(), player.getWorld());
+            }
             recorder.stopRecording();
         }
     }

@@ -12,6 +12,8 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.falmdev.anieventmanager.Anieventmanager;
+import org.falmdev.anieventmanager.cinematics.CinematicRecorder;
+import org.falmdev.anieventmanager.cinematics.model.Cinematic;
 import org.falmdev.anieventmanager.model.EventTeam;
 
 import java.util.ArrayList;
@@ -274,6 +276,8 @@ public class EMCommand implements CommandExecutor, TabCompleter {
             if (args[1].equalsIgnoreCase("add")) { if (args.length == 3) return filter(new ArrayList<>(plugin.getTeamManager().getTeamIds()), args[2]); if (args.length == 4) return filter(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList(), args[3]); }
             if (args[1].equalsIgnoreCase("remove") && args.length == 3) return filter(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList(), args[2]);
             if (args[1].equalsIgnoreCase("friendlyfire") && args.length == 3) return filter(List.of("on", "off"), args[2]);
+            if (args[1].equalsIgnoreCase("record") && args.length == 4)
+                return filter(List.of("30s", "1m", "2m", "2m30s", "5m", "10m"), args[3]);
             if ((args[1].equalsIgnoreCase("registersign") || args[1].equalsIgnoreCase("registerlamp"))
                     && args.length == 3) {
                 return filter(new ArrayList<>(plugin.getTeamManager().getTeamIds()), args[2]);
@@ -372,7 +376,8 @@ public class EMCommand implements CommandExecutor, TabCompleter {
                 var c = plugin.getCinematicManager().create(id, name);
                 if (c == null) {
                     player.sendMessage(Component.text("✘ Ya existe una cinematica con la id '",
-                                    NamedTextColor.RED).append(Component.text(id, NamedTextColor.YELLOW))
+                                    NamedTextColor.RED)
+                            .append(Component.text(id, NamedTextColor.YELLOW))
                             .append(Component.text("'.", NamedTextColor.RED)));
                 } else {
                     player.sendMessage(Component.text("✔ Cinematica '", NamedTextColor.GREEN)
@@ -397,44 +402,72 @@ public class EMCommand implements CommandExecutor, TabCompleter {
             case "list" -> {
                 var all = plugin.getCinematicManager().getAllCinematics();
                 if (all.isEmpty()) {
-                    player.sendMessage(Component.text("No hay cinematicas creadas.", NamedTextColor.GRAY));
+                    player.sendMessage(Component.text("No hay cinematicas creadas.",
+                            NamedTextColor.GRAY));
                     return;
                 }
                 player.sendMessage(Component.text("━━━ Cinematicas (" + all.size() + ") ━━━",
                         NamedTextColor.GOLD));
                 for (var c : all) {
-                    player.sendMessage(Component.text("  " + c.getId() + " → ", NamedTextColor.GRAY)
-                            .append(Component.text(c.getDisplayName(), NamedTextColor.YELLOW))
-                            .append(Component.text("  [" + c.getWaypoints().size() + " waypoints]",
-                                    NamedTextColor.DARK_GRAY))
-                            .append(Component.text("  " + c.getState().name(), NamedTextColor.GRAY)));
+                    player.sendMessage(
+                            Component.text("  " + c.getId() + " → ", NamedTextColor.GRAY)
+                                    .append(Component.text(c.getDisplayName(), NamedTextColor.YELLOW))
+                                    .append(Component.text(
+                                            "  [" + c.getTotalFrames() + " frames  " +
+                                                    String.format("%.1fs", c.getDurationSeconds()) + "]",
+                                            NamedTextColor.DARK_GRAY))
+                                    .append(Component.text(
+                                            "  " + c.getMarkers().size() + " markers",
+                                            NamedTextColor.DARK_GRAY))
+                                    .append(Component.text(
+                                            "  " + c.getState().name(),
+                                            NamedTextColor.GRAY)));
                 }
             }
 
             case "record" -> {
-                if (args.length < 2) {
-                    player.sendMessage(Component.text("Uso: /em cinematic record <id>",
+                if (args.length < 3) {
+                    player.sendMessage(Component.text(
+                            "Uso: /em cinematic record <id> <duración>",
                             NamedTextColor.YELLOW));
+                    player.sendMessage(Component.text(
+                            "  Ejemplos: 30s  |  1m  |  2m30s  |  5m",
+                            NamedTextColor.GRAY));
                     return;
                 }
                 var cOpt = plugin.getCinematicManager().get(args[1]);
                 if (cOpt.isEmpty()) {
-                    player.sendMessage(Component.text("✘ Cinematica no encontrada.", NamedTextColor.RED));
+                    player.sendMessage(Component.text("✘ Cinematica no encontrada.",
+                            NamedTextColor.RED));
                     return;
                 }
-                boolean ok = plugin.getCinematicManager().getRecorder()
-                        .startRecording(player, cOpt.get());
+                int durationTicks = CinematicRecorder.parseDuration(args[2]);
+                if (durationTicks < 0) {
+                    player.sendMessage(Component.text(
+                            "✘ Duración inválida. Usa: 30s, 1m, 2m30s (mín 2s, máx 10m).",
+                            NamedTextColor.RED));
+                    return;
+                }
+                boolean ok = plugin.getCinematicManager()
+                        .startRecording(player, cOpt.get(), durationTicks);
                 if (!ok) {
                     player.sendMessage(Component.text(
-                            "✘ No se pudo iniciar la grabación (ya hay una activa o la cinematica no está IDLE).",
+                            "✘ No se pudo iniciar (ya hay grabación activa o cinematica no está IDLE).",
                             NamedTextColor.RED));
                 }
             }
 
             case "stop-record" -> {
                 if (!plugin.getCinematicManager().getRecorder().isRecording()) {
-                    player.sendMessage(Component.text("No hay ninguna grabación activa.", NamedTextColor.GRAY));
+                    player.sendMessage(Component.text(
+                            "No hay ninguna grabación activa.", NamedTextColor.GRAY));
                     return;
+                }
+                Cinematic recordingCinematic =
+                        plugin.getCinematicManager().getRecorder().getRecordingCinematic();
+                if (recordingCinematic != null) {
+                    plugin.getCinematicManager().setCinematicWorld(
+                            recordingCinematic.getId(), player.getWorld());
                 }
                 plugin.getCinematicManager().getRecorder().stopRecording();
             }
@@ -448,7 +481,8 @@ public class EMCommand implements CommandExecutor, TabCompleter {
                 boolean ok = plugin.getCinematicManager().play(args[1]);
                 player.sendMessage(ok
                         ? Component.text("▶ Cinematica reproduciéndose.", NamedTextColor.GREEN)
-                        : Component.text("✘ No se pudo reproducir (no existe, muy pocos waypoints, o ya hay una activa).",
+                        : Component.text(
+                        "✘ No se pudo reproducir (no existe, sin frames grabados, o ya hay una activa).",
                         NamedTextColor.RED));
             }
 
@@ -456,7 +490,8 @@ public class EMCommand implements CommandExecutor, TabCompleter {
                 boolean ok = plugin.getCinematicManager().stop();
                 player.sendMessage(ok
                         ? Component.text("■ Reproducción detenida.", NamedTextColor.YELLOW)
-                        : Component.text("No hay ninguna cinematica reproduciéndose.", NamedTextColor.GRAY));
+                        : Component.text("No hay ninguna cinematica reproduciéndose.",
+                        NamedTextColor.GRAY));
             }
 
             case "gui" -> plugin.getCinematicAdminGUI().openList(player);

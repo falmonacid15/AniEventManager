@@ -7,6 +7,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.server.ServerLoadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.falmdev.anieventmanager.cinematics.*;
 import org.falmdev.anieventmanager.commands.EMCommand;
 import org.falmdev.anieventmanager.listeners.TeamListener;
 import org.falmdev.anieventmanager.lobby.ConfirmGUI;
@@ -33,11 +34,6 @@ import org.falmdev.anieventmanager.placeholders.AniEventExpansion;
 import org.falmdev.anieventmanager.minigames.bingo.BingoWallManager;
 import org.falmdev.anieventmanager.minigames.parkourduos.ParkourDuosMiniGame;
 import org.falmdev.anieventmanager.minigames.parkourduos.ParkourDuosCommand;
-import org.falmdev.anieventmanager.cinematics.CinematicAdminGUI;
-import org.falmdev.anieventmanager.cinematics.CinematicListener;
-import org.falmdev.anieventmanager.cinematics.CinematicManager;
-import org.falmdev.anieventmanager.cinematics.CinematicWaypointGUI;
-import org.falmdev.anieventmanager.cinematics.CinematicEffects;
 
 import java.util.logging.Logger;
 
@@ -76,7 +72,7 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
     // Cinematicas
     private CinematicManager    cinematicManager;
     private CinematicAdminGUI   cinematicAdminGUI;
-    private CinematicWaypointGUI cinematicWaypointGUI;
+    private CinematicMarkerGUI cinematicMarkerGUI;
 
     @Override
     public void onEnable() {
@@ -101,7 +97,7 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
         logSection(log, "CinematicManager");
         this.cinematicManager     = new CinematicManager(this);
         this.cinematicAdminGUI    = new CinematicAdminGUI(this);
-        this.cinematicWaypointGUI = new CinematicWaypointGUI(this);
+        this.cinematicMarkerGUI = new CinematicMarkerGUI(this);
         logDone(log, "CinematicManager",
                 cinematicManager.getIds().size() + " cinematicas");
 
@@ -183,7 +179,7 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
         Bukkit.getPluginManager().registerEvents(new TeamLobbyListener(this), this);
         Bukkit.getPluginManager().registerEvents(new CinematicListener(this), this);
         Bukkit.getPluginManager().registerEvents(cinematicAdminGUI, this);
-        Bukkit.getPluginManager().registerEvents(cinematicWaypointGUI, this);
+        Bukkit.getPluginManager().registerEvents(cinematicMarkerGUI, this);;
         Bukkit.getPluginManager().registerEvents(this, this);
         logDone(log, "Listeners");
 
@@ -312,7 +308,7 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
     public ParkourDuosCommand  getParkourDuosCommand()  { return parkourDuosCommand; }
     public CinematicManager    getCinematicManager()    { return cinematicManager; }
     public CinematicAdminGUI   getCinematicAdminGUI()   { return cinematicAdminGUI; }
-    public CinematicWaypointGUI getCinematicWaypointGUI() { return cinematicWaypointGUI; }
+    public CinematicMarkerGUI getCinematicMarkerGUI() { return cinematicMarkerGUI; }
     public CinematicEffects getCinematicEffects() {
         return cinematicManager.getEffects();
     }
