@@ -24,6 +24,10 @@ public class ScoreManager {
         load();
     }
 
+    public void reload() {
+        load();
+    }
+
     // ── Archivo YAML ──────────────────────────────────────────────────────────
 
     private void setupFile() {

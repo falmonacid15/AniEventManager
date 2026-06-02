@@ -1,0 +1,150 @@
+package org.falmdev.anieventmanager.minigames.parkourduos;
+
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.FoodLevelChangeEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.falmdev.anieventmanager.Anieventmanager;
+import org.falmdev.anieventmanager.model.EventTeam;
+
+import java.util.Optional;
+
+/**
+ * Listener de eventos durante la partida de Parkour Duos.
+ * Gestiona:
+ * - Cancelar daño entre jugadores
+ * - Cancelar caída de hambre
+ * - Cancelar romper/colocar bloques
+ * - Cancelar tirar ítems
+ * - Respawn al caer al vacío (teletransportar al último spawn/CP)
+ * - Manejar desconexión durante la partida
+ */
+public class ParkourDuosListener implements Listener {
+
+    private final Anieventmanager    plugin;
+    private final ParkourDuosMiniGame miniGame;
+
+    public ParkourDuosListener(Anieventmanager plugin, ParkourDuosMiniGame miniGame) {
+        this.plugin   = plugin;
+        this.miniGame = miniGame;
+    }
+
+    // ── Cancelar daño ─────────────────────────────────────────────────────────
+
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onDamage(EntityDamageEvent event) {
+        if (!miniGame.isRunning()) return;
+        if (!(event.getEntity() instanceof Player player)) return;
+
+        Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeamOf(player);
+        if (teamOpt.isEmpty()) return;
+
+        // Cancelar todo daño excepto vacío (void) — para el respawn
+        if (event.getCause() == EntityDamageEvent.DamageCause.VOID) return;
+        event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onPvP(EntityDamageByEntityEvent event) {
+        if (!miniGame.isRunning()) return;
+        if (!(event.getDamager() instanceof Player) && !(event.getEntity() instanceof Player)) return;
+        event.setCancelled(true);
+    }
+
+    // ── Respawn al caer al vacío ──────────────────────────────────────────────
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onVoid(EntityDamageEvent event) {
+        if (!miniGame.isRunning()) return;
+        if (!(event.getEntity() instanceof Player player)) return;
+        if (event.getCause() != EntityDamageEvent.DamageCause.VOID) return;
+
+        Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeamOf(player);
+        if (teamOpt.isEmpty()) return;
+
+        event.setCancelled(true);
+
+        TeamParkourData data = miniGame.getDataFor(teamOpt.get());
+        if (data == null) return;
+
+        // Teletransportar al último checkpoint completado o al spawn
+        org.bukkit.Location respawn;
+        int completed = data.getCompletedCheckpoints();
+        if (completed > 0) {
+            // Ir al checkpoint anterior
+            ParkourCheckpoint lastCp = data.getCheckpoints().get(completed - 1);
+            respawn = lastCp.getCenter().clone().add(0, 1, 0);
+        } else {
+            // Ir al spawn del equipo
+            respawn = miniGame.getConfig().getTeamSpawn1(teamOpt.get().getId());
+        }
+
+        if (respawn != null) {
+            final org.bukkit.Location dest = respawn;
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                player.teleport(dest);
+                player.sendMessage(Component.text(
+                        "💀 Caíste al vacío. Te enviamos al último checkpoint.", NamedTextColor.YELLOW));
+            });
+        }
+    }
+
+    // ── Hambre, bloques, ítems ────────────────────────────────────────────────
+
+    @EventHandler
+    public void onHunger(FoodLevelChangeEvent event) {
+        if (!miniGame.isRunning()) return;
+        if (!(event.getEntity() instanceof Player player)) return;
+        if (plugin.getTeamManager().getTeamOf(player).isEmpty()) return;
+        event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onBlockBreak(BlockBreakEvent event) {
+        if (!miniGame.isRunning()) return;
+        if (plugin.getTeamManager().getTeamOf(event.getPlayer()).isEmpty()) return;
+        event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onBlockPlace(BlockPlaceEvent event) {
+        if (!miniGame.isRunning()) return;
+        if (plugin.getTeamManager().getTeamOf(event.getPlayer()).isEmpty()) return;
+        event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onItemDrop(PlayerDropItemEvent event) {
+        if (!miniGame.isRunning()) return;
+        if (plugin.getTeamManager().getTeamOf(event.getPlayer()).isEmpty()) return;
+        event.setCancelled(true);
+    }
+
+    // ── Desconexión ───────────────────────────────────────────────────────────
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        if (!miniGame.isRunning()) return;
+        Player player = event.getPlayer();
+        Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeamOf(player);
+        if (teamOpt.isEmpty()) return;
+
+        // Notificar al compañero
+        for (Player member : teamOpt.get().getOnlinePlayers()) {
+            if (!member.equals(player)) {
+                member.sendMessage(Component.text("⚠ ", NamedTextColor.RED)
+                        .append(Component.text(player.getName(), NamedTextColor.WHITE))
+                        .append(Component.text(" se desconectó. Estás solo.", NamedTextColor.RED)));
+            }
+        }
+    }
+}

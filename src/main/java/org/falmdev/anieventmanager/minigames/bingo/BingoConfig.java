@@ -14,54 +14,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Maneja la configuración del Bingo en:
- * plugins/AniEventManager/minigames/bingo.yml
- *
- * Estructura YAML:
- *
- * settings:
- *   duration-minutes: 30
- *   score-first: 10
- *   score-second: 6
- *   score-third: 3
- *   score-default: 1
- *
- * tasks:
- *   tarea-1:
- *     type: OBTAIN_ITEM
- *     display-name: "Obtener diamantes"
- *     material: DIAMOND
- *     amount: 5
- *
- *   tarea-2:
- *     type: KILL_MOB
- *     display-name: "Matar zombies"
- *     mob: ZOMBIE
- *     count: 10
- *
- *   tarea-3:
- *     type: CRAFT_ITEM
- *     display-name: "Craftear espada de hierro"
- *     material: IRON_SWORD
- *     amount: 1
- *
- *   tarea-4:
- *     type: REACH_LOCATION
- *     display-name: "La cueva"
- *     world: world
- *     x: 100  y: 30  z: -50  radius: 5
- *
- *   tarea-5:
- *     type: EQUIP_ITEM
- *     display-name: "Ponerse casco de hierro"
- *     material: IRON_HELMET
- *
- *   tarea-6:
- *     type: FISH_ITEM
- *     display-name: "Pescar un bacalao"
- *     material: COD
- */
 public class BingoConfig {
 
     private final Anieventmanager plugin;
@@ -73,6 +25,10 @@ public class BingoConfig {
         load();
     }
 
+    public void reload() {
+        yaml = YamlConfiguration.loadConfiguration(file);
+    }
+
     // ── Carga y guardado ──────────────────────────────────────────────────────
 
     public void load() {
@@ -82,7 +38,6 @@ public class BingoConfig {
         if (!file.exists()) {
             try {
                 file.createNewFile();
-                // Escribir defaults al crear
                 yaml = new YamlConfiguration();
                 writeDefaults();
                 yaml.save(file);
@@ -125,35 +80,23 @@ public class BingoConfig {
 
     public void setSpawn(Location loc) {
         yaml.set("spawn.world", loc.getWorld().getName());
-        yaml.set("spawn.x",    loc.getX());
-        yaml.set("spawn.y",    loc.getY());
-        yaml.set("spawn.z",    loc.getZ());
-        yaml.set("spawn.yaw",  (double) loc.getYaw());
-        yaml.set("spawn.pitch",(double) loc.getPitch());
+        yaml.set("spawn.x",     loc.getX());
+        yaml.set("spawn.y",     loc.getY());
+        yaml.set("spawn.z",     loc.getZ());
+        yaml.set("spawn.yaw",   (double) loc.getYaw());
+        yaml.set("spawn.pitch", (double) loc.getPitch());
         save();
     }
 
     // ── Countdown ─────────────────────────────────────────────────────────────
 
-    public int getCountdownSeconds() {
-        return yaml.getInt("settings.countdown-seconds", 5);
-    }
-
-    public void setCountdownSeconds(int seconds) {
-        yaml.set("settings.countdown-seconds", seconds);
-        save();
-    }
+    public int getCountdownSeconds() { return yaml.getInt("settings.countdown-seconds", 5); }
+    public void setCountdownSeconds(int seconds) { yaml.set("settings.countdown-seconds", seconds); save(); }
 
     // ── Settings ──────────────────────────────────────────────────────────────
 
-    public int getDurationMinutes() {
-        return yaml.getInt("settings.duration-minutes", 30);
-    }
-
-    public void setDurationMinutes(int minutes) {
-        yaml.set("settings.duration-minutes", minutes);
-        save();
-    }
+    public int getDurationMinutes() { return yaml.getInt("settings.duration-minutes", 30); }
+    public void setDurationMinutes(int minutes) { yaml.set("settings.duration-minutes", minutes); save(); }
 
     public int getScoreForPlace(int place) {
         return switch (place) {
@@ -177,19 +120,14 @@ public class BingoConfig {
 
     // ── Tareas ────────────────────────────────────────────────────────────────
 
-    /**
-     * Carga todas las tareas desde el YAML.
-     * Se llama al iniciar el minijuego.
-     */
     public List<BingoTask> loadTasks() {
         List<BingoTask> list = new ArrayList<>();
-
         if (!yaml.isConfigurationSection("tasks")) return list;
         var section = yaml.getConfigurationSection("tasks");
         if (section == null) return list;
 
         for (String id : section.getKeys(false)) {
-            String path = "tasks." + id;
+            String path    = "tasks." + id;
             String typeStr = yaml.getString(path + ".type", "OBTAIN_ITEM").toUpperCase();
             String name    = yaml.getString(path + ".display-name", id);
 
@@ -217,15 +155,32 @@ public class BingoConfig {
                                 yaml.getDouble(path + ".radius", 5.0)
                         );
                     }
+                    case VISIT_STRUCTURE -> {
+                        task.setStructureKey(yaml.getString(path + ".structure",
+                                "minecraft:trial_chambers"));
+                    }
+                    case TRADE_ANY -> {
+                        task.setAmount(yaml.getInt(path + ".amount", 1));
+                    }
+                    case TRADE_ITEM -> {
+                        String matStr = yaml.getString(path + ".material", "EMERALD").toUpperCase();
+                        task.setMaterial(Material.valueOf(matStr));
+                        task.setAmount(yaml.getInt(path + ".amount", 1));
+                    }
                 }
-                list.add(task);
 
-                // Icono personalizado (opcional)
+                // Descripción (soporta \n como salto de línea real)
+                String desc = yaml.getString(path + ".description", null);
+                if (desc != null) task.setDescription(desc);
+
+                // Icono personalizado
                 String iconStr = yaml.getString(path + ".icon", null);
                 if (iconStr != null) {
                     try { task.setIcon(Material.valueOf(iconStr.toUpperCase())); }
                     catch (IllegalArgumentException ignored) {}
                 }
+
+                list.add(task);
 
             } catch (IllegalArgumentException e) {
                 plugin.getLogger().warning("[Bingo] Tarea inválida '" + id + "': " + e.getMessage());
@@ -234,9 +189,6 @@ public class BingoConfig {
         return list;
     }
 
-    /**
-     * Guarda una tarea nueva o actualiza una existente.
-     */
     public void saveTask(BingoTask task) {
         String path = "tasks." + task.getId();
         yaml.set(path + ".type",         task.getType().name());
@@ -258,25 +210,25 @@ public class BingoConfig {
                 yaml.set(path + ".z",      task.getLocationZ());
                 yaml.set(path + ".radius", task.getLocationRadius());
             }
+            case VISIT_STRUCTURE -> {
+                yaml.set(path + ".structure", task.getStructureKey());
+            }
+            case TRADE_ANY -> {
+                yaml.set(path + ".amount", task.getAmount());
+            }
+            case TRADE_ITEM -> {
+                yaml.set(path + ".material", task.getMaterial().name());
+                yaml.set(path + ".amount",   task.getAmount());
+            }
         }
-        // Icono personalizado
-        if (task.hasCustomIcon()) {
-            yaml.set(path + ".icon", task.getIcon().name());
-        } else {
-            yaml.set(path + ".icon", null);
-        }
+
+        yaml.set(path + ".icon", task.hasCustomIcon() ? task.getIcon().name() : null);
+        yaml.set(path + ".description", task.hasDescription() ? task.getDescription() : null);
         save();
     }
 
-    public void removeTask(String id) {
-        yaml.set("tasks." + id, null);
-        save();
-    }
-
-    public void clearTasks() {
-        yaml.set("tasks", null);
-        save();
-    }
+    public void removeTask(String id) { yaml.set("tasks." + id, null); save(); }
+    public void clearTasks()          { yaml.set("tasks", null); save(); }
 
     public int getTaskCount() {
         if (!yaml.isConfigurationSection("tasks")) return 0;
@@ -288,9 +240,43 @@ public class BingoConfig {
         return yaml.isConfigurationSection("tasks." + id);
     }
 
-    /**
-     * Validación mínima para iniciar el minijuego.
-     */
+    // ── Paredes ───────────────────────────────────────────────────────────────
+
+    public List<BingoWall> loadWalls() {
+        List<BingoWall> list = new ArrayList<>();
+        if (!yaml.isConfigurationSection("walls")) return list;
+        var section = yaml.getConfigurationSection("walls");
+        if (section == null) return list;
+
+        for (String id : section.getKeys(false)) {
+            String path = "walls." + id;
+            list.add(new BingoWall(id,
+                    yaml.getString(path + ".world", "world"),
+                    yaml.getInt(path + ".x1"), yaml.getInt(path + ".y1"), yaml.getInt(path + ".z1"),
+                    yaml.getInt(path + ".x2"), yaml.getInt(path + ".y2"), yaml.getInt(path + ".z2")));
+        }
+        return list;
+    }
+
+    public void saveWall(BingoWall wall) {
+        String path = "walls." + wall.getId();
+        yaml.set(path + ".world", wall.getWorld());
+        yaml.set(path + ".x1", wall.getX1()); yaml.set(path + ".y1", wall.getY1()); yaml.set(path + ".z1", wall.getZ1());
+        yaml.set(path + ".x2", wall.getX2()); yaml.set(path + ".y2", wall.getY2()); yaml.set(path + ".z2", wall.getZ2());
+        save();
+    }
+
+    public void removeWall(String id)  { yaml.set("walls." + id, null); save(); }
+    public boolean hasWall(String id)  { return yaml.isConfigurationSection("walls." + id); }
+
+    public int getWallCount() {
+        if (!yaml.isConfigurationSection("walls")) return 0;
+        var section = yaml.getConfigurationSection("walls");
+        return section == null ? 0 : section.getKeys(false).size();
+    }
+
+    // ── Validación ────────────────────────────────────────────────────────────
+
     public String validate() {
         if (getTaskCount() == 0)
             return "No hay tareas configuradas. Usa /em bingo task add para agregar tareas.";

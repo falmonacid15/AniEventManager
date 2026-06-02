@@ -5,6 +5,9 @@ main: org.falmdev.anieventmanager.Anieventmanager
 api-version: '1.21'
 load: POSTWORLD
 
+depend:
+  - ProtocolLib
+
 softdepend:
   - PlaceholderAPI
 

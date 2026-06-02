@@ -29,7 +29,6 @@ public class TeamManager {
     private final Map<UUID, String> playerTeamMap = new HashMap<>();
     private int colorIndex = 0;
 
-    // Friendly fire global — desactivado por defecto
     private boolean friendlyFire = false;
 
     private File dataFile;
@@ -38,6 +37,10 @@ public class TeamManager {
     public TeamManager(Anieventmanager plugin) {
         this.plugin = plugin;
         setupFile();
+        load();
+    }
+
+    public void reload() {
         load();
     }
 
@@ -165,26 +168,49 @@ public class TeamManager {
         plugin.getScoreManager().resetAll();
     }
 
-    // ── Asignacion de jugadores ───────────────────────────────────────────────
-
-    public boolean addToTeam(String teamId, Player player) {
-        EventTeam team = teams.get(teamId.toLowerCase());
+    public boolean renameTeam(String id, String newDisplayName) {
+        EventTeam team = teams.get(id.toLowerCase());
         if (team == null) return false;
-        if (team.isFull()) return false;
-
-        removeFromCurrentTeam(player);
-
-        team.addMember(player.getUniqueId());
-        playerTeamMap.put(player.getUniqueId(), teamId.toLowerCase());
+        team.setDisplayName(newDisplayName);
         save();
         return true;
     }
 
+    // ── Asignacion de jugadores ───────────────────────────────────────────────
+
+    public boolean addToTeam(String teamId, Player player) {
+        return addOfflineToTeam(teamId, player.getUniqueId());
+    }
+
+    /**
+     * Agrega un jugador (online u offline) a un equipo por su UUID.
+     * Si el jugador ya estaba en otro equipo, lo saca primero.
+     */
+    public boolean addOfflineToTeam(String teamId, UUID uuid) {
+        EventTeam team = teams.get(teamId.toLowerCase());
+        if (team == null) return false;
+        if (team.isFull()) return false;
+
+        // Si está en otro equipo, sacarlo primero
+        removeFromCurrentTeam(uuid);
+
+        boolean added = team.addMember(uuid);
+        if (added) {
+            playerTeamMap.put(uuid, teamId.toLowerCase());
+            save();
+        }
+        return added;
+    }
+
     public boolean removeFromCurrentTeam(Player player) {
-        String teamId = playerTeamMap.remove(player.getUniqueId());
+        return removeFromCurrentTeam(player.getUniqueId());
+    }
+
+    public boolean removeFromCurrentTeam(UUID uuid) {
+        String teamId = playerTeamMap.remove(uuid);
         if (teamId == null) return false;
         EventTeam team = teams.get(teamId);
-        if (team != null) team.removeMember(player.getUniqueId());
+        if (team != null) team.removeMember(uuid);
         save();
         return true;
     }
@@ -214,6 +240,10 @@ public class TeamManager {
 
     public int getTeamCount() {
         return teams.size();
+    }
+
+    public Map<String, EventTeam> getTeams() {
+        return teams;
     }
 
     // ── Utilidades ────────────────────────────────────────────────────────────

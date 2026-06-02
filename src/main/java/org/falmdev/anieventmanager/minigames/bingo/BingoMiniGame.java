@@ -3,17 +3,22 @@ package org.falmdev.anieventmanager.minigames.bingo;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.title.Title;
-import org.bukkit.Bukkit;
-import org.bukkit.GameMode;
-import org.bukkit.Location;
+import org.bukkit.*;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ArmorMeta;
+import org.bukkit.inventory.meta.trim.ArmorTrim;
+import org.bukkit.inventory.meta.trim.TrimMaterial;
+import org.bukkit.inventory.meta.trim.TrimPattern;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
+import org.falmdev.anieventmanager.managers.MiniGame;
 import org.falmdev.anieventmanager.model.EventTeam;
 
 import java.time.Duration;
 import java.util.*;
 
-public class BingoMiniGame {
+public class BingoMiniGame implements MiniGame {
 
     public enum State { IDLE, COUNTDOWN, RUNNING, FINISHED }
 
@@ -35,11 +40,36 @@ public class BingoMiniGame {
         this.config = new BingoConfig(plugin);
     }
 
+    // ── MiniGame interface ────────────────────────────────────────────────────
+
+    @Override public String getId()          { return "bingo"; }
+    @Override public String getDisplayName() { return "Bingo"; }
+    @Override public String getStateName()   { return state.name(); }
+    @Override public boolean isIdle()        { return state == State.IDLE; }
+
+    @Override
+    public boolean isRunning() {
+        return state == State.RUNNING || state == State.COUNTDOWN;
+    }
+
+    /** sendToLobby en Bingo equivale a sendToSpawn. */
+    @Override
+    public boolean sendToLobby() {
+        return sendToSpawn();
+    }
+
+    @Override
+    public void reloadConfig() {
+        config.reload();
+    }
+
+    @Override
+    public String validateConfig() {
+        return config.validate();
+    }
+
     // ── Ciclo de vida ─────────────────────────────────────────────────────────
 
-    /**
-     * Teletransporta a todos los jugadores al spawn del bingo.
-     */
     public boolean sendToSpawn() {
         Location spawn = config.getSpawn();
         if (spawn == null) return false;
@@ -53,6 +83,7 @@ public class BingoMiniGame {
         return true;
     }
 
+    @Override
     public boolean start() {
         if (state != State.IDLE) return false;
 
@@ -65,7 +96,6 @@ public class BingoMiniGame {
         finishing = false;
         cards.clear();
 
-        // Teletransportar al spawn si está configurado
         Location spawn = config.getSpawn();
         if (spawn != null) {
             for (EventTeam team : teams) {
@@ -76,26 +106,40 @@ public class BingoMiniGame {
             }
         }
 
-        // Crear tarjetas
         List<BingoTask> taskPool = config.loadTasks();
         for (EventTeam team : teams) {
             cards.put(team.getId(), new BingoCard(team, cloneTasks(taskPool)));
         }
 
-        // Registrar listeners
+        if (gameListener != null) {
+            org.bukkit.event.HandlerList.unregisterAll(gameListener);
+            gameListener = null;
+        }
+
         gameListener = new BingoListener(plugin, this);
         plugin.getServer().getPluginManager().registerEvents(gameListener, plugin);
-        plugin.getServer().getPluginManager().registerEvents(new BingoGUI(), plugin);
 
         state = State.COUNTDOWN;
         showIntroAndCountdown();
         return true;
     }
 
+    @Override
     public void forceStop() {
         cancelTasks();
-        if (gameListener != null) gameListener.stopLocationCheck();
+        if (gameListener != null) {
+            gameListener.stopLocationCheck();
+            org.bukkit.event.HandlerList.unregisterAll(gameListener);
+            gameListener = null;
+        }
         broadcastAll(Component.text("El Bingo fue detenido por un admin.", NamedTextColor.RED));
+        Location endSpawn = config.getSpawn();
+        for (EventTeam team : plugin.getTeamManager().getAllTeams()) {
+            for (var p : team.getOnlinePlayers()) {
+                p.getInventory().clear();
+                if (endSpawn != null) p.teleport(endSpawn);
+            }
+        }
         state = State.FINISHED;
         cards.clear();
         Bukkit.getScheduler().runTaskLater(plugin, () -> state = State.IDLE, 20L);
@@ -103,17 +147,7 @@ public class BingoMiniGame {
 
     // ── Intro + Countdown ─────────────────────────────────────────────────────
 
-    /**
-     * Muestra la pantalla de introducción del minijuego,
-     * luego la cuenta regresiva, y finalmente inicia la partida.
-     *
-     * Secuencia:
-     *   1. Título "BINGO" con descripción (4 segundos)
-     *   2. Cuenta regresiva 5...4...3...2...1
-     *   3. "¡YA!" y partida comienza
-     */
     private void showIntroAndCountdown() {
-        // Pantalla de introducción
         Title intro = Title.title(
                 Component.text("BINGO", NamedTextColor.GOLD),
                 Component.text("Completa todas las tareas antes de que acabe el tiempo",
@@ -132,8 +166,7 @@ public class BingoMiniGame {
                 .append(Component.text("/bingo", NamedTextColor.WHITE))
                 .append(Component.text(" para ver tu tarjeta en cualquier momento.", NamedTextColor.GRAY)));
 
-        // Iniciar countdown después de 4 segundos (cuando termina el intro)
-        Bukkit.getScheduler().runTaskLater(plugin, () -> startCountdown(), 80L);
+        Bukkit.getScheduler().runTaskLater(plugin, this::startCountdown, 80L);
     }
 
     private void startCountdown() {
@@ -161,7 +194,13 @@ public class BingoMiniGame {
     }
 
     private void beginGame() {
+        plugin.getBingoWallManager().clearAllWalls();
         state = State.RUNNING;
+        for (EventTeam team : plugin.getTeamManager().getAllTeams()) {
+            for (var p : team.getOnlinePlayers()) {
+                giveKit(p, team);
+            }
+        }
         gameListener.startLocationCheck();
 
         Title go = Title.title(
@@ -269,9 +308,21 @@ public class BingoMiniGame {
 
     private void finish(List<EventTeam> ranking) {
         cancelTasks();
-        if (gameListener != null) gameListener.stopLocationCheck();
+        if (gameListener != null) {
+            gameListener.stopLocationCheck();
+            org.bukkit.event.HandlerList.unregisterAll(gameListener);
+            gameListener = null;
+        }
         state = State.FINISHED;
         cards.clear();
+
+        Location endSpawn = config.getSpawn();
+        for (EventTeam team : plugin.getTeamManager().getAllTeams()) {
+            for (var p : team.getOnlinePlayers()) {
+                p.getInventory().clear();
+                if (endSpawn != null) p.teleport(endSpawn);
+            }
+        }
 
         broadcastAll(Component.text("━━━ Puntajes ━━━", NamedTextColor.GOLD));
         for (int i = 0; i < ranking.size(); i++) {
@@ -288,7 +339,6 @@ public class BingoMiniGame {
     // ── Utilidades ────────────────────────────────────────────────────────────
 
     public BingoCard getCard(EventTeam team) { return cards.get(team.getId()); }
-    public boolean   isRunning()             { return state == State.RUNNING; }
     public State     getState()              { return state; }
     public BingoConfig getConfig()           { return config; }
     public int       getTimeLeftSeconds()    { return timeLeftSeconds; }
@@ -297,6 +347,10 @@ public class BingoMiniGame {
         int mins = timeLeftSeconds / 60;
         int secs = timeLeftSeconds % 60;
         return String.format("%02d:%02d", mins, secs);
+    }
+
+    public int getTotalTimeSeconds() {
+        return config.getDurationMinutes() * 60;
     }
 
     private void broadcastAll(Component msg) {
@@ -317,12 +371,109 @@ public class BingoMiniGame {
             clone.setMobType(t.getMobType());
             clone.setMobCount(t.getMobCount());
             clone.setIcon(t.getIcon());
+            clone.setDescription(t.getDescription());
             clone.setLocation(t.getLocationWorld(),
                     t.getLocationX(), t.getLocationY(), t.getLocationZ(),
                     t.getLocationRadius());
+            clone.setStructureKey(t.getStructureKey());
             cloned.add(clone);
         }
         return cloned;
+    }
+
+    private void giveKit(org.bukkit.entity.Player player, EventTeam team) {
+        player.getInventory().clear();
+
+        NamedTextColor color = team.getColor();
+        TrimMaterial trimMat;
+        if      (color == NamedTextColor.RED)          trimMat = Registry.TRIM_MATERIAL.get(org.bukkit.NamespacedKey.minecraft("redstone"));
+        else if (color == NamedTextColor.BLUE)         trimMat = Registry.TRIM_MATERIAL.get(org.bukkit.NamespacedKey.minecraft("lapis"));
+        else if (color == NamedTextColor.GREEN)        trimMat = Registry.TRIM_MATERIAL.get(org.bukkit.NamespacedKey.minecraft("emerald"));
+        else if (color == NamedTextColor.YELLOW)       trimMat = Registry.TRIM_MATERIAL.get(org.bukkit.NamespacedKey.minecraft("gold"));
+        else if (color == NamedTextColor.LIGHT_PURPLE) trimMat = Registry.TRIM_MATERIAL.get(org.bukkit.NamespacedKey.minecraft("amethyst"));
+        else if (color == NamedTextColor.AQUA)         trimMat = Registry.TRIM_MATERIAL.get(org.bukkit.NamespacedKey.minecraft("diamond"));
+        else if (color == NamedTextColor.GOLD)         trimMat = Registry.TRIM_MATERIAL.get(org.bukkit.NamespacedKey.minecraft("copper"));
+        else                                           trimMat = Registry.TRIM_MATERIAL.get(org.bukkit.NamespacedKey.minecraft("iron"));
+
+        TrimPattern silencePattern = Registry.TRIM_PATTERN.get(org.bukkit.NamespacedKey.minecraft("silence"));
+        ArmorTrim trim = new ArmorTrim(trimMat, silencePattern);
+
+        ItemStack helmet = new ItemStack(Material.NETHERITE_HELMET);
+        ArmorMeta helmetMeta = (ArmorMeta) helmet.getItemMeta();
+        helmetMeta.setTrim(trim);
+        helmetMeta.addEnchant(org.bukkit.enchantments.Enchantment.PROTECTION,    4, true);
+        helmetMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,    3, true);
+        helmetMeta.addEnchant(org.bukkit.enchantments.Enchantment.RESPIRATION,   3, true);
+        helmetMeta.addEnchant(org.bukkit.enchantments.Enchantment.AQUA_AFFINITY, 1, true);
+        helmet.setItemMeta(helmetMeta);
+
+        ItemStack chestplate = new ItemStack(Material.NETHERITE_CHESTPLATE);
+        ArmorMeta chestMeta = (ArmorMeta) chestplate.getItemMeta();
+        chestMeta.setTrim(trim);
+        chestMeta.addEnchant(org.bukkit.enchantments.Enchantment.PROTECTION, 4, true);
+        chestMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING, 3, true);
+        chestplate.setItemMeta(chestMeta);
+
+        ItemStack leggings = new ItemStack(Material.NETHERITE_LEGGINGS);
+        ArmorMeta legMeta = (ArmorMeta) leggings.getItemMeta();
+        legMeta.setTrim(trim);
+        legMeta.addEnchant(org.bukkit.enchantments.Enchantment.PROTECTION,  4, true);
+        legMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,  3, true);
+        legMeta.addEnchant(org.bukkit.enchantments.Enchantment.SWIFT_SNEAK, 3, true);
+        leggings.setItemMeta(legMeta);
+
+        ItemStack boots = new ItemStack(Material.NETHERITE_BOOTS);
+        ArmorMeta bootsMeta = (ArmorMeta) boots.getItemMeta();
+        bootsMeta.setTrim(trim);
+        bootsMeta.addEnchant(org.bukkit.enchantments.Enchantment.PROTECTION,      4, true);
+        bootsMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,      3, true);
+        bootsMeta.addEnchant(org.bukkit.enchantments.Enchantment.FEATHER_FALLING, 4, true);
+        bootsMeta.addEnchant(org.bukkit.enchantments.Enchantment.DEPTH_STRIDER,   3, true);
+        boots.setItemMeta(bootsMeta);
+
+        player.getInventory().setHelmet(helmet);
+        player.getInventory().setChestplate(chestplate);
+        player.getInventory().setLeggings(leggings);
+        player.getInventory().setBoots(boots);
+
+        ItemStack sword = new ItemStack(Material.NETHERITE_SWORD);
+        var swordMeta = sword.getItemMeta();
+        swordMeta.addEnchant(org.bukkit.enchantments.Enchantment.SHARPNESS,    5, true);
+        swordMeta.addEnchant(org.bukkit.enchantments.Enchantment.SWEEPING_EDGE,3, true);
+        swordMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING,   3, true);
+        swordMeta.addEnchant(org.bukkit.enchantments.Enchantment.LOOTING,      3, true);
+        sword.setItemMeta(swordMeta);
+
+        ItemStack axe = new ItemStack(Material.NETHERITE_AXE);
+        var axeMeta = axe.getItemMeta();
+        axeMeta.addEnchant(org.bukkit.enchantments.Enchantment.SHARPNESS,  5, true);
+        axeMeta.addEnchant(org.bukkit.enchantments.Enchantment.EFFICIENCY, 5, true);
+        axeMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING, 3, true);
+        axe.setItemMeta(axeMeta);
+
+        ItemStack pickaxe = new ItemStack(Material.NETHERITE_PICKAXE);
+        var pickMeta = pickaxe.getItemMeta();
+        pickMeta.addEnchant(org.bukkit.enchantments.Enchantment.EFFICIENCY, 5, true);
+        pickMeta.addEnchant(org.bukkit.enchantments.Enchantment.FORTUNE,    3, true);
+        pickMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING, 3, true);
+        pickaxe.setItemMeta(pickMeta);
+
+        ItemStack shovel = new ItemStack(Material.NETHERITE_SHOVEL);
+        var shovelMeta = shovel.getItemMeta();
+        shovelMeta.addEnchant(org.bukkit.enchantments.Enchantment.EFFICIENCY, 5, true);
+        shovelMeta.addEnchant(org.bukkit.enchantments.Enchantment.FORTUNE,    3, true);
+        shovelMeta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING, 3, true);
+        shovel.setItemMeta(shovelMeta);
+
+        player.getInventory().addItem(
+                sword, axe, pickaxe, shovel,
+                new ItemStack(Material.GOLDEN_CARROT, 64),
+                new ItemStack(Material.TORCH, 64)
+        );
+    }
+
+    public void openAdminGUI(Player player) {
+        plugin.getBingoAdminGUI().open(player);
     }
 
     private BingoCard dummyCard(EventTeam team) {
