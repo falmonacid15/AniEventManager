@@ -26,45 +26,45 @@ public class TNTRunAdminGUI implements Listener {
     public static final String TITLE = "TNT Run — Configuración";
 
     // ── Pestañas (fila 0) ─────────────────────────────────────────────────────
-    private static final int TAB_SPAWN = 1;
-    private static final int TAB_ARENA = 2;
-    private static final int TAB_GAME  = 3;
+    private static final int TAB_SPAWN = 12;
+    private static final int TAB_ARENA = 13;
+    private static final int TAB_GAME  = 14;
 
     // ── Pestaña SPAWN ─────────────────────────────────────────────────────────
-    private static final int SPAWN_WORLD     = 10;
-    private static final int SPAWN_LOBBY     = 12;
-    private static final int SPAWN_SPECTATOR = 14;
-    private static final int SPAWN_CENTER    = 16;
-    private static final int SPAWN_ADD       = 19;
-    private static final int SPAWN_LIST      = 22;
-    private static final int SPAWN_CLEAR     = 25;
+    private static final int SPAWN_WORLD     = 20;
+    private static final int SPAWN_LOBBY     = 23;
+    private static final int SPAWN_SPECTATOR = 24;
+    private static final int SPAWN_CENTER    = 21;
+    private static final int SPAWN_ADD       = 30;
+    private static final int SPAWN_LIST      = 31;
+    private static final int SPAWN_CLEAR     = 32;
 
     // ── Pestaña ARENA ─────────────────────────────────────────────────────────
-    private static final int ARENA_SIZE     = 10;
-    private static final int ARENA_SHAPE    = 12;
-    private static final int ARENA_LAYERS   = 14;
-    private static final int ARENA_GAP      = 16;
-    private static final int ARENA_DOME     = 19;
-    private static final int ARENA_GENERATE = 22;
-    private static final int ARENA_CLEAR    = 24;
+    private static final int ARENA_SIZE     = 21;
+    private static final int ARENA_SHAPE    = 22;
+    private static final int ARENA_LAYERS   = 29;
+    private static final int ARENA_GAP      = 30;
+    private static final int ARENA_DOME     = 23;
+    private static final int ARENA_GENERATE = 32;
+    private static final int ARENA_CLEAR    = 33;
 
     // ── Pestaña GAME ──────────────────────────────────────────────────────────
-    private static final int GAME_DELAY        = 10;
-    private static final int GAME_COUNTDOWN    = 12;
-    private static final int GAME_ENDDELAY     = 14;
-    private static final int GAME_JUMP         = 16;
-    private static final int GAME_JUMPCOOLDOWN = 19;
-    private static final int GAME_SCORE_1      = 28;
-    private static final int GAME_SCORE_2      = 30;
-    private static final int GAME_SCORE_3      = 32;
-    private static final int GAME_SCORE_DEF    = 34;
+    private static final int GAME_DELAY        = 21;
+    private static final int GAME_COUNTDOWN    = 22;
+    private static final int GAME_ENDDELAY     = 23;
+    private static final int GAME_JUMP         = 30;
+    private static final int GAME_JUMPCOOLDOWN = 32;
+    private static final int GAME_SCORE_1      = 39;
+    private static final int GAME_SCORE_2      = 40;
+    private static final int GAME_SCORE_3      = 41;
+    private static final int GAME_SCORE_DEF    = 42;
 
     // ── Fila 5 — navegación estándar ─────────────────────────────────────────
     // 45-53 gestionados por GuiUtil.fillNavigationHomeOnly()
     // 48 = libre  |  49 = Magic Stick  |  50 = ⌂ Inicio  |  52 = Start/Stop
-    private static final int NAV_MAGIC_STICK = 49;
-    private static final int NAV_START       = 52;
-    private static final int NAV_STOP        = 53;
+    private static final int NAV_MAGIC_STICK = 4;
+    private static final int NAV_START       = 16;
+    private static final int NAV_STOP        = 10;
 
     private final Anieventmanager plugin;
     private final Map<UUID, Integer>      activeTabs    = new HashMap<>();
@@ -90,15 +90,15 @@ public class TNTRunAdminGUI implements Listener {
 
         Inventory inv = Bukkit.createInventory(null, 54,
                 Component.text(TITLE, NamedTextColor.GOLD));
-        GuiUtil.fillAll(inv);
+        GuiUtil.fillSlots(inv, GuiUtil.emptyPane(), 0,1,9,7,8,17,36,45,46,52,53,44);
+
 
         // Pestañas
         inv.setItem(TAB_SPAWN, buildTab("Spawn / Mundo", Material.COMPASS,    tab == 0));
         inv.setItem(TAB_ARENA, buildTab("Arena",         Material.GRASS_BLOCK, tab == 1));
         inv.setItem(TAB_GAME,  buildTab("Juego",         Material.CLOCK,       tab == 2));
 
-        // ── Fila 5: HomeOnly + controles en slots libres ───────────────────────
-        GuiUtil.fillNavigationHomeOnly(inv); // 50=⌂Inicio, resto negro, 49 libre
+        GuiUtil.fillNavigationHomeOnly(inv);
 
         inv.setItem(NAV_MAGIC_STICK, buildMagicStickButton(player));
 
@@ -234,7 +234,7 @@ public class TNTRunAdminGUI implements Listener {
         inv.setItem(GAME_JUMPCOOLDOWN, buildNumericItem("Cooldown de Doble Salto", Material.CLOCK,
                 cfg.getDoubleJumpCooldown() == 0 ? "sin cooldown" : cfg.getDoubleJumpCooldown() + " segundos",
                 "Tiempo entre dobles saltos.", "Click para cambiar. (0 = sin cooldown)"));
-        inv.setItem(27, ItemBuilder.of(Material.GOLD_INGOT)
+        inv.setItem(38, ItemBuilder.of(Material.GOLD_INGOT)
                 .name("Puntajes por Posición", NamedTextColor.GOLD, TextDecoration.BOLD).build());
         inv.setItem(GAME_SCORE_1,   buildScoreItem(1,  cfg.getScoreForPlace(1),  "🥇", NamedTextColor.GOLD));
         inv.setItem(GAME_SCORE_2,   buildScoreItem(2,  cfg.getScoreForPlace(2),  "🥈", NamedTextColor.GRAY));

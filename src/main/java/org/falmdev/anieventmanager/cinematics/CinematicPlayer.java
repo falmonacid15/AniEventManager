@@ -23,24 +23,25 @@ import java.util.*;
 /**
  * Reproductor de cinematicas.
  *
- * Bandas negras — siempre visibles durante toda la cinematica:
- *   Sin marker activo → título = LETTERBOX_CHAR (solo bandas)
- *   Con marker activo → título = LETTERBOX_CHAR + "\n" + texto
- *
- * Esto garantiza que las bandas nunca desaparezcan al mostrar un marker,
- * porque el carácter de bandas siempre está incluido en el título enviado.
- *
- * Actionbar → completamente independiente, no interfiere con el título.
+ * Cambios respecto a versión anterior:
+ *  - Fade in / fade out via Title.Times + LETTERBOX_CHAR
+ *  - Modo debug usa CREATIVE en vez de SPECTATOR
+ *  - Hotbar debug: 5 slots (pausa, rebobinar, adelantar, marker, stop)
+ *  - seekDebug() para rebobinar/adelantar
  */
 public class CinematicPlayer {
 
-    /** Carácter del RP que renderiza las bandas negras. */
     private static final String LETTERBOX_CHAR = "\uE100";
 
     public static final String DEBUG_PAUSE_NAME  = "⏸ Pausar";
     public static final String DEBUG_RESUME_NAME = "▶ Reanudar";
+    public static final String DEBUG_REWIND_NAME = "◀◀ Rebobinar -5s";
+    public static final String DEBUG_FORWARD_NAME= "▶▶ Adelantar +5s";
     public static final String DEBUG_MARKER_NAME = "+ Agregar Marker";
     public static final String DEBUG_STOP_NAME   = "■ Detener";
+
+    /** Ticks que salta rebobinar/adelantar (5 segundos). */
+    private static final int SKIP_TICKS = 100;
 
     private final Anieventmanager plugin;
     private final CinematicEffects effects;
@@ -56,6 +57,7 @@ public class CinematicPlayer {
     private boolean  debugPaused  = false;
     private int      debugTick    = 0;
 
+    // Hotbar debug: 5 slots (era 3)
     private ItemStack[] savedDebugHotbar = null;
     private GameMode    savedDebugGM     = null;
 
@@ -79,9 +81,7 @@ public class CinematicPlayer {
     public boolean isDebugPaused() { return debugPaused; }
     public int     getDebugTick()  { return debugTick; }
 
-    public Optional<Cinematic> getCurrentCinematic() {
-        return Optional.ofNullable(current);
-    }
+    public Optional<Cinematic> getCurrentCinematic() { return Optional.ofNullable(current); }
 
     public void play(Cinematic cinematic, Runnable onFinish) {
         startPlayback(cinematic, onFinish, false, null);
@@ -102,8 +102,7 @@ public class CinematicPlayer {
         this.debugMode   = debug;
         this.debugTick   = 0;
         this.debugPaused = false;
-        this.debugAdmin  = debugAdminPlayer != null
-                ? debugAdminPlayer.getUniqueId() : null;
+        this.debugAdmin  = debugAdminPlayer != null ? debugAdminPlayer.getUniqueId() : null;
 
         List<CinematicFrame>  frames  = cinematic.getFrames();
         List<CinematicMarker> markers = cinematic.getMarkers();
@@ -114,11 +113,15 @@ public class CinematicPlayer {
             if (debugAdminPlayer == null) { finish(); return; }
             setupDebugHotbar(debugAdminPlayer);
             savedDebugGM = debugAdminPlayer.getGameMode();
-            debugAdminPlayer.setGameMode(GameMode.SPECTATOR);
+
+            // FIX: modo debug usa CREATIVE (no SPECTATOR) para poder moverse libremente
+            debugAdminPlayer.setGameMode(GameMode.CREATIVE);
+            debugAdminPlayer.setAllowFlight(true);
+            debugAdminPlayer.setFlying(true);
+
             CinematicFrame first = frames.get(0);
             Location startLoc = toLocation(first, cinematic);
             if (startLoc != null) debugAdminPlayer.teleport(startLoc);
-            // En modo debug NO se muestran bandas ni se oculta HUD
 
         } else {
             List<Player> audience = getAudience();
@@ -135,19 +138,14 @@ public class CinematicPlayer {
                 if (startLoc != null) p.teleport(startLoc);
             }
 
-            // Aplicar efectos (XP bar, jugadores, mano) — sin letterbox todavía
             effects.applyAll(audience);
 
-            // El packet de calabaza (letterbox) se envía con delay de 2 ticks.
-            // Cuando el jugador entra en SPECTATOR, el servidor envía un packet
-            // que limpia su equipamiento visual — si enviamos la calabaza antes
-            // o al mismo tiempo, ese packet la sobreescribe y las bandas no aparecen.
-            // Con 2 ticks de delay garantizamos que el packet de SPECTATOR ya fue
-            // procesado por el cliente antes de enviar el de la calabaza.
+            // Delay de 2 ticks para que el packet de SPECTATOR no pise la calabaza/fade
             final List<Player> audienceSnapshot = new ArrayList<>(audience);
+            final int fadeIn = cinematic.getFadeInTicks();
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 for (Player p : audienceSnapshot) {
-                    if (p.isOnline()) effects.applyLetterbox(p);
+                    if (p.isOnline()) effects.applyLetterbox(p, fadeIn);
                 }
             }, 2L);
 
@@ -156,8 +154,7 @@ public class CinematicPlayer {
                 timeWorld = startLoc.getWorld();
                 if (timeWorld != null) {
                     savedWorldTime = timeWorld.getTime();
-                    timeWorld.setGameRule(
-                            GameRules.ADVANCE_TIME, false);
+                    timeWorld.setGameRule(GameRules.ADVANCE_TIME, false);
                     timeWorld.setTime(cinematic.getTimeStart());
                 }
             }
@@ -168,7 +165,6 @@ public class CinematicPlayer {
         task = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
 
             if (debugMode) {
-                // ── Modo debug ────────────────────────────────────────────────
                 Player da = debugAdmin != null ? Bukkit.getPlayer(debugAdmin) : null;
                 if (da == null || !da.isOnline()) { finish(); return; }
 
@@ -176,7 +172,6 @@ public class CinematicPlayer {
                     da.sendActionBar(buildDebugActionBar(debugTick, totalFrames, true));
                     return;
                 }
-
                 if (debugTick >= totalFrames) { finish(); return; }
 
                 CinematicFrame frame = frames.get(debugTick);
@@ -187,20 +182,43 @@ public class CinematicPlayer {
                     CinematicMarker m = markers.get(i);
                     if (m.getTick() == debugTick && !shownMarkers.contains(i) && m.hasText()) {
                         shownMarkers.add(i);
-                        // En debug mostramos el texto normal (sin bandas)
                         showTextOnly(List.of(da), m);
                     }
                 }
                 debugTick++;
 
             } else {
-                // ── Modo normal ───────────────────────────────────────────────
-                if (debugTick >= totalFrames) { finish(); return; }
+                if (debugTick >= totalFrames) {
+                    int fadeOut = cinematic.getFadeOutTicks();
+                    if (fadeOut > 0) {
+                        // Cancelar reproducción
+                        task.cancel();
+                        task = null;
+                        List<Player> live = getAudience();
+                        if (live.isEmpty()) {
+                            finish();
+                        } else {
+                            // applyFadeOut aplica BLINDNESS y llama onComplete
+                            // cuando la pantalla ya está negra (~10 ticks).
+                            // finish() restaura al jugador mientras está negro —
+                            // el efecto expira solo y el cliente hace el fade nativo.
+                            // Usamos el primer jugador como trigger (todos tienen mismo timing)
+                            int[] triggered = {0};
+                            for (Player p : live) {
+                                effects.applyFadeOut(p, fadeOut, () -> {
+                                    if (triggered[0]++ == 0) finish();
+                                });
+                            }
+                        }
+                    } else {
+                        finish();
+                    }
+                    return;
+                }
 
                 CinematicFrame frame = frames.get(debugTick);
                 List<Player> live = getAudience();
 
-                // Mover cámara
                 if (frame.isCut()) {
                     Location cutLoc = toLocation(frame, cinematic);
                     if (cutLoc != null) for (Player p : live) p.teleport(cutLoc);
@@ -208,25 +226,16 @@ public class CinematicPlayer {
                     for (Player p : live) sendPositionSmooth(p, frame, cinematic);
                 }
 
-                // Tiempo del mundo
                 if (timeWorld != null && cinematic.hasTimeControl()) {
                     long wt = cinematic.getWorldTimeAt(debugTick);
                     if (wt >= 0) timeWorld.setTime(wt);
                 }
 
-                // Markers — siempre combinados con las bandas
                 for (int i = 0; i < markers.size(); i++) {
                     CinematicMarker m = markers.get(i);
                     if (m.getTick() == debugTick && !shownMarkers.contains(i) && m.hasText()) {
                         shownMarkers.add(i);
-
-                        // Calcular stay del marker — hasta el siguiente marker o fin
-                        int stayTicks = m.getTitleStay();
-
-                        // Mostrar título y actionbar del marker
-                        for (Player p : live) {
-                            showText(p, m);
-                        }
+                        for (Player p : live) showText(p, m);
                     }
                 }
 
@@ -236,18 +245,13 @@ public class CinematicPlayer {
         }, 0L, 1L);
     }
 
+    // ── Fade en modo normal (bandas + fade nativo) ────────────────────────────
+
+    // El fade in lo maneja applyLetterbox(player, fadeInTicks) en CinematicEffects.
+    // El fade out lo maneja applyFadeOut(player, fadeOutTicks) al llegar al final.
+
     // ── Letterbox + título combinados ─────────────────────────────────────────
 
-    /**
-     * Envía un título que combina las bandas negras con el texto del marker.
-     *
-     * Si titleMain es null → solo bandas (LETTERBOX_CHAR vacío)
-     * Si titleMain tiene texto → LETTERBOX_CHAR + salto + texto
-     *
-     * El carácter \uE100 siempre está presente en el título,
-     * garantizando que las bandas se mantengan visibles.
-     *
-     */
     private void showText(Player player, CinematicMarker m) {
         boolean hasTitle    = m.getTitleMain() != null && !m.getTitleMain().isBlank();
         boolean hasSub      = m.getTitleSub()  != null && !m.getTitleSub().isBlank();
@@ -264,9 +268,6 @@ public class CinematicPlayer {
         if (hasActionbar) player.sendActionBar(legacy(m.getActionbar()));
     }
 
-    /**
-     * Muestra el texto del marker sin bandas (para modo debug).
-     */
     private void showTextOnly(List<Player> audience, CinematicMarker m) {
         boolean hasTitle = m.getTitleMain() != null && !m.getTitleMain().isBlank();
         boolean hasSub   = m.getTitleSub()  != null && !m.getTitleSub().isBlank();
@@ -285,7 +286,7 @@ public class CinematicPlayer {
         }
     }
 
-    // ── Debug hotbar ──────────────────────────────────────────────────────────
+    // ── Debug: pausa, seek, marker, stop ─────────────────────────────────────
 
     public void toggleDebugPause() {
         if (!debugMode) return;
@@ -297,6 +298,36 @@ public class CinematicPlayer {
         return debugMode && p != null && p.getUniqueId().equals(debugAdmin);
     }
 
+    /**
+     * Rebobina o adelanta la reproducción debug.
+     * @param deltaTicks positivo = adelantar, negativo = rebobinar
+     */
+    public void seekDebug(int deltaTicks) {
+        if (!debugMode || current == null) return;
+        int newTick = Math.max(0, Math.min(current.getTotalFrames() - 1, debugTick + deltaTicks));
+        debugTick = newTick;
+
+        Player admin = debugAdmin != null ? Bukkit.getPlayer(debugAdmin) : null;
+        if (admin == null) return;
+
+        CinematicFrame frame = current.getFrame(debugTick);
+        if (frame == null) return;
+
+        World world = plugin.getCinematicManager().getCinematicWorld(current.getId());
+        if (world == null) return;
+
+        Location loc = new Location(world, frame.getX(), frame.getY(), frame.getZ(),
+                frame.getYaw(), frame.getPitch());
+        admin.teleport(loc);
+
+        String direction = deltaTicks > 0 ? "▶▶ +" : "◀◀ ";
+        admin.sendActionBar(Component.text(
+                direction + Math.abs(deltaTicks / 20) + "s  →  Tick " + debugTick
+                        + " / " + current.getTotalFrames()
+                        + "  (" + String.format("%.1fs", debugTick / 20.0) + ")",
+                NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+    }
+
     public void addMarkerAtCurrentTick(Player admin) {
         if (!debugMode || current == null) return;
         CinematicMarker marker = new CinematicMarker(debugTick);
@@ -304,25 +335,36 @@ public class CinematicPlayer {
         current.save();
         admin.sendMessage(Component.text(
                 "✔ Marker agregado en tick " + debugTick + "  (" +
-                        String.format("%.1fs", debugTick / 20.0) + ")",
-                NamedTextColor.GREEN));
+                        String.format("%.1fs", debugTick / 20.0) + ")", NamedTextColor.GREEN));
         Bukkit.getScheduler().runTaskLater(plugin, () ->
                 plugin.getCinematicMarkerGUI().open(admin, current, marker, null), 1L);
     }
 
+    /**
+     * Hotbar debug — 5 slots:
+     *   0: Pausa/Play
+     *   1: ◀◀ Rebobinar -5s
+     *   2: ▶▶ Adelantar +5s
+     *   3: + Marker
+     *   4: ■ Stop
+     */
     public boolean handleDebugHotbarClick(Player admin, int slot) {
         if (!isDebugAdmin(admin)) return false;
         return switch (slot) {
-            case 0 -> { toggleDebugPause(); yield true; }
-            case 1 -> { addMarkerAtCurrentTick(admin); yield true; }
-            case 2 -> { stop(); yield true; }
+            case 0 -> { toggleDebugPause();                        yield true; }
+            case 1 -> { seekDebug(-SKIP_TICKS);                    yield true; }
+            case 2 -> { seekDebug(+SKIP_TICKS);                    yield true; }
+            case 3 -> { addMarkerAtCurrentTick(admin);             yield true; }
+            case 4 -> { stop();                                     yield true; }
             default -> false;
         };
     }
 
+    // ── Debug hotbar ──────────────────────────────────────────────────────────
+
     private void setupDebugHotbar(Player admin) {
-        savedDebugHotbar = new ItemStack[3];
-        for (int i = 0; i < 3; i++) savedDebugHotbar[i] = admin.getInventory().getItem(i);
+        savedDebugHotbar = new ItemStack[5];
+        for (int i = 0; i < 5; i++) savedDebugHotbar[i] = admin.getInventory().getItem(i);
         updateDebugHotbar(admin);
         admin.getInventory().setHeldItemSlot(0);
     }
@@ -333,23 +375,41 @@ public class CinematicPlayer {
     }
 
     private void updateDebugHotbar(Player admin) {
+        // Slot 0: Pausa/Play
         admin.getInventory().setItem(0, ItemBuilder.of(
                         debugPaused ? Material.LIME_DYE : Material.YELLOW_DYE)
                 .name(debugPaused ? DEBUG_RESUME_NAME : DEBUG_PAUSE_NAME,
                         debugPaused ? NamedTextColor.GREEN : NamedTextColor.YELLOW,
                         TextDecoration.BOLD)
                 .emptyLine()
-                .lore(NamedTextColor.GRAY, "Click para " +
-                        (debugPaused ? "reanudar." : "pausar."))
+                .lore(NamedTextColor.GRAY, "Click para " + (debugPaused ? "reanudar." : "pausar."))
                 .build());
 
-        admin.getInventory().setItem(1, ItemBuilder.of(Material.GLOW_INK_SAC)
+        // Slot 1: Rebobinar
+        admin.getInventory().setItem(1, ItemBuilder.of(Material.CLOCK)
+                .name(DEBUG_REWIND_NAME, NamedTextColor.AQUA, TextDecoration.BOLD)
+                .emptyLine()
+                .lore(NamedTextColor.GRAY, "Retrocede " + (SKIP_TICKS / 20) + " segundos.")
+                .lore(NamedTextColor.DARK_GRAY, "Tick actual: " + debugTick)
+                .build());
+
+        // Slot 2: Adelantar
+        admin.getInventory().setItem(2, ItemBuilder.of(Material.CLOCK)
+                .name(DEBUG_FORWARD_NAME, NamedTextColor.AQUA, TextDecoration.BOLD)
+                .emptyLine()
+                .lore(NamedTextColor.GRAY, "Avanza " + (SKIP_TICKS / 20) + " segundos.")
+                .lore(NamedTextColor.DARK_GRAY, "Tick actual: " + debugTick)
+                .build());
+
+        // Slot 3: Marker
+        admin.getInventory().setItem(3, ItemBuilder.of(Material.GLOW_INK_SAC)
                 .name(DEBUG_MARKER_NAME, NamedTextColor.GREEN, TextDecoration.BOLD)
                 .emptyLine()
                 .lore(NamedTextColor.GRAY, "Click para agregar marker en tick actual.")
                 .build());
 
-        admin.getInventory().setItem(2, ItemBuilder.of(Material.RED_DYE)
+        // Slot 4: Stop
+        admin.getInventory().setItem(4, ItemBuilder.of(Material.RED_DYE)
                 .name(DEBUG_STOP_NAME, NamedTextColor.RED, TextDecoration.BOLD)
                 .emptyLine()
                 .lore(NamedTextColor.GRAY, "Click para detener.")
@@ -374,6 +434,7 @@ public class CinematicPlayer {
     }
 
     private void finish() {
+        // El fade out ya fue aplicado antes de llamar finish() (si había fadeOutTicks > 0)
         if (task != null) { task.cancel(); task = null; }
         if (debugMode) restoreDebug();
         else { restoreWorldTime(); restoreAudience(); }
@@ -409,7 +470,6 @@ public class CinematicPlayer {
             Player p = Bukkit.getPlayer(uid);
             if (p != null && p.isOnline()) audience.add(p);
         }
-        // Limpiar título (bandas) antes de restaurar
         for (Player p : audience) p.clearTitle();
         effects.restoreAll(audience);
         for (Player p : audience) {
@@ -439,8 +499,7 @@ public class CinematicPlayer {
                 .append(Component.text("  [", NamedTextColor.DARK_GRAY));
 
         for (int i = 0; i < filled; i++)
-            bar = bar.append(Component.text("█",
-                    paused ? NamedTextColor.YELLOW : NamedTextColor.GREEN));
+            bar = bar.append(Component.text("█", paused ? NamedTextColor.YELLOW : NamedTextColor.GREEN));
         for (int i = 0; i < empty; i++)
             bar = bar.append(Component.text("░", NamedTextColor.DARK_GRAY));
 
@@ -484,18 +543,15 @@ public class CinematicPlayer {
             Object nmsPlayer = methodGetHandle.invoke(player);
 
             if (fieldConnection == null) {
-                fieldConnection = findField(nmsPlayer.getClass(),
-                        "connection", "playerConnection");
-                if (fieldConnection == null)
-                    throw new NoSuchFieldException("connection / playerConnection");
+                fieldConnection = findField(nmsPlayer.getClass(), "connection", "playerConnection");
+                if (fieldConnection == null) throw new NoSuchFieldException("connection / playerConnection");
                 fieldConnection.setAccessible(true);
             }
             Object connection = fieldConnection.get(nmsPlayer);
 
             if (methodTeleportNMS == null) {
                 methodTeleportNMS = findTeleportMethod(connection.getClass());
-                if (methodTeleportNMS == null)
-                    throw new NoSuchMethodException("teleport(d,d,d,f,f,Set)");
+                if (methodTeleportNMS == null) throw new NoSuchMethodException("teleport(d,d,d,f,f,Set)");
                 methodTeleportNMS.setAccessible(true);
             }
 
@@ -506,8 +562,7 @@ public class CinematicPlayer {
         } catch (Exception e) {
             if (!reflectionFailed) {
                 reflectionFailed = true;
-                plugin.getLogger().warning("[CinematicPlayer] Reflection falló: "
-                        + e.getMessage());
+                plugin.getLogger().warning("[CinematicPlayer] Reflection falló: " + e.getMessage());
             }
             Location loc = toLocation(frame, cinematic);
             if (loc != null) player.teleport(loc);

@@ -10,6 +10,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.falmdev.anieventmanager.Anieventmanager;
 
 import java.util.*;
@@ -19,12 +21,32 @@ import java.util.*;
  *
  * Efectos aplicados:
  *  1. Bandas negras (letterbox) — via packet de equipamiento falso con calabaza.
- *     El RP reemplaza pumpkinblur.png con las bandas. Completamente client-side.
- *  2. XP bar oculta
- *  3. Jugadores ocultos
- *  4. Mano oculta
+ *  2. Fade in/out — DARKNESS con amplifier alto, igual que el Warden.
+ *  3. XP bar oculta
+ *  4. Jugadores ocultos
+ *  5. Mano oculta
+ *
+ * Por qué DARKNESS funciona como el Warden:
+ *   DARKNESS tiene una animación nativa de fade integrada en el cliente.
+ *   Con amplifier 4+ la pantalla llega a negro total.
+ *   El cliente hace el fade suave automáticamente al aplicarse y al expirar.
+ *
+ *   Fade in:  DARKNESS por fadeInTicks → expira → cliente hace fade negro→normal
+ *   Fade out: DARKNESS por fadeOutTicks → esperar onset (~22 ticks) → restaurar
+ *             jugador mientras está negro → efecto expira → fade nativo negro→normal
+ *
+ * DARKNESS_ONSET_TICKS: ticks que tarda DARKNESS en llegar a negro total.
+ *   El Warden aplica el efecto en pulsos de 13 ticks con amplifier 5.
+ *   Con amplifier alto y duración continua el onset es ~22 ticks (1.1s).
  */
 public class CinematicEffects {
+
+    // Amplifier que usa el Warden — suficiente para negro total
+    private static final int DARKNESS_AMPLIFIER = 4;
+
+    // Ticks que tarda DARKNESS en llegar a negro total al aplicarse
+    // El Warden usa pulsos de 13 ticks — con efecto continuo el onset es ~22 ticks
+    private static final int DARKNESS_ONSET_TICKS = 22;
 
     private final Anieventmanager plugin;
     private final ProtocolManager protocolManager;
@@ -35,25 +57,74 @@ public class CinematicEffects {
         this.protocolManager = ProtocolLibrary.getProtocolManager();
     }
 
+    // ── Aplicar / restaurar ───────────────────────────────────────────────────
+
     public void apply(Player player) {
         activeViewers.add(player.getUniqueId());
-        // Nota: showLetterbox() NO se llama aquí.
-        // Se llama desde CinematicPlayer con un delay de 2 ticks via applyLetterbox(),
-        // para que el packet de calabaza llegue DESPUÉS del packet de SPECTATOR
-        // que limpia el equipamiento del jugador.
         hideXPBar(player);
         hideOtherPlayers(player);
         hideHand(player);
     }
 
     /**
-     * Envía solo el packet de letterbox (calabaza).
-     * Llamar con runTaskLater 2 ticks después de apply() para que no
-     * sea sobreescrito por el packet de equipamiento de SPECTATOR.
+     * Envía el packet de letterbox (calabaza) y aplica fade in si corresponde.
+     * Llamar con runTaskLater 2 ticks después de apply().
+     *
+     * Fade in: DARKNESS por fadeInTicks con amplifier alto.
+     * El cliente hace el fade negro→normal de forma nativa al expirar.
      */
-    public void applyLetterbox(Player player) {
+    public void applyLetterbox(Player player, int fadeInTicks) {
         if (!activeViewers.contains(player.getUniqueId())) return;
-        showLetterbox(player);
+        sendHelmetPacket(player, new ItemStack(Material.CARVED_PUMPKIN));
+
+        if (fadeInTicks > 0) {
+            // DARKNESS como el Warden — fade nativo al expirar
+            player.addPotionEffect(new PotionEffect(
+                    PotionEffectType.BLINDNESS,
+                    fadeInTicks,
+                    DARKNESS_AMPLIFIER,
+                    false,  // ambient
+                    false,  // particles
+                    false   // icon
+            ));
+        }
+    }
+
+    /** Versión sin fade — retrocompatible. */
+    public void applyLetterbox(Player player) {
+        applyLetterbox(player, 0);
+    }
+
+    /**
+     * Fade OUT: aplica DARKNESS, espera DARKNESS_ONSET_TICKS para que la
+     * pantalla esté negra, luego llama onComplete para restaurar al jugador.
+     *
+     * El jugador se restaura mientras la pantalla está negra.
+     * DARKNESS expira después → cliente hace fade negro→normal nativo.
+     *
+     * fadeOutTicks debe ser > DARKNESS_ONSET_TICKS para que el jugador
+     * tenga tiempo de ser restaurado antes de que el efecto expire.
+     * Recomendado: mínimo 40 ticks (2s).
+     */
+    public void applyFadeOut(Player player, int fadeOutTicks, Runnable onComplete) {
+        if (fadeOutTicks <= 0) {
+            if (onComplete != null) Bukkit.getScheduler().runTask(plugin, onComplete);
+            return;
+        }
+
+        // DARKNESS con amplifier alto — pantalla va a negro con animación nativa
+        player.addPotionEffect(new PotionEffect(
+                PotionEffectType.BLINDNESS,
+                fadeOutTicks,
+                DARKNESS_AMPLIFIER,
+                false, false, false
+        ));
+
+        // Esperar a que la pantalla esté completamente negra antes de restaurar
+        // El jugador no verá el salto de posición/gamemode porque está en negro
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (onComplete != null) onComplete.run();
+        }, DARKNESS_ONSET_TICKS);
     }
 
     public void applyAll(List<Player> players) {
@@ -62,6 +133,7 @@ public class CinematicEffects {
 
     public void restore(Player player) {
         activeViewers.remove(player.getUniqueId());
+        player.removePotionEffect(PotionEffectType.BLINDNESS);
         hideLetterbox(player);
         restoreXPBar(player);
         restoreOtherPlayers(player);
@@ -76,24 +148,6 @@ public class CinematicEffects {
         return activeViewers.contains(player.getUniqueId());
     }
 
-    // ── 1. Letterbox via pumpkin packet ───────────────────────────────────────
-
-    /**
-     * Envía un packet de equipamiento falso que pone una calabaza tallada
-     * en el slot de cabeza del jugador — solo en el cliente, el servidor
-     * no sabe nada de esto.
-     *
-     * El resourcepack (updated_Cinematic_Bars.zip) reemplaza pumpkinblur.png
-     * con las bandas negras cinematográficas, así que al "ponerse" la calabaza
-     * el jugador ve las bandas en lugar del overlay original.
-     */
-    private void showLetterbox(Player player) {
-        sendHelmetPacket(player, new ItemStack(Material.CARVED_PUMPKIN));
-    }
-
-    /**
-     * Restaura el helmet real del jugador enviando otro packet de equipamiento.
-     */
     private void hideLetterbox(Player player) {
         ItemStack realHelmet = player.getInventory().getHelmet();
         sendHelmetPacket(player, realHelmet != null ? realHelmet : new ItemStack(Material.AIR));
@@ -112,8 +166,6 @@ public class CinematicEffects {
             plugin.getLogger().warning("[CinematicEffects] letterbox: " + e.getMessage());
         }
     }
-
-    // ── 2. XP Bar ─────────────────────────────────────────────────────────────
 
     private void hideXPBar(Player player) {
         try {
@@ -141,8 +193,6 @@ public class CinematicEffects {
         }
     }
 
-    // ── 3. Jugadores ──────────────────────────────────────────────────────────
-
     private void hideOtherPlayers(Player viewer) {
         try {
             List<Integer> ids = new ArrayList<>();
@@ -169,7 +219,6 @@ public class CinematicEffects {
         }
     }
 
-    // ── 4. Mano ───────────────────────────────────────────────────────────────
 
     private void hideHand(Player player) {
         try {

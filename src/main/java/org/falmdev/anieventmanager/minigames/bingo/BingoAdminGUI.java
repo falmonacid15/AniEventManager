@@ -26,40 +26,37 @@ public class BingoAdminGUI implements Listener {
     public static final String TITLE = "Bingo — Configuración";
 
     // ── Pestañas ──────────────────────────────────────────────────────────────
-    private static final int TAB_CONFIG = 1;
-    private static final int TAB_TASKS  = 2;
-    private static final int TAB_WALLS  = 3;
+    private static final int TAB_CONFIG = 12;
+    private static final int TAB_TASKS  = 13;
+    private static final int TAB_WALLS  = 14;
 
     // ── Pestaña CONFIG ────────────────────────────────────────────────────────
-    private static final int CFG_SPAWN     = 10;
-    private static final int CFG_LOBBY     = 12;
-    private static final int CFG_DURATION  = 14;
-    private static final int CFG_COUNTDOWN = 16;
-    private static final int CFG_SCORE_1   = 28;
-    private static final int CFG_SCORE_2   = 30;
-    private static final int CFG_SCORE_3   = 32;
-    private static final int CFG_SCORE_DEF = 34;
+    private static final int CFG_SPAWN     = 20;
+    private static final int CFG_LOBBY     = 21;
+    private static final int CFG_DURATION  = 23;
+    private static final int CFG_COUNTDOWN = 24;
+    private static final int CFG_SCORE_1   = 39;
+    private static final int CFG_SCORE_2   = 40;
+    private static final int CFG_SCORE_3   = 41;
+    private static final int CFG_SCORE_DEF = 42;
 
     // ── Pestaña TASKS ─────────────────────────────────────────────────────────
     private static final int[] TASK_SLOTS = {
-            10,11,12,13,14,15,16,
             19,20,21,22,23,24,25,
-            28,29,30,31,32,33,34,
-            37,38,39,40,41,42,43
+            28,29,30,31,32,33,34
     };
 
     // ── Pestaña WALLS ─────────────────────────────────────────────────────────
     private static final int[] WALL_SLOTS = {
-            10,11,12,13,14,15,16,
             19,20,21,22,23,24,25,
             28,29,30,31,32,33,34
     };
 
     // ── Fila 5 — navegación ───────────────────────────────────────────────────
     // GuiUtil.fillNavigationHomeOnly → 50=⌂Inicio, 49=libre
-    private static final int NAV_MAGIC_STICK = 49;
-    private static final int NAV_START       = 52;
-    private static final int NAV_STOP        = 53;
+    private static final int NAV_MAGIC_STICK = 4;
+    private static final int NAV_START       = 16;
+    private static final int NAV_STOP        = 10;
 
     private final Anieventmanager plugin;
     private final Map<UUID, Integer>      activeTabs    = new HashMap<>();
@@ -80,7 +77,8 @@ public class BingoAdminGUI implements Listener {
         activeTabs.put(player.getUniqueId(), tab);
 
         Inventory inv = Bukkit.createInventory(null, 54, Component.text(TITLE, NamedTextColor.GOLD));
-        GuiUtil.fillAll(inv);
+        GuiUtil.fillSlots(inv, GuiUtil.emptyPane(), 0,1,9,7,8,17,36,45,46,52,53,44);
+
 
         // Pestañas
         inv.setItem(TAB_CONFIG, buildTab("Config",  Material.COMPARATOR, tab == 0));
@@ -135,7 +133,7 @@ public class BingoAdminGUI implements Listener {
                 .lore(NamedTextColor.YELLOW, "Click para teleportar a todos los jugadores.").build());
         inv.setItem(CFG_DURATION,  buildNumericItem("Duración de Partida", Material.CLOCK, cfg.getDurationMinutes() + " minutos", "Tiempo total.", "Click para cambiar. (Mínimo: 1)"));
         inv.setItem(CFG_COUNTDOWN, buildNumericItem("Countdown", Material.CLOCK, cfg.getCountdownSeconds() + " segundos", "Cuenta regresiva.", "Click para cambiar. (Mínimo: 1)"));
-        inv.setItem(27, ItemBuilder.of(Material.GOLD_INGOT).name("Puntajes por Posición", NamedTextColor.GOLD, TextDecoration.BOLD).build());
+        inv.setItem(38, ItemBuilder.of(Material.GOLD_INGOT).name("Puntajes por Posición", NamedTextColor.GOLD, TextDecoration.BOLD).build());
         inv.setItem(CFG_SCORE_1,   buildScoreItem(1,  cfg.getScoreForPlace(1),  "🥇", NamedTextColor.GOLD));
         inv.setItem(CFG_SCORE_2,   buildScoreItem(2,  cfg.getScoreForPlace(2),  "🥈", NamedTextColor.GRAY));
         inv.setItem(CFG_SCORE_3,   buildScoreItem(3,  cfg.getScoreForPlace(3),  "🥉", NamedTextColor.RED));
@@ -158,8 +156,8 @@ public class BingoAdminGUI implements Listener {
         inv.setItem(40, ItemBuilder.of(Material.PAPER).name("Tareas", NamedTextColor.GOLD, TextDecoration.BOLD).emptyLine()
                 .lore(GuiUtil.label("Total", Component.text(tasks.size() + "/25", NamedTextColor.WHITE)))
                 .lore(GuiUtil.label("Página", Component.text((page+1) + "/" + totalPages, NamedTextColor.WHITE))).build());
-        if (page > 0)           inv.setItem(36, ItemBuilder.of(Material.ARROW).name("← Página anterior", NamedTextColor.YELLOW).build());
-        if (page < totalPages-1) inv.setItem(44, ItemBuilder.of(Material.ARROW).name("Página siguiente →", NamedTextColor.YELLOW).build());
+        if (page > 0)           inv.setItem(39, ItemBuilder.of(Material.ARROW).name("← Página anterior", NamedTextColor.YELLOW).build());
+        if (page < totalPages-1) inv.setItem(41, ItemBuilder.of(Material.ARROW).name("Página siguiente →", NamedTextColor.YELLOW).build());
     }
 
     private ItemStack buildTaskItem(BingoTask task) {
@@ -185,13 +183,13 @@ public class BingoAdminGUI implements Listener {
             int wallIdx = start + i;
             if (wallIdx < walls.size()) inv.setItem(WALL_SLOTS[i], buildWallItem(walls.get(wallIdx)));
         }
-        inv.setItem(40, ItemBuilder.of(Material.LIME_DYE).name("+ Agregar pared", NamedTextColor.GREEN, TextDecoration.BOLD).emptyLine()
+        inv.setItem(42, ItemBuilder.of(Material.LIME_DYE).name("+ Agregar pared", NamedTextColor.GREEN, TextDecoration.BOLD).emptyLine()
                 .lore(NamedTextColor.YELLOW, "Click para iniciar selección de pared.").build());
-        inv.setItem(42, ItemBuilder.of(Material.PAPER).name("Paredes", NamedTextColor.GOLD, TextDecoration.BOLD)
+        inv.setItem(40, ItemBuilder.of(Material.PAPER).name("Paredes", NamedTextColor.GOLD, TextDecoration.BOLD)
                 .lore(GuiUtil.label("Total", Component.text(walls.size(), NamedTextColor.WHITE)))
                 .lore(GuiUtil.label("Página", Component.text((page+1) + "/" + totalPages, NamedTextColor.WHITE))).build());
-        if (page > 0)           inv.setItem(36, ItemBuilder.of(Material.ARROW).name("← Página anterior", NamedTextColor.YELLOW).build());
-        if (page < totalPages-1) inv.setItem(44, ItemBuilder.of(Material.ARROW).name("Página siguiente →", NamedTextColor.YELLOW).build());
+        if (page > 0)           inv.setItem(39, ItemBuilder.of(Material.ARROW).name("← Página anterior", NamedTextColor.YELLOW).build());
+        if (page < totalPages-1) inv.setItem(41, ItemBuilder.of(Material.ARROW).name("Página siguiente →", NamedTextColor.YELLOW).build());
     }
 
     private ItemStack buildWallItem(BingoWall wall) {
