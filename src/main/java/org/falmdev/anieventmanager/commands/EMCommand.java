@@ -15,6 +15,7 @@ import org.falmdev.anieventmanager.Anieventmanager;
 import org.falmdev.anieventmanager.cinematics.CinematicRecorder;
 import org.falmdev.anieventmanager.cinematics.model.Cinematic;
 import org.falmdev.anieventmanager.model.EventTeam;
+import org.falmdev.anieventmanager.utils.interval.IntervalManager;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -49,14 +50,92 @@ public class EMCommand implements CommandExecutor, TabCompleter {
             case "boatracing"  -> plugin.getBoatRacingCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
             case "frozenheist" -> plugin.getFrozenHeistCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
             case "pd"          -> plugin.getParkourDuosCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
+            case "battleroyale" -> plugin.getBattleRoyaleCommand()
+                    .handle(player, Arrays.copyOfRange(args, 1, args.length));
+            case "pvpfinal" -> plugin.getPvpFinalCommand()
+                    .handle(player, Arrays.copyOfRange(args, 1, args.length));
             case "cinematic" -> handleCinematic(player, Arrays.copyOfRange(args, 1, args.length));
             case "help"        -> sendHelp(player);
             case "gui" -> plugin.getEventManagerGUI().open(player);
+            case "interval" -> handleInterval(player, Arrays.copyOfRange(args, 1, args.length));
             case "reload"      -> plugin.reloadAll(player);
             default            -> player.sendMessage(Component.text("Subcomando desconocido. Usa ", NamedTextColor.RED)
                     .append(Component.text("/em help", NamedTextColor.YELLOW)));
         }
         return true;
+    }
+
+    private void handleInterval(Player player, String[] args) {
+        var im = plugin.getIntervalManager();
+        if (args.length == 0) {
+            player.sendMessage(Component.text(
+                    "Uso: /em interval [add <duración>|stop|status]", NamedTextColor.YELLOW));
+            player.sendMessage(Component.text(
+                    "  Ejemplos de duración: 30s, 5m, 2m30s, 1h", NamedTextColor.GRAY));
+            return;
+        }
+
+        switch (args[0].toLowerCase()) {
+            case "add" -> {
+                if (args.length < 2) {
+                    player.sendMessage(Component.text(
+                            "Uso: /em interval add <duración>", NamedTextColor.YELLOW));
+                    return;
+                }
+                int seconds = IntervalManager.parseDuration(args[1]);
+                if (seconds <= 0) {
+                    player.sendMessage(Component.text(
+                            "✘ Duración inválida. Ejemplos: 30s, 5m, 2m30s, 1h",
+                            NamedTextColor.RED));
+                    return;
+                }
+                im.start(seconds);
+                player.sendMessage(Component.text("✔ Intervalo iniciado: ", NamedTextColor.GREEN)
+                        .append(Component.text(IntervalManager.formatDuration(seconds),
+                                NamedTextColor.YELLOW)));
+            }
+
+            case "stop" -> {
+                if (!im.isActive()) {
+                    player.sendMessage(Component.text("✘ No hay intervalo activo.",
+                            NamedTextColor.RED));
+                    return;
+                }
+                im.stop();
+            }
+
+            case "cancel" -> {
+                if (!im.isActive()) {
+                    player.sendMessage(Component.text("✘ No hay intervalo activo.",
+                            NamedTextColor.RED));
+                    return;
+                }
+                im.cancel();
+                player.sendMessage(Component.text(
+                        "✔ Intervalo cancelado silenciosamente.", NamedTextColor.YELLOW));
+            }
+
+            case "status" -> {
+                if (!im.isActive()) {
+                    player.sendMessage(Component.text("No hay intervalo activo.",
+                            NamedTextColor.GRAY));
+                    return;
+                }
+                player.sendMessage(Component.text("─── Intervalo activo ───",
+                        NamedTextColor.GOLD));
+                player.sendMessage(Component.text("  Restante: ", NamedTextColor.GRAY)
+                        .append(Component.text(im.getTimeLeftFormatted(), NamedTextColor.YELLOW)));
+                player.sendMessage(Component.text("  Porcentaje: ", NamedTextColor.GRAY)
+                        .append(Component.text(im.getPercentLeft() + "%", NamedTextColor.YELLOW)));
+                player.sendMessage(Component.text("  Total: ", NamedTextColor.GRAY)
+                        .append(Component.text(IntervalManager.formatDuration(im.getTotalSeconds()),
+                                NamedTextColor.WHITE)));
+            }
+
+            default -> player.sendMessage(Component.text(
+                    "Uso: /em interval [add <duración>|stop|cancel|status]",
+                    NamedTextColor.YELLOW));
+        }
     }
 
     // ── /em team ──────────────────────────────────────────────────────────────
@@ -264,7 +343,7 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         if (!(sender instanceof Player player) || !player.isOp()) return List.of();
 
         if (args.length == 1)
-            return filter(List.of("team", "score", "tntrun", "bingo", "boatracing", "frozenheist", "pd", "cinematic", "gui", "help", "reload"), args[0]);
+            return filter(List.of("team", "score", "tntrun", "bingo", "boatracing", "frozenheist", "battleroyale","pvpfinal", "pd", "cinematic", "interval", "gui", "help", "reload"), args[0]);
 
         if (args[0].equalsIgnoreCase("team")) {
             if (args.length == 2) return filter(List.of(
@@ -303,6 +382,17 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         if (args[0].equalsIgnoreCase("frozenheist"))
             return plugin.getFrozenHeistCommand().tabComplete(Arrays.copyOfRange(args, 1, args.length));
 
+        if (args[0].equalsIgnoreCase("battleroyale"))
+            return plugin.getBattleRoyaleCommand()
+                    .tabComplete(Arrays.copyOfRange(args, 1, args.length));
+
+        if (args[0].equalsIgnoreCase("interval")) {
+            if (args.length == 2)
+                return filter(List.of("add", "stop", "cancel", "status"), args[1]);
+            if (args.length == 3 && args[1].equalsIgnoreCase("add"))
+                return filter(List.of("30s", "1m", "2m", "5m", "10m", "15m", "30m", "1h"), args[2]);
+        }
+
          if (args[0].equalsIgnoreCase("cinematic")) {
              if (args.length == 2) return filter(List.of(
                      "create", "delete", "list", "record", "stop-record", "play", "stop", "gui"), args[1]);
@@ -326,8 +416,11 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(help("/em bingo ...",       "Minijuego Bingo"));
         player.sendMessage(help("/em boatracing ...",  "Minijuego Boat Racing"));
         player.sendMessage(help("/em frozenheist ...", "Minijuego Frozen Heist"));
+        player.sendMessage(help("/em battleroyale ...", "Minijuego Battle Royale"));
+        player.sendMessage(help("/em pvpfinal ...",    "Minijuego PvP Final"));
         player.sendMessage(help("/em cinematic ...", "Gestión de cinematicas"));
         player.sendMessage(help("/em pd ...",          "Minijuego Parkour Duos"));
+        player.sendMessage(help("/em interval ...",    "Pausas/intervalos del evento"));
         player.sendMessage(help("/em reload",          "Recarga la configuración"));
         player.sendMessage(help("/em help",            "Muestra esta ayuda"));
     }

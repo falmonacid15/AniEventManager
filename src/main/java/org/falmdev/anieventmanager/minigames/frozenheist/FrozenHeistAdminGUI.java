@@ -27,31 +27,31 @@ public class FrozenHeistAdminGUI implements Listener {
     public static final String TITLE_TEAM = "FH — Equipo: ";
 
     // ── Pestañas ──────────────────────────────────────────────────────────────
-    private static final int TAB_GLOBAL = 1;
-    private static final int TAB_TEAMS  = 2;
+    private static final int TAB_GLOBAL = 12;
+    private static final int TAB_TEAMS  = 14;
 
     // ── Pestaña GLOBAL ────────────────────────────────────────────────────────
-    private static final int GLOB_SPAWN    = 10;
-    private static final int GLOB_LOBBY    = 12;
-    private static final int GLOB_DURATION = 14;
-    private static final int GLOB_SCORE_1  = 28;
-    private static final int GLOB_SCORE_2  = 30;
+    private static final int GLOB_SPAWN    = 21;
+    private static final int GLOB_LOBBY    = 22;
+    private static final int GLOB_DURATION = 23;
+    private static final int GLOB_SCORE_1  = 30;
+    private static final int GLOB_SCORE_2  = 31;
     private static final int GLOB_SCORE_3  = 32;
 
     // ── Sub-vista por equipo ──────────────────────────────────────────────────
-    private static final int TEAM_BASE_SPAWN = 10;
-    private static final int TEAM_CAPTURE    = 12;
-    private static final int TEAM_FLAG_STAND = 14;
-    private static final int TEAM_CORNER1    = 19;
-    private static final int TEAM_CORNER2    = 21;
-    private static final int TEAM_STATUS     = 24;
+    private static final int TEAM_BASE_SPAWN = 21;
+    private static final int TEAM_CAPTURE    = 22;
+    private static final int TEAM_FLAG_STAND = 23;
+    private static final int TEAM_CORNER1    = 30;
+    private static final int TEAM_CORNER2    = 31;
+    private static final int TEAM_STATUS     = 32;
 
     // ── Fila 5 — navegación ───────────────────────────────────────────────────
     // Pantalla raíz: GuiUtil.fillNavigationHomeOnly → 50=⌂Inicio
     // Sub-vista:     GuiUtil.fillNavigation         → 48=Volver, 50=⌂Inicio
-    private static final int NAV_MAGIC_STICK = 49;
-    private static final int NAV_START       = 52;
-    private static final int NAV_STOP        = 53;
+    private static final int NAV_MAGIC_STICK = 4;
+    private static final int NAV_START       = 16;
+    private static final int NAV_STOP        = 10;
 
     private final Anieventmanager plugin;
     private final Map<UUID, Integer>      activeTabs    = new HashMap<>();
@@ -70,7 +70,8 @@ public class FrozenHeistAdminGUI implements Listener {
         activeTabs.put(player.getUniqueId(), tab);
 
         Inventory inv = Bukkit.createInventory(null, 54, Component.text(TITLE, NamedTextColor.AQUA));
-        GuiUtil.fillAll(inv);
+        GuiUtil.fillSlots(inv, GuiUtil.emptyPane(), 0,1,9,7,8,17,36,45,46,52,53,44);
+
 
         inv.setItem(TAB_GLOBAL, buildTab("Global",  Material.COMPARATOR, tab == 0));
         inv.setItem(TAB_TEAMS,  buildTab("Equipos", Material.SHIELD,     tab == 1));
@@ -134,7 +135,7 @@ public class FrozenHeistAdminGUI implements Listener {
     private void fillTeamsTab(Inventory inv) {
         Collection<EventTeam> teams = plugin.getTeamManager().getAllTeams();
         FrozenHeistConfig cfg = plugin.getFrozenHeistMiniGame().getConfig();
-        int slot = 10;
+        int slot = 19;
         for (EventTeam team : teams) {
             if (slot >= 44) break;
             inv.setItem(slot, buildTeamStatusItem(team, cfg));

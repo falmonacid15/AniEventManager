@@ -12,6 +12,7 @@ import org.falmdev.anieventmanager.minigames.frozenheist.FlagManager;
 import org.falmdev.anieventmanager.minigames.frozenheist.TeamHeistData;
 import org.falmdev.anieventmanager.minigames.tntrun.TNTRunMiniGame;
 import org.falmdev.anieventmanager.model.EventTeam;
+import org.falmdev.anieventmanager.utils.interval.IntervalManager;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -89,13 +90,19 @@ public class AniEventExpansion extends PlaceholderExpansion {
 
     @Override
     public String onRequest(OfflinePlayer offlinePlayer, @NotNull String params) {
+
         if (params.startsWith("top_"))       return resolveTop(params);
         if (params.startsWith("bingo_"))     return resolveBingo(offlinePlayer, params);
         if (params.startsWith("tntrun_"))    return resolveTNTRun(offlinePlayer, params);
         if (params.startsWith("fh_"))        return resolveFrozenHeist(offlinePlayer, params);
         if (params.startsWith("br_"))        return resolveBoatRacing(offlinePlayer, params);
+        if (params.startsWith("battleroyale_")) return plugin.getBattleRoyalePlaceholders()
+                .resolve(offlinePlayer, params.substring("battleroyale_".length()));
+        if (params.startsWith("pvpfinal_")) return plugin.getPvpFinalPlaceholders()
+                .resolve(offlinePlayer, params.substring("pvpfinal_".length()));
         if (params.startsWith("teamid_"))    return resolveTeamById(params);
         if (params.startsWith("pd_"))        return resolveParkourDuos(offlinePlayer, params);
+        if (params.startsWith("interval_"))   return resolveInterval(params);
 
         Player player = offlinePlayer.getPlayer();
 
@@ -151,6 +158,17 @@ public class AniEventExpansion extends PlaceholderExpansion {
     }
 
     // ── TNT Run ───────────────────────────────────────────────────────────────
+    private String resolveInterval(String params) {
+        var im = plugin.getIntervalManager();
+        return switch (params) {
+            case "interval_active"  -> String.valueOf(im.isActive());
+            case "interval_time"    -> im.getTimeLeftFormatted();
+            case "interval_seconds" -> String.valueOf(im.getSecondsLeft());
+            case "interval_percent" -> String.valueOf(im.getPercentLeft());
+            case "interval_total"   -> IntervalManager.formatDuration(im.getTotalSeconds());
+            default -> null;
+        };
+    }
 
     private String resolveTNTRun(OfflinePlayer offlinePlayer, String params) {
         TNTRunMiniGame tnt = plugin.getTNTRunMiniGame();

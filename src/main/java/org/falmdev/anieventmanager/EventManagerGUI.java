@@ -19,19 +19,17 @@ public class EventManagerGUI implements Listener {
     public static final String TITLE        = "✦ AniEvent Manager";
     public static final String TITLE_SCORES = "Puntajes del Evento";
 
-    private static final int SLOT_TEAMS      = 10;
-    private static final int SLOT_SCORES     = 11;
-    private static final int SLOT_CINEMATICS = 13;
-    private static final int SLOT_TNTRUN      = 28;
-    private static final int SLOT_BINGO       = 29;
-    private static final int SLOT_FROZENHEIST = 30;
-    private static final int SLOT_PARKOURDUOS = 31;
-    private static final int SLOT_BOATRACING  = 32;
+    private static final int SLOT_TEAMS      = 12;
+    private static final int SLOT_SCORES     = 13;
+    private static final int SLOT_CINEMATICS = 14;
+    private static final int SLOT_TNTRUN      = 29;
+    private static final int SLOT_BINGO       = 30;
+    private static final int SLOT_FROZENHEIST = 31;
+    private static final int SLOT_PARKOURDUOS = 32;
+    private static final int SLOT_BOATRACING  = 33;
 
     private static final String SKULL_TEAMS =
-            "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZn" +
-                    "QubmV0L3RleHR1cmUvYTc5YTVjOTVlZTE3YWJmZWY0NWM4ZGM3NTJhN2YyZWQyZjZlNWVj" +
-                    "NmY3ZjZhNzFiNGQ5NmM2MzBiMzgxNCJ9fX0=";
+            "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNzYxODQ2MTBjNTBjMmVmYjcyODViYzJkMjBmMzk0MzY0ZTgzNjdiYjMxNDg0MWMyMzhhNmE1MjFhMWVlMTJiZiJ9fX0=";
 
     private static final String SKULL_SCORES =
             "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZn" +
@@ -39,10 +37,13 @@ public class EventManagerGUI implements Listener {
                     "NGVkMmQwY2ZlYjFhY2FmNmNlOTlkNTNiNiJ9fX0=";
 
     private static final String SKULL_CINEMATICS =
-            "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZn" +
-                    "QubmV0L3RleHR1cmUvYjczNGQ0NjYzMzI5ZmVlODMzZGY0MGFiY2JmZGNhNDM4OTA4OGYw" +
-                    "OGY0MGJlYTg4OTc2NjVkMmI0ZDNiZiJ9fX0=";
+            "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvOGYwZDk0M2QwNDE0NDU1ZmZhOTVmMGViNmVlZDBjZjA1NTgxNGRkY2UwNWJkN2Y3OTJhYmNhYzRmOWE2MGYwIn19fQ==";
 
+    private static final String SKULL_TNTRUN = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvMzNmOGE5ZmUzMzM5YzJmMjI3MDRiZjFjMDMzOTRkZjA3MWVlNGVmM2Q3MmVlYmVhYWJhZjMxMDVjZmZlMTQyIn19fQ==";
+    private static final String SKULL_BINGO = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvOTdhNTMwZjVjNTc0MmJmMTllMTc1YTRkNzhhZDQzNWFjMGY0Mzk2ZDNiNTQ2NGJkNjE4MmFiMzgyYWNhNDE3ZCJ9fX0=";
+    private static final String SKULL_FROZENHEIST = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvN2RhOWQ3NjM1MDA2NTM4N2FkMmNlNDg5MDliNWM5ZGRmYjI2Y2IwYWQxNjk3OTM0MzY2NzdkZTg3YTVmYzE0OSJ9fX0=";
+    private static final String SKULL_PARKOURDUOS = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvMjZhYTkzMDFjNTg4N2E5NDc0YTZhNWFkZTNjMTdlNGUyNDFhNjgwNDA1ODlhZGRkN2FhMmNlNjAwODBkMzc3NCJ9fX0=";
+    private static final String SKULL_BOATRACING = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvOWI5ZTJmNmFkODFkNjk4OGIwMWI1MjdlN2JkZmM0ZGFjNjVlNWFjOTJkZmY1OTA4NWFkMzkyMzlkY2Y5MzQ4NyJ9fX0=";
     private final Anieventmanager plugin;
 
     public EventManagerGUI(Anieventmanager plugin) {
@@ -55,11 +56,8 @@ public class EventManagerGUI implements Listener {
         Inventory inv = Bukkit.createInventory(null, 54,
                 Component.text(TITLE, NamedTextColor.GOLD));
 
-        GuiUtil.fillAll(inv);
+        GuiUtil.fillSlots(inv, GuiUtil.emptyPane(), 0,1,9,7,8,17,36,45,46,52,53,44);
 
-        // Etiquetas de sección (decorativas)
-        inv.setItem(0,  buildSectionLabel("Gestión del Evento", Material.BOOK));
-        inv.setItem(18, buildSectionLabel("Minijuegos",         Material.COMPASS));
 
         // ── Gestión general ───────────────────────────────────────────────────
         inv.setItem(SLOT_TEAMS,      buildTeamsItem());
@@ -67,16 +65,11 @@ public class EventManagerGUI implements Listener {
         inv.setItem(SLOT_CINEMATICS, buildCinematicsItem());
 
         // ── Minijuegos ────────────────────────────────────────────────────────
-        inv.setItem(SLOT_TNTRUN,      buildMiniGameItem("TNT Run",       Material.TNT,
-                plugin.getTNTRunMiniGame()));
-        inv.setItem(SLOT_BINGO,       buildMiniGameItem("Bingo",         Material.PAPER,
-                plugin.getBingoMiniGame()));
-        inv.setItem(SLOT_FROZENHEIST, buildMiniGameItem("Frozen Heist",  Material.BLUE_ICE,
-                plugin.getFrozenHeistMiniGame()));
-        inv.setItem(SLOT_PARKOURDUOS, buildMiniGameItem("Parkour Duos",  Material.IRON_BOOTS,
-                plugin.getParkourDuosMiniGame()));
-        inv.setItem(SLOT_BOATRACING,  buildMiniGameItem("Boat Racing",   Material.OAK_BOAT,
-                plugin.getBoatRacingMiniGame()));
+        inv.setItem(SLOT_TNTRUN,      buildMiniGameItem("TNT Run", SKULL_TNTRUN, plugin.getTNTRunMiniGame()));
+        inv.setItem(SLOT_BINGO,       buildMiniGameItem("Bingo", SKULL_BINGO, plugin.getBingoMiniGame()));
+        inv.setItem(SLOT_FROZENHEIST, buildMiniGameItem("Frozen Heist",  SKULL_FROZENHEIST, plugin.getFrozenHeistMiniGame()));
+        inv.setItem(SLOT_PARKOURDUOS, buildMiniGameItem("Parkour Duos", SKULL_PARKOURDUOS, plugin.getParkourDuosMiniGame()));
+        inv.setItem(SLOT_BOATRACING,  buildMiniGameItem("Boat Racing", SKULL_BOATRACING, plugin.getBoatRacingMiniGame()));
 
         // ── Navegación: pantalla raíz → sin back ni home ──────────────────────
         GuiUtil.fillNavigationNone(inv);
@@ -186,14 +179,14 @@ public class EventManagerGUI implements Listener {
                 .build();
     }
 
-    private ItemStack buildMiniGameItem(String name, Material icon,
+    private ItemStack buildMiniGameItem(String name, String icon,
                                         org.falmdev.anieventmanager.managers.MiniGame mg) {
         boolean running    = mg.isRunning();
         boolean configured = mg.validateConfig() == null;
         NamedTextColor stateColor = running ? NamedTextColor.GREEN : NamedTextColor.DARK_GRAY;
         String stateLabel = (running ? "▶ " : "■ ") + mg.getStateName();
 
-        return ItemBuilder.of(icon)
+        return ItemBuilder.fromString("head-base64-" + icon)
                 .name(name, NamedTextColor.WHITE, TextDecoration.BOLD)
                 .emptyLine()
                 .lore(GuiUtil.noItalic(Component.text("Estado: ", NamedTextColor.GRAY)
@@ -220,6 +213,10 @@ public class EventManagerGUI implements Listener {
         if (!(event.getWhoClicked() instanceof Player player)) return;
 
         String title = GuiUtil.getTitle(event.getView());
+
+        // Solo cancelar si el título corresponde a un GUI nuestro
+        if (!title.equals(TITLE) && !title.equals(TITLE_SCORES)) return;
+
         event.setCancelled(true);
         if (!player.isOp()) return;
 

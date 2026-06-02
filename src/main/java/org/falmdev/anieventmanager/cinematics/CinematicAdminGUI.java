@@ -24,59 +24,45 @@ import org.falmdev.anieventmanager.utils.gui.ItemBuilder;
 
 import java.util.*;
 
-/**
- * GUI de administración de cinematicas v2.
- *
- * Cambios respecto a v1:
- *  - El botón RECORD abre un prompt para la duración antes de grabar
- *  - Los waypoints son reemplazados por markers (textos en ticks específicos)
- *  - Se puede agregar un marker en un tick arbitrario
- *  - Los markers existentes se listan en la fila de waypoints
- */
 public class CinematicAdminGUI implements Listener {
 
     public static final String LIST_TITLE          = "Admin: Cinematicas";
-    public static final String DETAIL_TITLE_PREFIX = "Cin\u00b7";
+    public static final String DETAIL_TITLE_PREFIX = "Cin·";
 
-    private static final int    SLOT_INFO    = 12;
+    private static final int    SLOT_INFO    = 4;
     private static final String SKULL_INFO   = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvOTI2MDdkNjY0Nzk4OTYyZTEwZThkNzk0MmIzNWYwNzExOWY4YjRiODQ2YmNkNTNkZWViYTFlNTMyNzQ3YjQ2In19fQ==";
-    private static final int    SLOT_PLAY    = 49;
+    private static final int    SLOT_PLAY    = 40;
     private static final String SKULL_PLAY   = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNjUyN2ViYWU5ZjE1MzE1NGE3ZWQ0OWM4OGMwMmI1YTlhOWNhN2NiMTYxOGQ5OTE0YTNkOWRmOGNjYjNjODQifX19";
-    private static final int    SLOT_STOP    = 50;
+    private static final int    SLOT_STOP    = 41;
     private static final String SKULL_STOP   = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvYWE2OGNjMGM1NzlmNDIzZjUwYzAwZmUyY2QwMjZmOTlkMDJlOWUzMTdmYTdmNTFiNjY4ZGI1MGY4NjFlMzU5In19fQ==";
-    private static final int    SLOT_DEBUG   = 47;  // entre RECORD(48) y BACK(45)
+    private static final int    SLOT_DEBUG   = 31;
     private static final String SKULL_DEBUG  = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNzI0MzE5MmQ5OWM3OWVmZTkzMWEyMzJlN2Y2OWM4Y2NjMDY5ZDIyYTU3ZWM1MjVlZjQzY2VkMGE2NjExIn19fQ==";
-    private static final int    SLOT_RECORD  = 48;
+    private static final int    SLOT_RECORD  = 39;
     private static final String SKULL_RECORD = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNTBmMGZkZDVkOGRjNmI1NGVhYjk4ZjZmODVhYzE0ZGJiM2I1ODg2MzI5NjJlYzNkMWE0YzI0YzUwYmQ0ZTMifX19";
     private static final int    SLOT_RENAME  = 14;
-    private static final int    SLOT_TIME    = 16;
-    private static final int    SLOT_DELETE  = 53;
+    private static final int    SLOT_TIME    = 12;
+
+    private static final int    SLOT_FADE    = 13;
+    private static final int    SLOT_DELETE  = 16;
     private static final String SKULL_DELETE = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvYmViNTg4YjIxYTZmOThhZDFmZjRlMDg1YzU1MmRjYjA1MGVmYzljYWI0MjdmNDYwNDhmMThmYzgwMzQ3NWY3In19fQ==";
-    private static final int    SLOT_BACK    = 45;
-    private static final String SKULL_BACK   = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvMWExZWYzOThhMTdmMWFmNzQ3NzAxNDUxN2Y3ZjE0MWQ4ODZkZjQxYTMyYzczOGNjOGE4M2ZiNTAyOTdiZDkyMSJ9fX0=";
-    private static final int    SLOT_PREV    = 46;
+
+    private static final int SLOT_PREV       = 36;
     private static final String SKULL_PREV   = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvYmQxMDZlZjFhY2RkMDk5OGU2ZGJiYjUzMmUzMGFmNTU0YjNlMGVhOTE2MjFlNGViMGQxYTkzMTlkZWJmNjU0ZSJ9fX0=";
-    private static final int    SLOT_NEXT    = 52;
+    private static final int SLOT_NEXT       = 44;
     private static final String SKULL_NEXT   = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvYmI4NmE1MDY0N2ZjM2NlNTQ0NzJiMWRlYjJkZThjOTI1OTFhYzY3ZDYxMzQ4YWIwOTFkNzllNGNkMTgxOTc5OCJ9fX0=";
+    private static final int SLOT_ADD_MARKER = 10;
 
-    // Slot especial para agregar un marker nuevo
-    private static final int SLOT_ADD_MARKER = 51;
-
-    // Markers en slots 18..35 (18 por página)
     private static final int MARKERS_START = 18;
     private static final int MARKERS_COUNT = 18;
 
     private static final Material[] MUSIC_DISCS = {
-            Material.MUSIC_DISC_13,    Material.MUSIC_DISC_CAT,
-            Material.MUSIC_DISC_BLOCKS, Material.MUSIC_DISC_CHIRP,
-            Material.MUSIC_DISC_FAR,   Material.MUSIC_DISC_MALL,
-            Material.MUSIC_DISC_MELLOHI, Material.MUSIC_DISC_STAL,
-            Material.MUSIC_DISC_STRAD, Material.MUSIC_DISC_WARD,
-            Material.MUSIC_DISC_11,    Material.MUSIC_DISC_WAIT,
-            Material.MUSIC_DISC_OTHERSIDE, Material.MUSIC_DISC_PIGSTEP,
-            Material.MUSIC_DISC_5,     Material.MUSIC_DISC_RELIC,
-            Material.MUSIC_DISC_CREATOR, Material.MUSIC_DISC_CREATOR_MUSIC_BOX,
-            Material.MUSIC_DISC_PRECIPICE
+            Material.MUSIC_DISC_13, Material.MUSIC_DISC_CAT, Material.MUSIC_DISC_BLOCKS,
+            Material.MUSIC_DISC_CHIRP, Material.MUSIC_DISC_FAR, Material.MUSIC_DISC_MALL,
+            Material.MUSIC_DISC_MELLOHI, Material.MUSIC_DISC_STAL, Material.MUSIC_DISC_STRAD,
+            Material.MUSIC_DISC_WARD, Material.MUSIC_DISC_11, Material.MUSIC_DISC_WAIT,
+            Material.MUSIC_DISC_OTHERSIDE, Material.MUSIC_DISC_PIGSTEP, Material.MUSIC_DISC_5,
+            Material.MUSIC_DISC_RELIC, Material.MUSIC_DISC_CREATOR,
+            Material.MUSIC_DISC_CREATOR_MUSIC_BOX, Material.MUSIC_DISC_PRECIPICE
     };
 
     private static final Map<String, Long> TIME_PRESETS = new LinkedHashMap<>();
@@ -89,322 +75,251 @@ public class CinematicAdminGUI implements Listener {
     }
 
     private final Anieventmanager plugin;
-
     private final Map<UUID, Integer> markerPages    = new HashMap<>();
     private final Map<UUID, String>  awaitingRename = new HashMap<>();
-    private final Map<UUID, String>  awaitingRecord = new HashMap<>();  // id → esperando duración
-    private final Map<UUID, String>  awaitingMarker = new HashMap<>();  // id → esperando tick
+    private final Map<UUID, String>  awaitingRecord = new HashMap<>();
+    private final Map<UUID, String>  awaitingMarker = new HashMap<>();
 
     private enum TimePromptType { START, END }
     private final Map<UUID, TimePrompt> awaitingTime = new HashMap<>();
     private record TimePrompt(String cinematicId, TimePromptType type) {}
 
+    private enum FadePromptType { FADE_IN, FADE_OUT }
+    private final Map<UUID, FadePrompt> awaitingFade = new HashMap<>();
+    private record FadePrompt(String cinematicId, FadePromptType type) {}
+
     public CinematicAdminGUI(Anieventmanager plugin) {
         this.plugin = plugin;
     }
 
-    // ── Vista 1: lista ────────────────────────────────────────────────────────
+    private static final int[] CONTENT_SLOTS = {
+            10, 11, 12, 13, 14, 15, 16,
+            19, 20, 21, 22, 23, 24, 25,
+            28, 29, 30, 31, 32, 33, 34,
+            37, 38, 39, 40, 41, 42, 43
+    };
 
     public void openList(Player admin) {
         var all = plugin.getCinematicManager().getAllCinematics();
-        int size = Math.max(27, ((all.size() / 9) + 1) * 9);
-        if (size > 54) size = 54;
-        Inventory inv = Bukkit.createInventory(null, size,
-                Component.text(LIST_TITLE, NamedTextColor.GOLD));
-        int slot = 0;
+        int size = 54;
+        Inventory inv = Bukkit.createInventory(null, size, Component.text(LIST_TITLE, NamedTextColor.GOLD));
+        int i = 0;
+
+        GuiUtil.fillSlots(inv, GuiUtil.emptyPane(), 0,1,9,7,8,17,36,45,46,52,53,44);
+
         for (Cinematic c : all) {
-            inv.setItem(slot++, buildListItem(c));
-            if (slot >= size) break;
+            if (i >= CONTENT_SLOTS.length) break;
+            inv.setItem(CONTENT_SLOTS[i++], buildListItem(c));
         }
+
+        GuiUtil.fillNavigation(inv);
         admin.openInventory(inv);
     }
 
     private ItemStack buildListItem(Cinematic c) {
         NamedTextColor stateColor = switch (c.getState()) {
-            case IDLE -> NamedTextColor.GRAY;
-            case PLAYING -> NamedTextColor.GREEN;
-            case RECORDING -> NamedTextColor.RED;
+            case IDLE -> NamedTextColor.GRAY; case PLAYING -> NamedTextColor.GREEN; case RECORDING -> NamedTextColor.RED;
         };
         String stateLabel = switch (c.getState()) {
-            case IDLE -> "IDLE";
-            case PLAYING -> "REPRODUCIENDO";
-            case RECORDING -> "GRABANDO";
+            case IDLE -> "IDLE"; case PLAYING -> "REPRODUCIENDO"; case RECORDING -> "GRABANDO";
         };
         int discIndex = Math.abs(c.getId().hashCode()) % MUSIC_DISCS.length;
         return ItemBuilder.of(MUSIC_DISCS[discIndex])
-                .name(c.getDisplayName(), NamedTextColor.YELLOW, TextDecoration.BOLD)
-                .emptyLine()
-                .lore(GuiUtil.label("ID", Component.text(c.getId(), NamedTextColor.WHITE)))
-                .lore(GuiUtil.label("Estado", Component.text(stateLabel, stateColor)))
-                .lore(GuiUtil.label("Frames",
-                        Component.text(c.getTotalFrames(), NamedTextColor.WHITE)))
-                .lore(GuiUtil.label("Duración",
-                        Component.text(String.format("%.1fs", c.getDurationSeconds()),
-                                NamedTextColor.WHITE)))
-                .lore(GuiUtil.label("Markers",
-                        Component.text(c.getMarkers().size(), NamedTextColor.WHITE)))
-                .emptyLine()
-                .lore(NamedTextColor.YELLOW, "Click para gestionar.")
-                .build();
+                .name(c.getDisplayName(), NamedTextColor.YELLOW, TextDecoration.BOLD).emptyLine()
+                .lore(GuiUtil.label("ID",       Component.text(c.getId(), NamedTextColor.WHITE)))
+                .lore(GuiUtil.label("Estado",   Component.text(stateLabel, stateColor)))
+                .lore(GuiUtil.label("Frames",   Component.text(c.getTotalFrames(), NamedTextColor.WHITE)))
+                .lore(GuiUtil.label("Duración", Component.text(String.format("%.1fs", c.getDurationSeconds()), NamedTextColor.WHITE)))
+                .lore(GuiUtil.label("Markers",  Component.text(c.getMarkers().size(), NamedTextColor.WHITE)))
+                .emptyLine().lore(NamedTextColor.YELLOW, "Click para gestionar.").build();
     }
 
-    // ── Vista 2: detalle ──────────────────────────────────────────────────────
-
-    public void openDetail(Player admin, Cinematic cinematic) {
-        openDetail(admin, cinematic, 0);
-    }
+    public void openDetail(Player admin, Cinematic cinematic) { openDetail(admin, cinematic, 0); }
 
     public void openDetail(Player admin, Cinematic cinematic, int markerPage) {
         markerPages.put(admin.getUniqueId(), markerPage);
 
         Inventory inv = Bukkit.createInventory(null, 54,
-                Component.text(DETAIL_TITLE_PREFIX + cinematic.getId(),
-                        NamedTextColor.GOLD));
-        GuiUtil.fillAll(inv);
+                Component.text(DETAIL_TITLE_PREFIX + cinematic.getId(), NamedTextColor.GOLD));
 
-        boolean canPlay   = cinematic.isIdle() && cinematic.getTotalFrames() > 0
-                && !plugin.getCinematicManager().isAnyPlaying();
+        GuiUtil.fillSlots(inv, GuiUtil.emptyPane(), 0,1,9,7,8,17,36,45,46,52,53,44);
+
+        boolean canPlay   = cinematic.isIdle() && cinematic.getTotalFrames() > 0 && !plugin.getCinematicManager().isAnyPlaying();
         boolean canStop   = cinematic.isPlaying();
-        boolean canRecord = cinematic.isIdle()
-                && !plugin.getCinematicManager().getRecorder().isRecording();
+        boolean canRecord = cinematic.isIdle() && !plugin.getCinematicManager().getRecorder().isRecording();
+        boolean canDebug  = cinematic.isIdle() && cinematic.getTotalFrames() > 0 && !plugin.getCinematicManager().isAnyPlaying();
 
         // INFO
         inv.setItem(SLOT_INFO, ItemBuilder.of(HeadUtil.fromBase64(SKULL_INFO))
-                .name(cinematic.getDisplayName(), NamedTextColor.YELLOW, TextDecoration.BOLD)
-                .emptyLine()
-                .lore(GuiUtil.label("ID", Component.text(cinematic.getId(), NamedTextColor.WHITE)))
-                .lore(GuiUtil.label("Estado", Component.text(cinematic.getState().name(),
-                        cinematic.isPlaying() ? NamedTextColor.GREEN
-                                : cinematic.isRecording() ? NamedTextColor.RED
-                                  : NamedTextColor.GRAY)))
-                .lore(GuiUtil.label("Frames",
-                        Component.text(cinematic.getTotalFrames(), NamedTextColor.WHITE)))
-                .lore(GuiUtil.label("Duración", Component.text(
-                        String.format("%.1fs  (%d ticks)",
-                                cinematic.getDurationSeconds(), cinematic.getTotalFrames()),
-                        NamedTextColor.WHITE)))
-                .lore(GuiUtil.label("Markers",
-                        Component.text(cinematic.getMarkers().size(), NamedTextColor.WHITE)))
-                .build());
+                .name(cinematic.getDisplayName(), NamedTextColor.YELLOW, TextDecoration.BOLD).emptyLine()
+                .lore(GuiUtil.label("ID",       Component.text(cinematic.getId(), NamedTextColor.WHITE)))
+                .lore(GuiUtil.label("Estado",   Component.text(cinematic.getState().name(),
+                        cinematic.isPlaying() ? NamedTextColor.GREEN : cinematic.isRecording() ? NamedTextColor.RED : NamedTextColor.GRAY)))
+                .lore(GuiUtil.label("Frames",   Component.text(cinematic.getTotalFrames(), NamedTextColor.WHITE)))
+                .lore(GuiUtil.label("Duración", Component.text(String.format("%.1fs  (%d ticks)", cinematic.getDurationSeconds(), cinematic.getTotalFrames()), NamedTextColor.WHITE)))
+                .lore(GuiUtil.label("Markers",  Component.text(cinematic.getMarkers().size(), NamedTextColor.WHITE))).build());
 
         // PLAY
         inv.setItem(SLOT_PLAY, ItemBuilder.of(HeadUtil.fromBase64(SKULL_PLAY))
-                .name("▶ Reproducir",
-                        canPlay ? NamedTextColor.GREEN : NamedTextColor.DARK_GRAY,
-                        TextDecoration.BOLD)
-                .emptyLine()
-                .lore(canPlay
-                        ? new String[]{"Click para reproducir."}
-                        : new String[]{cinematic.getTotalFrames() == 0
-                                       ? "No hay frames grabados."
-                                       : "Ya hay una cinematica activa."})
-                .build());
-        boolean canDebug = cinematic.isIdle() && cinematic.getTotalFrames() > 0
-                && !plugin.getCinematicManager().isAnyPlaying();
+                .name("▶ Reproducir", canPlay ? NamedTextColor.GREEN : NamedTextColor.DARK_GRAY, TextDecoration.BOLD).emptyLine()
+                .lore(canPlay ? new String[]{"Click para reproducir."} : new String[]{cinematic.getTotalFrames() == 0 ? "No hay frames grabados." : "Ya hay una cinematica activa."}).build());
+
+        // DEBUG
         inv.setItem(SLOT_DEBUG, ItemBuilder.of(HeadUtil.fromBase64(SKULL_DEBUG))
-                .name("▶ Reproducción Debug",
-                        canDebug ? NamedTextColor.LIGHT_PURPLE : NamedTextColor.DARK_GRAY,
-                        TextDecoration.BOLD)
-                .emptyLine()
-                .lore(canDebug
-                        ? new String[]{
-                        "Solo visible para vos.",
-                        "Muestra tick en actionbar.",
-                        "Hotbar: pausa, marker, detener."}
-                        : new String[]{"No hay frames o ya hay una activa."})
-                .build());
+                .name("▶ Reproducción Debug", canDebug ? NamedTextColor.LIGHT_PURPLE : NamedTextColor.DARK_GRAY, TextDecoration.BOLD).emptyLine()
+                .lore(canDebug ? new String[]{"Solo visible para vos.", "Modo CREATIVE — podés moverte libremente.", "Slots 0-4: pausa, rebobinar, adelantar, marker, stop."}
+                        : new String[]{"No hay frames o ya hay una activa."}).build());
+
         // STOP
         inv.setItem(SLOT_STOP, ItemBuilder.of(HeadUtil.fromBase64(SKULL_STOP))
-                .name("■ Detener",
-                        canStop ? NamedTextColor.RED : NamedTextColor.DARK_GRAY,
-                        TextDecoration.BOLD)
-                .emptyLine()
-                .lore(canStop ? new String[]{"Click para detener."}
-                        : new String[]{"No hay reproducción activa."})
-                .build());
+                .name("■ Detener", canStop ? NamedTextColor.RED : NamedTextColor.DARK_GRAY, TextDecoration.BOLD).emptyLine()
+                .lore(canStop ? new String[]{"Click para detener."} : new String[]{"No hay reproducción activa."}).build());
 
-        // RECORD — ahora pide duración antes de grabar
+        // RECORD
         inv.setItem(SLOT_RECORD, ItemBuilder.of(HeadUtil.fromBase64(SKULL_RECORD))
-                .name("● Grabar",
-                        canRecord ? NamedTextColor.RED : NamedTextColor.DARK_GRAY,
-                        TextDecoration.BOLD)
-                .emptyLine()
-                .lore(canRecord
-                        ? new String[]{"Click para escribir la duración",
-                        "y comenzar a grabar.",
-                        "Ejemplos: 30s, 1m, 2m30s"}
-                        : new String[]{"No se puede grabar ahora."})
-                .build());
+                .name("● Grabar", canRecord ? NamedTextColor.RED : NamedTextColor.DARK_GRAY, TextDecoration.BOLD).emptyLine()
+                .lore(canRecord ? new String[]{"Click para escribir la duración", "y comenzar a grabar.", "Ejemplos: 30s, 1m, 2m30s"}
+                        : new String[]{"No se puede grabar ahora."}).build());
 
-        // RENAME
-        inv.setItem(SLOT_RENAME, GuiUtil.simpleButton(Material.NAME_TAG,
-                "Renombrar", NamedTextColor.GOLD, "Click para cambiar el nombre."));
-
-        // TIME
-        inv.setItem(SLOT_TIME, buildTimeItem(cinematic));
-
-        // DELETE
+        // RENAME / TIME / FADE / DELETE
+        inv.setItem(SLOT_RENAME, GuiUtil.simpleButton(Material.NAME_TAG, "Renombrar", NamedTextColor.GOLD, "Click para cambiar el nombre."));
+        inv.setItem(SLOT_TIME,   buildTimeItem(cinematic));
+        inv.setItem(SLOT_FADE,   buildFadeItem(cinematic));
         inv.setItem(SLOT_DELETE, ItemBuilder.of(HeadUtil.fromBase64(SKULL_DELETE))
-                .name("Eliminar", NamedTextColor.RED, TextDecoration.BOLD)
-                .emptyLine()
-                .lore("Click para eliminar (pide confirmación).")
-                .build());
-
-        // BACK
-        inv.setItem(SLOT_BACK, ItemBuilder.of(HeadUtil.fromBase64(SKULL_BACK))
-                .name("← Volver", NamedTextColor.GRAY, TextDecoration.BOLD)
-                .emptyLine()
-                .lore("Click para regresar a la lista.")
-                .build());
+                .name("Eliminar", NamedTextColor.RED, TextDecoration.BOLD).emptyLine()
+                .lore("Click para eliminar (pide confirmación).").build());
 
         // ADD MARKER
         inv.setItem(SLOT_ADD_MARKER, ItemBuilder.of(Material.GLOW_INK_SAC)
-                .name("+ Agregar marker", NamedTextColor.GREEN, TextDecoration.BOLD)
-                .emptyLine()
+                .name("+ Agregar marker", NamedTextColor.GREEN, TextDecoration.BOLD).emptyLine()
                 .lore(NamedTextColor.YELLOW, "Click para escribir el tick")
                 .lore("donde quieras agregar un texto.")
-                .lore(NamedTextColor.GRAY, "Rango: 0 - " + Math.max(0,
-                        cinematic.getTotalFrames() - 1))
-                .build());
+                .lore(NamedTextColor.GRAY, "Rango: 0 - " + Math.max(0, cinematic.getTotalFrames() - 1)).build());
 
         // Markers paginados
         List<CinematicMarker> markers = cinematic.getMarkers();
-        int totalPages = Math.max(1,
-                (int) Math.ceil(markers.size() / (double) MARKERS_COUNT));
+        int totalPages = Math.max(1, (int) Math.ceil(markers.size() / (double) MARKERS_COUNT));
         int page = Math.max(0, Math.min(markerPage, totalPages - 1));
-
         for (int i = 0; i < MARKERS_COUNT; i++) {
             int mIdx = page * MARKERS_COUNT + i;
-            if (mIdx < markers.size())
-                inv.setItem(MARKERS_START + i, buildMarkerItem(markers.get(mIdx)));
+            if (mIdx < markers.size()) inv.setItem(MARKERS_START + i, buildMarkerItem(markers.get(mIdx)));
         }
 
+        // Paginación
         inv.setItem(SLOT_PREV, page > 0
-                ? ItemBuilder.of(HeadUtil.fromBase64(SKULL_PREV))
-                  .name("← Página anterior", NamedTextColor.YELLOW, TextDecoration.BOLD)
-                  .lore("Página " + page + " de " + totalPages).build()
+                ? ItemBuilder.of(HeadUtil.fromBase64(SKULL_PREV)).name("← Página anterior", NamedTextColor.YELLOW, TextDecoration.BOLD).lore("Página " + page + " de " + totalPages).build()
                 : GuiUtil.emptyPane());
         inv.setItem(SLOT_NEXT, page < totalPages - 1
-                ? ItemBuilder.of(HeadUtil.fromBase64(SKULL_NEXT))
-                  .name("Página siguiente →", NamedTextColor.YELLOW, TextDecoration.BOLD)
-                  .lore("Página " + (page + 2) + " de " + totalPages).build()
+                ? ItemBuilder.of(HeadUtil.fromBase64(SKULL_NEXT)).name("Página siguiente →", NamedTextColor.YELLOW, TextDecoration.BOLD).lore("Página " + (page + 2) + " de " + totalPages).build()
                 : GuiUtil.emptyPane());
 
+        // Navegación
+        GuiUtil.fillNavigation(inv, true, true);
+
         admin.openInventory(inv);
+    }
+
+    // ── Item de fade ──────────────────────────────────────────────────────────
+
+    private ItemStack buildFadeItem(Cinematic c) {
+        boolean hasFadeIn  = c.getFadeInTicks()  > 0;
+        boolean hasFadeOut = c.getFadeOutTicks() > 0;
+        boolean anyFade    = hasFadeIn || hasFadeOut;
+
+        return ItemBuilder.of(Material.TINTED_GLASS)
+                .name("Fade In / Fade Out", NamedTextColor.AQUA, TextDecoration.BOLD)
+                .emptyLine()
+                .lore(GuiUtil.noItalic(Component.text("Fade In:  ", NamedTextColor.GRAY)
+                        .append(hasFadeIn
+                                ? Component.text(c.getFadeInTicks() + " ticks  (" + String.format("%.1fs", c.getFadeInTicks() / 20.0) + ")", NamedTextColor.GREEN)
+                                : Component.text("desactivado", NamedTextColor.DARK_GRAY))))
+                .lore(GuiUtil.noItalic(Component.text("Fade Out: ", NamedTextColor.GRAY)
+                        .append(hasFadeOut
+                                ? Component.text(c.getFadeOutTicks() + " ticks  (" + String.format("%.1fs", c.getFadeOutTicks() / 20.0) + ")", NamedTextColor.GREEN)
+                                : Component.text("desactivado", NamedTextColor.DARK_GRAY))))
+                .emptyLine()
+                .lore(NamedTextColor.YELLOW, "Click izquierdo → setear fade in.")
+                .lore(NamedTextColor.YELLOW, "Click derecho   → setear fade out.")
+                .lore(anyFade ? NamedTextColor.RED : NamedTextColor.DARK_GRAY,
+                        anyFade ? "Shift+click → desactivar ambos." : "Sin fade configurado.")
+                .emptyLine()
+                .lore(NamedTextColor.DARK_GRAY, "Usa el formato en ticks (20 = 1s).")
+                .lore(NamedTextColor.DARK_GRAY, "Ejemplo: 40 = 2 segundos de fade.")
+                .build();
+    }
+
+    private ItemStack buildTimeItem(Cinematic c) {
+        ItemBuilder b = ItemBuilder.of(Material.CLOCK).name("Control de tiempo", NamedTextColor.AQUA, TextDecoration.BOLD).emptyLine();
+        if (c.hasTimeControl()) {
+            b.lore(GuiUtil.label("Inicio", Component.text(c.getTimeStart() + " ticks  (" + timeLabel(c.getTimeStart()) + ")", NamedTextColor.YELLOW)));
+            b.lore(GuiUtil.label("Fin",    Component.text(c.getTimeEnd()   + " ticks  (" + timeLabel(c.getTimeEnd())   + ")", NamedTextColor.YELLOW)));
+            b.emptyLine().lore(NamedTextColor.GREEN, "✔ Control de tiempo activo.").emptyLine()
+                    .lore(NamedTextColor.YELLOW, "Click izquierdo → cambiar inicio.")
+                    .lore(NamedTextColor.YELLOW, "Click derecho   → cambiar fin.")
+                    .lore(NamedTextColor.RED,    "Shift+click     → desactivar.");
+        } else {
+            b.lore(NamedTextColor.GRAY, "Sin control de tiempo.").emptyLine()
+                    .lore(NamedTextColor.YELLOW, "Click izquierdo → setear inicio.")
+                    .lore(NamedTextColor.YELLOW, "Click derecho   → setear fin.").emptyLine();
+            TIME_PRESETS.forEach((name, ticks) -> b.lore(NamedTextColor.DARK_GRAY, "  " + name + " = " + ticks + " ticks"));
+        }
+        return b.build();
     }
 
     private ItemStack buildMarkerItem(CinematicMarker m) {
         ItemStack item = new ItemStack(Material.ITEM_FRAME);
         ItemMeta meta = item.getItemMeta();
         meta.displayName(Component.text("Marker — tick " + m.getTick(),
-                m.hasText() ? NamedTextColor.GOLD : NamedTextColor.WHITE,
-                TextDecoration.BOLD).decoration(TextDecoration.ITALIC, false));
-
-        if (m.hasText()) {
-            meta.addEnchant(Enchantment.UNBREAKING, 1, true);
-            meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
-        }
-
+                m.hasText() ? NamedTextColor.GOLD : NamedTextColor.WHITE, TextDecoration.BOLD).decoration(TextDecoration.ITALIC, false));
+        if (m.hasText()) { meta.addEnchant(Enchantment.UNBREAKING, 1, true); meta.addItemFlags(ItemFlag.HIDE_ENCHANTS); }
         List<Component> lore = new ArrayList<>();
         lore.add(Component.empty());
-        lore.add(GuiUtil.label("Tick",
-                Component.text(m.getTick(), NamedTextColor.YELLOW)));
-        lore.add(GuiUtil.label("Segundo",
-                Component.text(String.format("%.1fs", m.getTick() / 20.0),
-                        NamedTextColor.GRAY)));
-
+        lore.add(GuiUtil.label("Tick",    Component.text(m.getTick(), NamedTextColor.YELLOW)));
+        lore.add(GuiUtil.label("Segundo", Component.text(String.format("%.1fs", m.getTick() / 20.0), NamedTextColor.GRAY)));
         if (m.hasText()) {
             lore.add(Component.empty());
-            if (m.getTitleMain() != null)
-                lore.add(Component.text("Título: " + m.getTitleMain(),
-                        NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false));
-            if (m.getTitleSub() != null)
-                lore.add(Component.text("Sub:    " + m.getTitleSub(),
-                        NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
-            if (m.getActionbar() != null)
-                lore.add(Component.text("Action: " + m.getActionbar(),
-                        NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
+            if (m.getTitleMain() != null) lore.add(Component.text("Título: " + m.getTitleMain(), NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false));
+            if (m.getTitleSub()  != null) lore.add(Component.text("Sub:    " + m.getTitleSub(),  NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+            if (m.getActionbar() != null) lore.add(Component.text("Action: " + m.getActionbar(), NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
         }
-
         lore.add(Component.empty());
-        lore.add(Component.text("Click para editar.",
-                NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
-        lore.add(Component.text("Click derecho → previsualizar posición.",
-                NamedTextColor.LIGHT_PURPLE).decoration(TextDecoration.ITALIC, false));
-
+        lore.add(Component.text("Click para editar.", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+        lore.add(Component.text("Click derecho → previsualizar posición.", NamedTextColor.LIGHT_PURPLE).decoration(TextDecoration.ITALIC, false));
         meta.lore(lore);
         item.setItemMeta(meta);
         return item;
     }
 
-    private ItemStack buildTimeItem(Cinematic c) {
-        ItemBuilder b = ItemBuilder.of(Material.CLOCK)
-                .name("Control de tiempo", NamedTextColor.AQUA, TextDecoration.BOLD)
-                .emptyLine();
-
-        if (c.hasTimeControl()) {
-            b.lore(GuiUtil.label("Inicio",
-                    Component.text(c.getTimeStart() + " ticks  (" +
-                            timeLabel(c.getTimeStart()) + ")", NamedTextColor.YELLOW)));
-            b.lore(GuiUtil.label("Fin",
-                    Component.text(c.getTimeEnd() + " ticks  (" +
-                            timeLabel(c.getTimeEnd()) + ")", NamedTextColor.YELLOW)));
-            b.emptyLine()
-                    .lore(NamedTextColor.GREEN, "✔ Control de tiempo activo.")
-                    .emptyLine()
-                    .lore(NamedTextColor.YELLOW, "Click izquierdo → cambiar inicio.")
-                    .lore(NamedTextColor.YELLOW, "Click derecho   → cambiar fin.")
-                    .lore(NamedTextColor.RED,    "Shift+click     → desactivar.");
-        } else {
-            b.lore(NamedTextColor.GRAY, "Sin control de tiempo.")
-                    .emptyLine()
-                    .lore(NamedTextColor.YELLOW, "Click izquierdo → setear inicio.")
-                    .lore(NamedTextColor.YELLOW, "Click derecho   → setear fin.")
-                    .emptyLine();
-            TIME_PRESETS.forEach((name, ticks) ->
-                    b.lore(NamedTextColor.DARK_GRAY, "  " + name + " = " + ticks + " ticks"));
-        }
-        return b.build();
-    }
-
-    private String timeLabel(long ticks) {
-        String closest = "";
-        long minDist = Long.MAX_VALUE;
-        for (var e : TIME_PRESETS.entrySet()) {
-            long dist = Math.abs(e.getValue() - ticks);
-            if (dist < minDist) { minDist = dist; closest = e.getKey(); }
-        }
-        return minDist < 500 ? closest : ticksToHHMM(ticks);
-    }
-
-    private String ticksToHHMM(long ticks) {
-        long totalMinutes = (ticks * 24 * 60 / 24000 + 6 * 60) % (24 * 60);
-        return String.format("%02d:%02d", totalMinutes / 60, totalMinutes % 60);
-    }
-
-    // ── Click listener ────────────────────────────────────────────────────────
+    // ── Click listener ─────────────────────────────────────────────────────────
 
     @EventHandler
     public void onClick(InventoryClickEvent event) {
         String title = GuiUtil.getTitle(event.getView());
-
         if (!(event.getWhoClicked() instanceof Player admin) || !admin.isOp()) {
-            if (title.equals(LIST_TITLE) || title.startsWith(DETAIL_TITLE_PREFIX))
-                event.setCancelled(true);
+            if (title.equals(LIST_TITLE) || title.startsWith(DETAIL_TITLE_PREFIX)) event.setCancelled(true);
             return;
         }
 
+        // ── Vista lista ───────────────────────────────────────────────────────
         if (title.equals(LIST_TITLE)) {
             event.setCancelled(true);
+
+            int slot = event.getRawSlot();
+
+            // Navegación: lista es raíz → solo Home (slot 50)
+            // handleNavigation con onBack=null porque no hay pantalla anterior
+            if (GuiUtil.handleNavigation(slot, admin, plugin, null)) return;
+
+            // Click en un disco = abrir detalle
             ItemStack clicked = event.getCurrentItem();
-            if (clicked == null || !clicked.hasItemMeta()) return;
-            if (clicked.getItemMeta().lore() == null) return;
+            if (clicked == null || !clicked.hasItemMeta() || clicked.getItemMeta().lore() == null) return;
             String id = extractIdFromLore(clicked);
             if (id == null) return;
             plugin.getCinematicManager().get(id).ifPresent(c -> openDetail(admin, c));
             return;
         }
 
+        // ── Vista detalle ─────────────────────────────────────────────────────
         if (!title.startsWith(DETAIL_TITLE_PREFIX)) return;
         event.setCancelled(true);
 
@@ -415,132 +330,86 @@ public class CinematicAdminGUI implements Listener {
         int slot = event.getRawSlot();
         int page = markerPages.getOrDefault(admin.getUniqueId(), 0);
 
-        switch (slot) {
-            case SLOT_BACK -> openList(admin);
+        // Navegación: detalle → Back vuelve a lista, Home vuelve al hub
+        if (GuiUtil.handleNavigation(slot, admin, plugin, () -> openList(admin))) return;
 
+        switch (slot) {
             case SLOT_PLAY -> {
-                if (!cinematic.isIdle() || cinematic.getTotalFrames() == 0
-                        || plugin.getCinematicManager().isAnyPlaying()) return;
+                if (!cinematic.isIdle() || cinematic.getTotalFrames() == 0 || plugin.getCinematicManager().isAnyPlaying()) return;
                 boolean ok = plugin.getCinematicManager().play(cinematic.getId());
                 admin.sendMessage(ok
-                        ? Component.text("▶ Reproduciendo '", NamedTextColor.GREEN)
-                          .append(Component.text(cinematic.getDisplayName(),
-                                  NamedTextColor.YELLOW))
-                          .append(Component.text("'.", NamedTextColor.GREEN))
+                        ? Component.text("▶ Reproduciendo '", NamedTextColor.GREEN).append(Component.text(cinematic.getDisplayName(), NamedTextColor.YELLOW)).append(Component.text("'.", NamedTextColor.GREEN))
                         : Component.text("✘ No se pudo reproducir.", NamedTextColor.RED));
-                if (ok) admin.closeInventory();
-                else openDetail(admin, cinematic, page);
+                if (ok) admin.closeInventory(); else openDetail(admin, cinematic, page);
             }
             case SLOT_DEBUG -> {
-                if (!cinematic.isIdle() || cinematic.getTotalFrames() == 0
-                        || plugin.getCinematicManager().isAnyPlaying()) return;
+                if (!cinematic.isIdle() || cinematic.getTotalFrames() == 0 || plugin.getCinematicManager().isAnyPlaying()) return;
                 admin.closeInventory();
                 plugin.getCinematicManager().playDebug(cinematic.getId(), admin);
             }
-
             case SLOT_STOP -> {
                 if (!cinematic.isPlaying()) return;
                 plugin.getCinematicManager().stop();
                 admin.sendMessage(Component.text("■ Detenida.", NamedTextColor.YELLOW));
                 openDetail(admin, cinematic, page);
             }
-
             case SLOT_RECORD -> {
-                if (!cinematic.isIdle()
-                        || plugin.getCinematicManager().getRecorder().isRecording()) return;
+                if (!cinematic.isIdle() || plugin.getCinematicManager().getRecorder().isRecording()) return;
                 admin.closeInventory();
                 awaitingRecord.put(admin.getUniqueId(), cinematic.getId());
-                admin.sendMessage(Component.text(
-                        "✎ Escribe la duración de la grabación:",
-                        NamedTextColor.YELLOW));
-                admin.sendMessage(Component.text(
-                        "  Ejemplos: 30s  |  1m  |  2m30s  |  5m",
-                        NamedTextColor.GRAY));
-                admin.sendMessage(Component.text(
-                        "  'cancelar' para cancelar.", NamedTextColor.GRAY));
+                admin.sendMessage(Component.text("✎ Escribe la duración de la grabación:", NamedTextColor.YELLOW));
+                admin.sendMessage(Component.text("  Ejemplos: 30s  |  1m  |  2m30s  |  5m", NamedTextColor.GRAY));
+                admin.sendMessage(Component.text("  'cancelar' para cancelar.", NamedTextColor.GRAY));
             }
-
             case SLOT_RENAME -> {
                 admin.closeInventory();
                 awaitingRename.put(admin.getUniqueId(), cinematic.getId());
-                admin.sendMessage(Component.text("✎ Nuevo nombre para '",
-                                NamedTextColor.YELLOW)
+                admin.sendMessage(Component.text("✎ Nuevo nombre para '", NamedTextColor.YELLOW)
                         .append(Component.text(cinematic.getDisplayName(), NamedTextColor.WHITE))
                         .append(Component.text("':", NamedTextColor.YELLOW)));
-                admin.sendMessage(Component.text("  'cancelar' para cancelar.",
-                        NamedTextColor.GRAY));
+                admin.sendMessage(Component.text("  'cancelar' para cancelar.", NamedTextColor.GRAY));
             }
-
-            case SLOT_TIME -> handleTimeClick(admin, cinematic, event, page);
-
+            case SLOT_TIME   -> handleTimeClick(admin, cinematic, event, page);
+            case SLOT_FADE   -> handleFadeClick(admin, cinematic, event, page);
             case SLOT_DELETE -> {
                 admin.closeInventory();
-                plugin.getConfirmGUI().open(admin,
-                        "Eliminar cinematica",
+                plugin.getConfirmGUI().open(admin, "Eliminar cinematica",
                         List.of("Vas a eliminar permanentemente:",
-                                "  " + cinematic.getDisplayName()
-                                        + " (id: " + cinematic.getId() + ")",
+                                "  " + cinematic.getDisplayName() + " (id: " + cinematic.getId() + ")",
                                 "Frames: " + cinematic.getTotalFrames(),
                                 "Markers: " + cinematic.getMarkers().size()),
-                        () -> {
-                            plugin.getCinematicManager().delete(cinematic.getId());
-                            admin.sendMessage(Component.text(
-                                    "✔ Cinematica eliminada.", NamedTextColor.GREEN));
-                            openList(admin);
-                        });
+                        () -> { plugin.getCinematicManager().delete(cinematic.getId());
+                            admin.sendMessage(Component.text("✔ Cinematica eliminada.", NamedTextColor.GREEN));
+                            openList(admin); });
             }
-
             case SLOT_ADD_MARKER -> {
-                if (cinematic.getTotalFrames() == 0) {
-                    admin.sendMessage(Component.text(
-                            "✘ Primero grabá la cinematica.", NamedTextColor.RED));
-                    return;
-                }
+                if (cinematic.getTotalFrames() == 0) { admin.sendMessage(Component.text("✘ Primero grabá la cinematica.", NamedTextColor.RED)); return; }
                 admin.closeInventory();
                 awaitingMarker.put(admin.getUniqueId(), cinematic.getId());
-                admin.sendMessage(Component.text(
-                        "✎ Escribe el tick donde quieres agregar el marker:",
-                        NamedTextColor.YELLOW));
-                admin.sendMessage(Component.text(
-                        "  Rango: 0 - " + (cinematic.getTotalFrames() - 1)
-                                + "  (= 0s - " + String.format("%.1fs",
-                                cinematic.getDurationSeconds()) + ")",
-                        NamedTextColor.GRAY));
-                admin.sendMessage(Component.text(
-                        "  'cancelar' para cancelar.", NamedTextColor.GRAY));
+                admin.sendMessage(Component.text("✎ Escribe el tick donde quieres agregar el marker:", NamedTextColor.YELLOW));
+                admin.sendMessage(Component.text("  Rango: 0 - " + (cinematic.getTotalFrames() - 1) + "  (= 0s - " + String.format("%.1fs", cinematic.getDurationSeconds()) + ")", NamedTextColor.GRAY));
+                admin.sendMessage(Component.text("  'cancelar' para cancelar.", NamedTextColor.GRAY));
             }
-
             case SLOT_PREV -> openDetail(admin, cinematic, Math.max(0, page - 1));
             case SLOT_NEXT -> openDetail(admin, cinematic, page + 1);
-
             default -> {
                 int mSlotOffset = slot - MARKERS_START;
                 if (mSlotOffset < 0 || mSlotOffset >= MARKERS_COUNT) return;
                 int mIdx = page * MARKERS_COUNT + mSlotOffset;
                 List<CinematicMarker> markers = cinematic.getMarkers();
                 if (mIdx >= markers.size()) return;
-
                 CinematicMarker marker = markers.get(mIdx);
-
                 if (event.isRightClick()) {
-                    // Preview de posición en click derecho del marker
-
                     var frame = cinematic.getFrame(marker.getTick());
-                    var world = plugin.getCinematicManager()
-                            .getCinematicWorld(cinematic.getId());
+                    var world = plugin.getCinematicManager().getCinematicWorld(cinematic.getId());
                     if (frame != null && world != null) {
-                        var loc = new org.bukkit.Location(world,
-                                frame.getX(), frame.getY(), frame.getZ(),
-                                frame.getYaw(), frame.getPitch());
+                        var loc = new org.bukkit.Location(world, frame.getX(), frame.getY(), frame.getZ(), frame.getYaw(), frame.getPitch());
                         Bukkit.getScheduler().runTask(plugin, () -> {
                             admin.teleport(loc);
-                            admin.sendMessage(Component.text(
-                                    "✔ Posición del marker en tick " + marker.getTick(),
-                                    NamedTextColor.LIGHT_PURPLE));
+                            admin.sendMessage(Component.text("✔ Posición del marker en tick " + marker.getTick(), NamedTextColor.LIGHT_PURPLE));
                         });
                     }
                 } else {
-                    // Abrir editor de marker
                     admin.closeInventory();
                     Bukkit.getScheduler().runTask(plugin, () ->
                             plugin.getCinematicMarkerGUI().open(admin, cinematic, marker,
@@ -550,35 +419,40 @@ public class CinematicAdminGUI implements Listener {
         }
     }
 
-    // ── Control de tiempo ─────────────────────────────────────────────────────
+    // ── Handlers de time y fade ───────────────────────────────────────────────
 
-    private void handleTimeClick(Player admin, Cinematic cinematic,
-                                 InventoryClickEvent event, int page) {
+    private void handleTimeClick(Player admin, Cinematic cinematic, InventoryClickEvent event, int page) {
         if (event.isShiftClick()) {
-            cinematic.clearTimeControl();
-            cinematic.save();
-            admin.sendMessage(Component.text(
-                    "✔ Control de tiempo desactivado.", NamedTextColor.YELLOW));
-            openDetail(admin, cinematic, page);
-            return;
+            cinematic.clearTimeControl(); cinematic.save();
+            admin.sendMessage(Component.text("✔ Control de tiempo desactivado.", NamedTextColor.YELLOW));
+            openDetail(admin, cinematic, page); return;
         }
-        TimePromptType type = event.isRightClick()
-                ? TimePromptType.END : TimePromptType.START;
+        TimePromptType type = event.isRightClick() ? TimePromptType.END : TimePromptType.START;
         String label = type == TimePromptType.END ? "FIN" : "INICIO";
         admin.closeInventory();
-        awaitingTime.put(admin.getUniqueId(),
-                new TimePrompt(cinematic.getId(), type));
-        admin.sendMessage(Component.text(
-                "✎ Escribe el tick de " + label + " del tiempo del mundo:",
-                NamedTextColor.YELLOW));
-        admin.sendMessage(Component.text(
-                "  Ejemplos: 0 (mediodía), 6000 (atardecer), 12000 (medianoche), 18000 (amanecer)",
-                NamedTextColor.GRAY));
-        admin.sendMessage(Component.text(
-                "  O escribe: mediodia, atardecer, medianoche, amanecer, alba",
-                NamedTextColor.GRAY));
-        admin.sendMessage(Component.text("  'cancelar' para cancelar.",
-                NamedTextColor.GRAY));
+        awaitingTime.put(admin.getUniqueId(), new TimePrompt(cinematic.getId(), type));
+        admin.sendMessage(Component.text("✎ Escribe el tick de " + label + " del tiempo del mundo:", NamedTextColor.YELLOW));
+        admin.sendMessage(Component.text("  Ejemplos: 0 (mediodía), 6000 (atardecer), 12000 (medianoche), 18000 (amanecer)", NamedTextColor.GRAY));
+        admin.sendMessage(Component.text("  O escribe: mediodia, atardecer, medianoche, amanecer, alba", NamedTextColor.GRAY));
+        admin.sendMessage(Component.text("  'cancelar' para cancelar.", NamedTextColor.GRAY));
+    }
+
+    private void handleFadeClick(Player admin, Cinematic cinematic, InventoryClickEvent event, int page) {
+        if (event.isShiftClick()) {
+            cinematic.setFadeInTicks(0);
+            cinematic.setFadeOutTicks(0);
+            cinematic.save();
+            admin.sendMessage(Component.text("✔ Fade desactivado.", NamedTextColor.YELLOW));
+            openDetail(admin, cinematic, page); return;
+        }
+        FadePromptType type = event.isRightClick() ? FadePromptType.FADE_OUT : FadePromptType.FADE_IN;
+        String label = type == FadePromptType.FADE_OUT ? "FADE OUT (final)" : "FADE IN (inicio)";
+        admin.closeInventory();
+        awaitingFade.put(admin.getUniqueId(), new FadePrompt(cinematic.getId(), type));
+        admin.sendMessage(Component.text("✎ Escribe la duración del " + label + " en ticks:", NamedTextColor.YELLOW));
+        admin.sendMessage(Component.text("  20 ticks = 1 segundo  |  40 = 2s  |  60 = 3s", NamedTextColor.GRAY));
+        admin.sendMessage(Component.text("  0 para desactivar este fade.", NamedTextColor.GRAY));
+        admin.sendMessage(Component.text("  'cancelar' para cancelar.", NamedTextColor.GRAY));
     }
 
     // ── Chat prompts ──────────────────────────────────────────────────────────
@@ -589,126 +463,70 @@ public class CinematicAdminGUI implements Listener {
         UUID uid = admin.getUniqueId();
         String msg = event.getMessage().trim();
 
-        // ── Rename ────────────────────────────────────────────────────────────
         if (awaitingRename.containsKey(uid)) {
-            String id = awaitingRename.remove(uid);
-            event.setCancelled(true);
-            if (msg.equalsIgnoreCase("cancelar")) {
-                admin.sendMessage(Component.text("Cancelado.", NamedTextColor.GRAY));
-                return;
-            }
-            if (msg.length() < 2 || msg.length() > 32) {
-                admin.sendMessage(Component.text(
-                        "✘ Nombre inválido (2-32 caracteres).", NamedTextColor.RED));
-                return;
-            }
-            Bukkit.getScheduler().runTask(plugin, () ->
-                    plugin.getCinematicManager().get(id).ifPresent(c -> {
-                        c.setDisplayName(msg);
-                        c.save();
-                        admin.sendMessage(Component.text("✔ Renombrada a ",
-                                        NamedTextColor.GREEN)
-                                .append(Component.text(msg, NamedTextColor.YELLOW)));
-                        openDetail(admin, c);
-                    }));
+            String id = awaitingRename.remove(uid); event.setCancelled(true);
+            if (msg.equalsIgnoreCase("cancelar")) { admin.sendMessage(Component.text("Cancelado.", NamedTextColor.GRAY)); return; }
+            if (msg.length() < 2 || msg.length() > 32) { admin.sendMessage(Component.text("✘ Nombre inválido (2-32 caracteres).", NamedTextColor.RED)); return; }
+            Bukkit.getScheduler().runTask(plugin, () -> plugin.getCinematicManager().get(id).ifPresent(c -> { c.setDisplayName(msg); c.save(); admin.sendMessage(Component.text("✔ Renombrada a ", NamedTextColor.GREEN).append(Component.text(msg, NamedTextColor.YELLOW))); openDetail(admin, c); }));
             return;
         }
-
-        // ── Record (prompt de duración) ────────────────────────────────────────
         if (awaitingRecord.containsKey(uid)) {
-            String id = awaitingRecord.remove(uid);
-            event.setCancelled(true);
-            if (msg.equalsIgnoreCase("cancelar")) {
-                admin.sendMessage(Component.text("Cancelado.", NamedTextColor.GRAY));
-                return;
-            }
+            String id = awaitingRecord.remove(uid); event.setCancelled(true);
+            if (msg.equalsIgnoreCase("cancelar")) { admin.sendMessage(Component.text("Cancelado.", NamedTextColor.GRAY)); return; }
             int durationTicks = CinematicRecorder.parseDuration(msg);
-            if (durationTicks < 0) {
-                admin.sendMessage(Component.text(
-                        "✘ Duración inválida. Usa: 30s, 1m, 2m30s (mín 2s, máx 10m).",
-                        NamedTextColor.RED));
-                return;
-            }
+            if (durationTicks < 0) { admin.sendMessage(Component.text("✘ Duración inválida. Usa: 30s, 1m, 2m30s (mín 2s, máx 10m).", NamedTextColor.RED)); return; }
             int finalDuration = durationTicks;
-            Bukkit.getScheduler().runTask(plugin, () ->
-                    plugin.getCinematicManager().get(id).ifPresent(c -> {
-                        boolean ok = plugin.getCinematicManager()
-                                .startRecording(admin, c, finalDuration);
-                        if (!ok) {
-                            admin.sendMessage(Component.text(
-                                    "✘ No se pudo iniciar la grabación.",
-                                    NamedTextColor.RED));
-                        }
-                    }));
+            Bukkit.getScheduler().runTask(plugin, () -> plugin.getCinematicManager().get(id).ifPresent(c -> { boolean ok = plugin.getCinematicManager().startRecording(admin, c, finalDuration); if (!ok) admin.sendMessage(Component.text("✘ No se pudo iniciar la grabación.", NamedTextColor.RED)); }));
             return;
         }
-
-        // ── Agregar marker ─────────────────────────────────────────────────────
         if (awaitingMarker.containsKey(uid)) {
-            String id = awaitingMarker.remove(uid);
-            event.setCancelled(true);
-            if (msg.equalsIgnoreCase("cancelar")) {
-                admin.sendMessage(Component.text("Cancelado.", NamedTextColor.GRAY));
-                return;
-            }
+            String id = awaitingMarker.remove(uid); event.setCancelled(true);
+            if (msg.equalsIgnoreCase("cancelar")) { admin.sendMessage(Component.text("Cancelado.", NamedTextColor.GRAY)); return; }
             try {
                 int tick = Integer.parseInt(msg.trim());
-                Bukkit.getScheduler().runTask(plugin, () ->
-                        plugin.getCinematicManager().get(id).ifPresent(c -> {
-                            if (tick < 0 || tick >= c.getTotalFrames()) {
-                                admin.sendMessage(Component.text(
-                                        "✘ Tick fuera de rango (0 - "
-                                                + (c.getTotalFrames() - 1) + ").",
-                                        NamedTextColor.RED));
-                                return;
-                            }
-                            CinematicMarker marker = new CinematicMarker(tick);
-                            c.addMarker(marker);
-                            c.save();
-                            admin.sendMessage(Component.text(
-                                    "✔ Marker creado en tick " + tick + ". Ahora podés editarlo.",
-                                    NamedTextColor.GREEN));
-                            // Abrir el editor del marker inmediatamente
-                            plugin.getCinematicMarkerGUI().open(admin, c, marker,
-                                    () -> openDetail(admin, c));
-                        }));
-            } catch (NumberFormatException e) {
-                admin.sendMessage(Component.text(
-                        "✘ Escribe un número de tick válido.", NamedTextColor.RED));
-            }
+                Bukkit.getScheduler().runTask(plugin, () -> plugin.getCinematicManager().get(id).ifPresent(c -> {
+                    if (tick < 0 || tick >= c.getTotalFrames()) { admin.sendMessage(Component.text("✘ Tick fuera de rango (0 - " + (c.getTotalFrames() - 1) + ").", NamedTextColor.RED)); return; }
+                    CinematicMarker marker = new CinematicMarker(tick); c.addMarker(marker); c.save();
+                    admin.sendMessage(Component.text("✔ Marker creado en tick " + tick + ".", NamedTextColor.GREEN));
+                    plugin.getCinematicMarkerGUI().open(admin, c, marker, () -> openDetail(admin, c));
+                }));
+            } catch (NumberFormatException e) { admin.sendMessage(Component.text("✘ Escribe un número de tick válido.", NamedTextColor.RED)); }
             return;
         }
-
-        // ── Tiempo del mundo ──────────────────────────────────────────────────
         if (awaitingTime.containsKey(uid)) {
-            TimePrompt prompt = awaitingTime.remove(uid);
-            event.setCancelled(true);
-            if (msg.equalsIgnoreCase("cancelar")) {
-                admin.sendMessage(Component.text("Cancelado.", NamedTextColor.GRAY));
-                return;
-            }
+            TimePrompt prompt = awaitingTime.remove(uid); event.setCancelled(true);
+            if (msg.equalsIgnoreCase("cancelar")) { admin.sendMessage(Component.text("Cancelado.", NamedTextColor.GRAY)); return; }
             Long ticks = parseTimeInput(msg);
-            if (ticks == null) {
-                admin.sendMessage(Component.text(
-                        "✘ Valor inválido.", NamedTextColor.RED));
-                return;
-            }
-            Bukkit.getScheduler().runTask(plugin, () ->
-                    plugin.getCinematicManager().get(prompt.cinematicId()).ifPresent(c -> {
-                        if (prompt.type() == TimePromptType.START) {
-                            c.setTimeStart(ticks);
-                            admin.sendMessage(Component.text(
-                                    "✔ Inicio: " + ticks + " ticks  (" + timeLabel(ticks) + ")",
-                                    NamedTextColor.GREEN));
-                        } else {
-                            c.setTimeEnd(ticks);
-                            admin.sendMessage(Component.text(
-                                    "✔ Fin: " + ticks + " ticks  (" + timeLabel(ticks) + ")",
-                                    NamedTextColor.GREEN));
-                        }
-                        c.save();
-                        openDetail(admin, c);
-                    }));
+            if (ticks == null) { admin.sendMessage(Component.text("✘ Valor inválido.", NamedTextColor.RED)); return; }
+            Bukkit.getScheduler().runTask(plugin, () -> plugin.getCinematicManager().get(prompt.cinematicId()).ifPresent(c -> {
+                if (prompt.type() == TimePromptType.START) { c.setTimeStart(ticks); admin.sendMessage(Component.text("✔ Inicio: " + ticks + " ticks  (" + timeLabel(ticks) + ")", NamedTextColor.GREEN)); }
+                else { c.setTimeEnd(ticks); admin.sendMessage(Component.text("✔ Fin: " + ticks + " ticks  (" + timeLabel(ticks) + ")", NamedTextColor.GREEN)); }
+                c.save(); openDetail(admin, c);
+            }));
+            return;
+        }
+        if (awaitingFade.containsKey(uid)) {
+            FadePrompt prompt = awaitingFade.remove(uid); event.setCancelled(true);
+            if (msg.equalsIgnoreCase("cancelar")) { admin.sendMessage(Component.text("Cancelado.", NamedTextColor.GRAY)); return; }
+            int ticks;
+            try { ticks = Integer.parseInt(msg.trim()); }
+            catch (NumberFormatException e) { admin.sendMessage(Component.text("✘ Número inválido. Escribe ticks (ej: 40).", NamedTextColor.RED)); return; }
+            if (ticks < 0) { admin.sendMessage(Component.text("✘ No puede ser negativo.", NamedTextColor.RED)); return; }
+            final int finalTicks = ticks;
+            Bukkit.getScheduler().runTask(plugin, () -> plugin.getCinematicManager().get(prompt.cinematicId()).ifPresent(c -> {
+                String label;
+                if (prompt.type() == FadePromptType.FADE_IN) {
+                    c.setFadeInTicks(finalTicks);
+                    label = "Fade in";
+                } else {
+                    c.setFadeOutTicks(finalTicks);
+                    label = "Fade out";
+                }
+                c.save();
+                String value = finalTicks == 0 ? "desactivado" : finalTicks + " ticks (" + String.format("%.1fs", finalTicks / 20.0) + ")";
+                admin.sendMessage(Component.text("✔ " + label + ": " + value, NamedTextColor.GREEN));
+                openDetail(admin, c);
+            }));
         }
     }
 
@@ -716,17 +534,25 @@ public class CinematicAdminGUI implements Listener {
 
     private Long parseTimeInput(String input) {
         String lower = input.toLowerCase().trim();
-        for (var e : TIME_PRESETS.entrySet())
-            if (e.getKey().toLowerCase().equals(lower)) return e.getValue();
+        for (var e : TIME_PRESETS.entrySet()) if (e.getKey().toLowerCase().equals(lower)) return e.getValue();
         if (lower.equals("mediodia") || lower.equals("mediodía")) return 0L;
         if (lower.equals("amanecer")) return 18000L;
         if (lower.equals("atardecer")) return 6000L;
         if (lower.equals("medianoche")) return 12000L;
         if (lower.equals("alba")) return 22000L;
-        try {
-            long v = Long.parseLong(input.trim());
-            return (v >= 0 && v <= 23999) ? v : null;
-        } catch (NumberFormatException e) { return null; }
+        try { long v = Long.parseLong(input.trim()); return (v >= 0 && v <= 23999) ? v : null; }
+        catch (NumberFormatException e) { return null; }
+    }
+
+    private String timeLabel(long ticks) {
+        String closest = ""; long minDist = Long.MAX_VALUE;
+        for (var e : TIME_PRESETS.entrySet()) { long dist = Math.abs(e.getValue() - ticks); if (dist < minDist) { minDist = dist; closest = e.getKey(); } }
+        return minDist < 500 ? closest : ticksToHHMM(ticks);
+    }
+
+    private String ticksToHHMM(long ticks) {
+        long totalMinutes = (ticks * 24 * 60 / 24000 + 6 * 60) % (24 * 60);
+        return String.format("%02d:%02d", totalMinutes / 60, totalMinutes % 60);
     }
 
     private String extractIdFromLore(ItemStack item) {
@@ -734,8 +560,7 @@ public class CinematicAdminGUI implements Listener {
         List<Component> lore = item.getItemMeta().lore();
         if (lore == null) return null;
         for (Component line : lore) {
-            String plain = net.kyori.adventure.text.serializer.plain
-                    .PlainTextComponentSerializer.plainText().serialize(line);
+            String plain = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(line);
             if (plain.startsWith("  ID: ")) return plain.substring(6).trim();
         }
         return null;
