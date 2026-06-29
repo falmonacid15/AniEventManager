@@ -31,10 +31,7 @@ import org.falmdev.anieventmanager.minigames.frozenheist.FrozenHeistMagicStick;
 import org.falmdev.anieventmanager.minigames.frozenheist.FrozenHeistMiniGame;
 import org.falmdev.anieventmanager.minigames.parkourduos.ParkourDuosAdminGUI;
 import org.falmdev.anieventmanager.minigames.parkourduos.ParkourDuosMagicStick;
-import org.falmdev.anieventmanager.minigames.tntrun.TNTRunAdminGUI;
-import org.falmdev.anieventmanager.minigames.tntrun.TNTRunCommand;
-import org.falmdev.anieventmanager.minigames.tntrun.TNTRunMagicStick;
-import org.falmdev.anieventmanager.minigames.tntrun.TNTRunMiniGame;
+import org.falmdev.anieventmanager.minigames.tntrun.*;
 import org.falmdev.anieventmanager.placeholders.AniEventExpansion;
 import org.falmdev.anieventmanager.minigames.parkourduos.ParkourDuosMiniGame;
 import org.falmdev.anieventmanager.minigames.parkourduos.ParkourDuosCommand;
@@ -62,6 +59,8 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
     private EventManagerGUI  eventManagerGUI;
     private TNTRunAdminGUI   tntRunAdminGUI;
     private TNTRunMagicStick tntRunMagicStick;
+    private TNTRunPlaceholders tntRunPlaceholders;
+
     private BingoAdminGUI    bingoAdminGUI;
     private BingoMagicStick  bingoMagicStick;
 
@@ -151,6 +150,8 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
         this.tntRunAdminGUI  = new TNTRunAdminGUI(this);
         this.tntRunMagicStick = new TNTRunMagicStick(this);
         miniGameManager.register(tntRunMiniGame);
+        this.tntRunPlaceholders = new TNTRunPlaceholders(this, tntRunMiniGame);
+        logLoaded(log, "TNT Run");
         logLoaded(log, "TNT Run");
 
         this.bingoMiniGame    = new BingoMiniGame(this);
@@ -358,6 +359,8 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
     public TNTRunCommand             getTNTRunCommand()        { return tntRunCommand; }
     public TNTRunAdminGUI            getTNTRunAdminGUI()       { return tntRunAdminGUI; }
     public TNTRunMagicStick          getTNTRunMagicStick()     { return tntRunMagicStick; }
+    public TNTRunPlaceholders getTNTRunPlaceholders() { return tntRunPlaceholders; }
+
     public BingoMiniGame             getBingoMiniGame()        { return bingoMiniGame; }
     public BingoCommand              getBingoCommand()         { return bingoCommand; }
     public BingoEditGUI              getBingoEditGUI()         { return bingoEditGUI; }

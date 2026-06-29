@@ -1,5 +1,6 @@
 package org.falmdev.anieventmanager.minigames.tntrun;
 
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
@@ -10,7 +11,9 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerToggleFlightEvent;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
@@ -21,28 +24,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/**
- * Listener del TNT Run.
- *
- * ── Fixes aplicados ───────────────────────────────────────────────────────────
- *
- *  1. BLOCK_CRACK → BLOCK_CRUMBLE (Paper 1.20.5+) con fallback a BLOCK para
- *     versiones anteriores. El nombre cambia entre versiones y una excepción
- *     silenciosa en la línea de partículas cortaba la ejecución del bloque
- *     entero, impidiendo que el SAND se convirtiera en AIR.
- *
- *  2. unregisterAll al finalizar: finish() y forceStop() ahora desregistran
- *     este listener para que no se acumulen listeners de partidas anteriores.
- *     Los listeners acumulados causaban que el countdown de una partida nueva
- *     bloqueara el movimiento con la lógica del countdown de la partida vieja.
- *
- *  3. El tick usa isStrictlyRunning() en vez de comparar el enum directamente,
- *     para que sea consistente con el resto del código.
- *
- *  4. checkWinCondition ya NO se llama con runTask separado dentro del tick
- *     (que podía generar race conditions con el estado). Ahora se llama
- *     directamente al final del tick en el hilo principal del scheduler.
- */
 public class TNTRunListener implements Listener {
 
     private static final double DOUBLE_JUMP_VELOCITY = 0.9;
@@ -53,6 +34,8 @@ public class TNTRunListener implements Listener {
     private final Set<Long>          scheduledBlocks = new HashSet<>();
     private final Map<UUID, Long>    jumpTimestamps  = new HashMap<>();
     private final Map<UUID, Integer> cooldownTasks   = new HashMap<>();
+
+
 
     private BukkitTask tickTask;
     private BukkitTask actionBarTask;
@@ -68,6 +51,7 @@ public class TNTRunListener implements Listener {
         scheduledBlocks.clear();
         jumpTimestamps.clear();
 
+
         if (miniGame.getConfig().isDoubleJumpEnabled()) {
             plugin.getServer().getOnlinePlayers().stream()
                     .filter(miniGame::isActivePlayer)
@@ -75,8 +59,8 @@ public class TNTRunListener implements Listener {
         }
 
         tickTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
-            // FIX: usar isStrictlyRunning() — solo procesar bloques cuando el
-            // juego está realmente en curso, no durante el countdown
+            // Solo procesar cuando el juego está realmente en curso,
+            // no durante el countdown.
             if (!miniGame.isStrictlyRunning()) return;
 
             plugin.getServer().getOnlinePlayers().stream()
@@ -86,10 +70,12 @@ public class TNTRunListener implements Listener {
                         Block feet    = loc.getBlock();
                         Block below   = loc.clone().subtract(0, 1, 0).getBlock();
 
-                        // Eliminación por agua
                         if (feet.getType() == Material.WATER || below.getType() == Material.WATER) {
-                            plugin.getServer().getScheduler().runTask(plugin,
-                                    () -> miniGame.eliminatePlayer(player));
+                            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                                if (player.isOnline() && miniGame.isActivePlayer(player)) {
+                                    miniGame.eliminatePlayer(player);
+                                }
+                            });
                             return;
                         }
 
@@ -116,9 +102,7 @@ public class TNTRunListener implements Listener {
                         }
                     });
 
-            // FIX: checkWinCondition directo, sin runTask extra
-            // El tick ya corre en el hilo principal — el runTask adicional
-            // introducía un tick de delay donde el estado podía desincronizarse
+            // checkWinCondition directo — el tick ya corre en el hilo principal.
             miniGame.checkWinCondition();
 
         }, 0L, 2L);
@@ -142,20 +126,23 @@ public class TNTRunListener implements Listener {
     }
 
     public void stopTick() {
-        if (tickTask    != null && !tickTask.isCancelled())    tickTask.cancel();
+        if (tickTask      != null && !tickTask.isCancelled())      tickTask.cancel();
         if (actionBarTask != null && !actionBarTask.isCancelled()) actionBarTask.cancel();
+
         scheduledBlocks.clear();
 
         plugin.getServer().getOnlinePlayers().forEach(p -> {
-            p.setAllowFlight(false);
-            p.setFlying(false);
+            // No tocar a espectadores — ya fueron procesados por eliminatePlayer()
+            if (p.getGameMode() != GameMode.SPECTATOR) {
+                p.setAllowFlight(false);
+                p.setFlying(false);
+            }
         });
 
         cooldownTasks.values().forEach(id -> plugin.getServer().getScheduler().cancelTask(id));
         cooldownTasks.clear();
         jumpTimestamps.clear();
 
-        // FIX: desregistrar el listener para que no se acumule entre partidas
         org.bukkit.event.HandlerList.unregisterAll(this);
     }
 
@@ -197,7 +184,7 @@ public class TNTRunListener implements Listener {
         Long lastJump = jumpTimestamps.get(uuid);
         long now = System.currentTimeMillis();
         if (lastJump != null) {
-            long elapsed = now - lastJump;
+            long elapsed    = now - lastJump;
             long cooldownMs = cooldownSecs * 1000L;
             if (elapsed < cooldownMs) {
                 long remaining = (cooldownMs - elapsed + 999) / 1000;
@@ -223,23 +210,12 @@ public class TNTRunListener implements Listener {
         }
     }
 
-    // ── Daño por agua ─────────────────────────────────────────────────────────
-
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onDamage(EntityDamageEvent event) {
+    public void onFallDamage(EntityDamageEvent event) {
         if (!(event.getEntity() instanceof Player player)) return;
         if (!miniGame.isActivePlayer(player)) return;
-
-        boolean isElimination =
-                event.getCause() == EntityDamageEvent.DamageCause.DROWNING  ||
-                        event.getCause() == EntityDamageEvent.DamageCause.LAVA      ||
-                        event.getCause() == EntityDamageEvent.DamageCause.FIRE      ||
-                        event.getCause() == EntityDamageEvent.DamageCause.FIRE_TICK;
-
-        if (isElimination) {
+        if (event.getCause() == EntityDamageEvent.DamageCause.FALL) {
             event.setCancelled(true);
-            plugin.getServer().getScheduler().runTask(plugin,
-                    () -> miniGame.eliminatePlayer(player));
         }
     }
 
@@ -254,6 +230,17 @@ public class TNTRunListener implements Listener {
         player.setAllowFlight(false);
     }
 
+    public int getJumpCooldownPercent(UUID uuid) {
+        if (!miniGame.getConfig().isDoubleJumpEnabled()) return 0;
+        int cooldownMs = miniGame.getConfig().getDoubleJumpCooldown() * 1000;
+        if (cooldownMs <= 0) return 0;
+        Long lastJump = jumpTimestamps.get(uuid);
+        if (lastJump == null) return 0;
+        long elapsed = System.currentTimeMillis() - lastJump;
+        if (elapsed >= cooldownMs) return 0;
+        return (int)(100 - (elapsed * 100L / cooldownMs));
+    }
+
     // ── Helpers privados ──────────────────────────────────────────────────────
 
     private void scheduleIfSand(Block block) {
@@ -262,14 +249,7 @@ public class TNTRunListener implements Listener {
         }
     }
 
-    /**
-     * Programa la eliminación del par SAND + TNT después del delay configurado.
-     *
-     * FIX de partículas: Particle.BLOCK_CRACK fue renombrado en diferentes
-     * versiones de Paper. Usamos un try/catch para intentar BLOCK_CRUMBLE
-     * (1.20.5+) y caer a BLOCK si no existe, evitando que una excepción
-     * silenciosa interrumpa la eliminación del bloque.
-     */
+
     private void scheduleRemoval(Block sand) {
         long key = blockKey(sand);
         if (!scheduledBlocks.add(key)) return;
@@ -278,7 +258,6 @@ public class TNTRunListener implements Listener {
 
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             if (sand.getType() == Material.SAND) {
-                // Partículas — con fallback por compatibilidad de versiones
                 spawnBreakParticle(sand);
                 sand.setType(Material.AIR, false);
             }
@@ -290,48 +269,25 @@ public class TNTRunListener implements Listener {
         }, delay);
     }
 
-    /**
-     * Spawnea partículas de ruptura de bloque con compatibilidad entre versiones.
-     * Paper 1.20.5+ renombró BLOCK_CRACK → BLOCK_CRUMBLE.
-     * Versiones anteriores usan BLOCK_CRACK o simplemente BLOCK.
-     * Si ninguna funciona, se ignora silenciosamente para no romper la mecánica.
-     */
-    private void spawnBreakParticle(Block block) {
-        Location center = block.getLocation().add(0.5, 0.5, 0.5);
-        BlockData data  = block.getBlockData();
 
-        // Intentar en orden de preferencia según versión de Paper
-        Particle particle = resolveBlockParticle();
+    private void spawnBreakParticle(Block block) {
+        Location  center   = block.getLocation().add(0.5, 0.5, 0.5);
+        BlockData data     = block.getBlockData();
+        Particle  particle = resolveBlockParticle();
         if (particle == null) return;
 
         try {
             block.getWorld().spawnParticle(particle, center, 20, 0.3, 0.3, 0.3, 0.1, data);
         } catch (Exception ignored) {
-            // Si falla por cualquier razón, no interrumpir la eliminación del bloque
+
         }
     }
 
-    /**
-     * Detecta el nombre de partícula correcto en tiempo de ejecución.
-     * Prueba BLOCK_CRUMBLE (1.20.5+), luego BLOCK_CRACK (pre-1.20.5).
-     */
     private static Particle resolveBlockParticle() {
-        // Intentar BLOCK_CRUMBLE primero (Paper 1.20.5+)
-        try {
-            return Particle.valueOf("BLOCK_CRUMBLE");
-        } catch (IllegalArgumentException ignored) {}
-
-        // Fallback: BLOCK_CRACK (Paper pre-1.20.5 / Spigot)
-        try {
-            return Particle.valueOf("BLOCK_CRACK");
-        } catch (IllegalArgumentException ignored) {}
-
-        // Fallback final: BLOCK (algunos builds intermedios)
-        try {
-            return Particle.valueOf("BLOCK");
-        } catch (IllegalArgumentException ignored) {}
-
-        return null; // no hay partícula disponible, omitir
+        try { return Particle.valueOf("BLOCK_CRUMBLE"); } catch (IllegalArgumentException ignored) {}
+        try { return Particle.valueOf("BLOCK_CRACK");   } catch (IllegalArgumentException ignored) {}
+        try { return Particle.valueOf("BLOCK");         } catch (IllegalArgumentException ignored) {}
+        return null;
     }
 
     private void startCooldownDisplay(Player player, int totalSeconds) {
@@ -373,17 +329,6 @@ public class TNTRunListener implements Listener {
         }
         bar.append("§8] §f").append(remaining).append("s");
         return bar.toString();
-    }
-
-    public int getJumpCooldownPercent(UUID uuid) {
-        if (!miniGame.getConfig().isDoubleJumpEnabled()) return 0;
-        int cooldownMs = miniGame.getConfig().getDoubleJumpCooldown() * 1000;
-        if (cooldownMs <= 0) return 0;
-        Long lastJump = jumpTimestamps.get(uuid);
-        if (lastJump == null) return 0;
-        long elapsed = System.currentTimeMillis() - lastJump;
-        if (elapsed >= cooldownMs) return 0;
-        return (int)(100 - (elapsed * 100L / cooldownMs));
     }
 
     private void sendActionBar(Player player, String message) {

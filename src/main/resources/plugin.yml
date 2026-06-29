@@ -10,7 +10,6 @@ depend:
 
 softdepend:
   - PlaceholderAPI
-
 commands:
   em:
     description: Comando principal de AniEventManager

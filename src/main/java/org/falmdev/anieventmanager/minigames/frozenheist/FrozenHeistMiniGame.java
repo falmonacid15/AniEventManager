@@ -6,6 +6,7 @@ import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitTask;
@@ -16,7 +17,6 @@ import org.falmdev.anieventmanager.utils.TeamColorUtil;
 
 import java.time.Duration;
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class FrozenHeistMiniGame implements MiniGame {
 
@@ -52,29 +52,17 @@ public class FrozenHeistMiniGame implements MiniGame {
     @Override public String getDisplayName() { return "Frozen Heist"; }
     @Override public String getStateName()   { return state.name(); }
     @Override public boolean isIdle()        { return state == State.IDLE; }
+    @Override public boolean isRunning()     { return state == State.RUNNING; }
 
     @Override
-    public boolean isRunning() {
-        return state == State.RUNNING;
-    }
-
-    /**
-     * Frozen Heist no tiene lobby previo: sendToLobby inicia directamente.
-     */
-    @Override
-    public boolean sendToLobby() {
-        return start();
-    }
+    public boolean sendToLobby() { return start(); }
 
     @Override
-    public void reloadConfig() {
-        config.reload();
-    }
+    public void reloadConfig() { config.reload(); }
 
     @Override
     public String validateConfig() {
-        Collection<EventTeam> teams = plugin.getTeamManager().getAllTeams();
-        return config.validate(teams);
+        return config.validate(plugin.getTeamManager().getAllTeams());
     }
 
     // ── Inicio ────────────────────────────────────────────────────────────────
@@ -107,9 +95,11 @@ public class FrozenHeistMiniGame implements MiniGame {
         plugin.getServer().getPluginManager().registerEvents(listener, plugin);
 
         for (TeamHeistData data : teamData.values()) {
-            for (Player p : data.getTeam().getOnlinePlayers()) {
+            List<Player> members = new ArrayList<>(data.getTeam().getOnlinePlayers());
+            for (int i = 0; i < members.size(); i++) {
+                Player p = members.get(i);
                 playerStates.put(p.getUniqueId(), new PlayerState(p.getUniqueId()));
-                teleportToBase(p, data);
+                teleportToBase(p, data, i);
                 equipPlayer(p);
             }
         }
@@ -118,10 +108,8 @@ public class FrozenHeistMiniGame implements MiniGame {
         timeLeftSeconds = config.getDurationMinutes() * 60;
 
         broadcastAll(Component.text("━━━ ¡FROZEN HEIST COMENZÓ! ━━━", NamedTextColor.AQUA));
-        broadcastAll(Component.text("Roba las banderas enemigas y llévalas a tu zona de captura.",
-                NamedTextColor.YELLOW));
-        broadcastAll(Component.text("Tiempo: " + config.getDurationMinutes() + " minutos.",
-                NamedTextColor.GRAY));
+        broadcastAll(Component.text("Roba las banderas enemigas y llévalas a tu zona de captura.", NamedTextColor.YELLOW));
+        broadcastAll(Component.text("Tiempo: " + config.getDurationMinutes() + " minutos.", NamedTextColor.GRAY));
 
         startTimer();
         startScoreboardUpdater();
@@ -129,9 +117,7 @@ public class FrozenHeistMiniGame implements MiniGame {
     }
 
     @Override
-    public void forceStop() {
-        finish(true);
-    }
+    public void forceStop() { finish(true); }
 
     // ── Timer ─────────────────────────────────────────────────────────────────
 
@@ -166,7 +152,6 @@ public class FrozenHeistMiniGame implements MiniGame {
                 if (p == null) return;
 
                 Component bar;
-
                 if (ps.isFrozen()) {
                     bar = ps.isBeingRescued()
                             ? Component.text("❄ Siendo rescatado... " + ps.getFrozenSecondsLeft() + "s", NamedTextColor.AQUA)
@@ -174,10 +159,9 @@ public class FrozenHeistMiniGame implements MiniGame {
                 } else if (ps.isRescuing()) {
                     bar = Component.text("⏳ Rescatando... mantén el click", NamedTextColor.YELLOW);
                 } else if (ps.isCarryingFlag()) {
-                    String flagTeamId  = ps.getCarryingFlagOf();
-                    String playerTeamId = plugin.getTeamManager().getTeamOf(p)
-                            .map(t -> t.getId()).orElse("");
-                    boolean isOwn = flagTeamId.equals(playerTeamId);
+                    String flagTeamId   = ps.getCarryingFlagOf();
+                    String playerTeamId = plugin.getTeamManager().getTeamOf(p).map(t -> t.getId()).orElse("");
+                    boolean isOwn       = flagTeamId.equals(playerTeamId);
                     TeamHeistData flagData = teamData.get(flagTeamId);
                     String flagTeamName = flagData != null ? flagData.getTeam().getDisplayName() : flagTeamId;
                     bar = isOwn
@@ -189,7 +173,6 @@ public class FrozenHeistMiniGame implements MiniGame {
 
                 p.sendActionBar(bar);
             });
-
         }, 0L, 20L);
     }
 
@@ -273,9 +256,13 @@ public class FrozenHeistMiniGame implements MiniGame {
 
         plugin.getTeamManager().getTeamOf(player).ifPresent(team -> {
             TeamHeistData data = teamData.get(team.getId());
-            if (data != null && data.getBaseSpawn() != null) {
-                teleportToBase(player, data);
-                equipPlayer(player);
+            if (data != null) {
+                // Usar getNextRespawnSpawn para alternar entre los dos spawns en cada muerte
+                Location spawn = data.getNextRespawnSpawn();
+                if (spawn != null) {
+                    player.teleport(spawn);
+                    equipPlayer(player);
+                }
             }
         });
 
@@ -354,14 +341,20 @@ public class FrozenHeistMiniGame implements MiniGame {
         p.addPotionEffect(new org.bukkit.potion.PotionEffect(
                 org.bukkit.potion.PotionEffectType.JUMP_BOOST, Integer.MAX_VALUE, 128, false, false, false));
         p.setFreezeTicks((int)(PlayerState.FREEZE_DURATION_MS / 50));
+        p.getInventory().setHelmet(new ItemStack(Material.ICE));
     }
 
     private void restoreMovement(Player p) {
         p.removePotionEffect(org.bukkit.potion.PotionEffectType.SLOWNESS);
         p.removePotionEffect(org.bukkit.potion.PotionEffectType.JUMP_BOOST);
         p.setFreezeTicks(0);
+        p.getInventory().setHelmet(null);
+
         PlayerState ps = playerStates.get(p.getUniqueId());
-        if (ps != null && ps.isCarryingFlag()) applyFlagSlowness(p);
+        if (ps != null && ps.isCarryingFlag()) {
+            equipFlagHelmet(p, ps.getCarryingFlagOf());
+            applyFlagSlowness(p);
+        }
     }
 
     public void applyFlagSlowness(Player p) {
@@ -375,8 +368,7 @@ public class FrozenHeistMiniGame implements MiniGame {
 
     private void equipPlayer(Player p) {
         p.getInventory().clear();
-        ItemStack snowball = new ItemStack(org.bukkit.Material.SNOWBALL, 16);
-        p.getInventory().setItem(0, snowball);
+        p.getInventory().setItem(0, new ItemStack(org.bukkit.Material.SNOWBALL, 16));
         p.setGameMode(GameMode.SURVIVAL);
 
         plugin.getTeamManager().getTeamOf(p).ifPresent(team -> {
@@ -391,8 +383,7 @@ public class FrozenHeistMiniGame implements MiniGame {
     public void equipFlagHelmet(Player p, String flagTeamId) {
         TeamHeistData data = teamData.get(flagTeamId);
         if (data == null) return;
-        ItemStack banner = flagManager.buildPublicFlagItem(flagTeamId, data.getTeam());
-        p.getInventory().setHelmet(banner);
+        p.getInventory().setHelmet(flagManager.buildPublicFlagItem(flagTeamId, data.getTeam()));
     }
 
     public void clearFlagHelmet(Player p) {
@@ -411,8 +402,14 @@ public class FrozenHeistMiniGame implements MiniGame {
         return item;
     }
 
-    private void teleportToBase(Player p, TeamHeistData data) {
-        if (data.getBaseSpawn() != null) p.teleport(data.getBaseSpawn());
+    /**
+     * Teleporta al jugador a su spawn asignado según su posición en la lista del equipo.
+     * El jugador en índice 0 va al spawn1, el de índice 1 va al spawn2.
+     * @param memberIndex índice del jugador dentro del equipo (0-based)
+     */
+    private void teleportToBase(Player p, TeamHeistData data, int memberIndex) {
+        Location spawn = data.getBaseSpawnFor(memberIndex == 1 ? 2 : 1);
+        if (spawn != null) p.teleport(spawn);
     }
 
     private void cleanupPlayer(Player p) {

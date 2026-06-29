@@ -155,47 +155,22 @@ public class TNTRunMiniGame implements MiniGame {
         broadcastAll(Component.text("━━━ ¡TNT RUN COMENZÓ! ━━━", NamedTextColor.GREEN));
     }
 
-    // ── Eliminación ───────────────────────────────────────────────────────────
-
     public void eliminatePlayer(Player player) {
         if (!activePlayers.remove(player.getUniqueId())) return;
 
-        // 1. Limpiar el estado de doble salto (pone allowFlight=false, flying=false)
-        //    ANTES de cambiar el gamemode, para que el cliente no siga en estado
-        //    "volando" y atraviese el suelo del spawn espectador.
         if (gameListener != null) gameListener.clearDoubleJumpState(player);
-
         removeNightVision(player);
-
-        // 2. Fijar salud/comida antes del TP para evitar una muerte real.
-        player.setHealth(20);
-        player.setFoodLevel(20);
         player.setFireTicks(0);
 
-        // 3. Cambiar a SPECTATOR y teleportar.
+        player.setAllowFlight(true);
+        player.setFlying(true);
         player.setGameMode(GameMode.SPECTATOR);
+
         Location spectator = config.getSpectatorSpawn();
         if (spectator != null) player.teleport(spectator);
 
-        // 4. Restaurar allowFlight=true DESPUÉS del gamemode SPECTATOR.
-        //    clearDoubleJumpState lo puso en false (necesario para evitar el bug
-        //    de atravesar el suelo), pero SPECTATOR requiere allowFlight=true
-        //    para que el jugador pueda volar con la tecla de espacio.
-        //    En SURVIVAL esto quedaría en false correctamente, pero en SPECTATOR
-        //    Bukkit no lo activa automáticamente si fue desactivado manualmente.
-        player.setAllowFlight(true);
-
-        applyNightVision(player);
         player.sendMessage(Component.text("Caíste. Ahora eres espectador.", NamedTextColor.RED));
 
-        aliveTeams.removeIf(t -> {
-            boolean hasNoActivePlayers = t.getOnlinePlayers().stream()
-                    .noneMatch(p -> activePlayers.contains(p.getUniqueId()));
-            if (hasNoActivePlayers && !elimination.contains(t)) {
-                elimination.add(0, t);
-            }
-            return hasNoActivePlayers;
-        });
 
         Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeamOf(player);
         if (teamOpt.isEmpty()) { checkWinCondition(); return; }
@@ -236,14 +211,14 @@ public class TNTRunMiniGame implements MiniGame {
         }
     }
 
-    // ── Fin del juego ─────────────────────────────────────────────────────────
+// ── Fin del juego ─────────────────────────────────────────────────────────
 
     private void finish(EventTeam winner) {
         cancelTasks();
         state = State.FINISHED;
 
         if (gameListener != null) {
-            gameListener.stopTick();  // stopTick() también hace unregisterAll
+            gameListener.stopTick();
             gameListener = null;
         }
         gameStartTime = 0;
@@ -274,19 +249,109 @@ public class TNTRunMiniGame implements MiniGame {
                     .append(Component.text(team.getDisplayName(), team.getColor())));
         }
 
+        // ── Fuegos artificiales para el equipo ganador ────────────────────────
+        final EventTeam winnerFinal = winner;
+        final BukkitTask[] fireworkTask = { null };
+
+        if (winnerFinal != null) {
+            org.bukkit.Color teamColor =
+                    org.falmdev.anieventmanager.utils.TeamColorUtil.toArmorColor(winnerFinal.getColor());
+
+            // Lanzar la primera salva inmediatamente y luego cada 5-10 segundos aleatorios
+            scheduleFireworkSalvo(winnerFinal, teamColor, fireworkTask, 10L);
+        }
+
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (fireworkTask[0] != null && !fireworkTask[0].isCancelled()) {
+                fireworkTask[0].cancel();
+            }
             if (arena != null) arena.restore();
             returnToMainLobby();
             state = State.IDLE;
-        }, config.getEndDelayTicks());
+        }, 30 * 20L); // 30 segundos fijos de end delay
+    }
+
+    /**
+     * Programa una salva de 3-4 fuegos artificiales y se re-agenda
+     * automáticamente entre 5 y 10 segundos después.
+     * Almacena el task activo en el array para poder cancelarlo.
+     */
+    private void scheduleFireworkSalvo(EventTeam winner,
+                                       org.bukkit.Color teamColor,
+                                       BukkitTask[] taskHolder,
+                                       long delayTicks) {
+        taskHolder[0] = Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            List<org.bukkit.entity.Player> members = winner.getOnlinePlayers();
+            if (members.isEmpty()) return;
+
+            // 3 o 4 cohetes aleatorios por salvo
+            int count = 3 + (int) (Math.random() * 2); // 3 o 4
+            for (int i = 0; i < count; i++) {
+                // Elegir jugador al azar del equipo para dispersar los cohetes
+                org.bukkit.entity.Player target = members.get((int) (Math.random() * members.size()));
+                if (target.isOnline()) {
+                    spawnWinnerFirework(target, teamColor);
+                }
+            }
+
+            // Re-agendar entre 5 y 10 segundos (100-200 ticks)
+            long nextDelay = (100L + (long) (Math.random() * 100L)); // 5-10s
+            scheduleFireworkSalvo(winner, teamColor, taskHolder, nextDelay);
+
+        }, delayTicks);
+    }
+
+    /**
+     * Lanza un cohete festivo 5 bloques sobre el jugador.
+     * El cohete explota en el aire con el color del equipo ganador.
+     */
+    private void spawnWinnerFirework(org.bukkit.entity.Player player, org.bukkit.Color teamColor) {
+        // Offset horizontal aleatorio pequeño para que no sean todos en el mismo punto
+        double offsetX = (Math.random() - 0.5) * 3.0;
+        double offsetZ = (Math.random() - 0.5) * 3.0;
+
+        org.bukkit.Location spawnLoc = player.getLocation().add(offsetX, 0, offsetZ);
+
+        org.bukkit.entity.Firework fw = player.getWorld().spawn(spawnLoc, org.bukkit.entity.Firework.class);
+
+        org.bukkit.FireworkEffect.Type type = switch ((int) (Math.random() * 3)) {
+            case 0  -> org.bukkit.FireworkEffect.Type.STAR;
+            case 1  -> org.bukkit.FireworkEffect.Type.BURST;
+            default -> org.bukkit.FireworkEffect.Type.BALL_LARGE;
+        };
+
+        // Color secundario: versión más clara del color del equipo mezclada con blanco
+        org.bukkit.Color fadeColor = org.bukkit.Color.fromRGB(
+                Math.min(255, teamColor.getRed()   + 80),
+                Math.min(255, teamColor.getGreen() + 80),
+                Math.min(255, teamColor.getBlue()  + 80)
+        );
+
+        org.bukkit.FireworkEffect effect = org.bukkit.FireworkEffect.builder()
+                .with(type)
+                .withColor(teamColor, teamColor)
+                .withFade(fadeColor)
+                .trail(true)
+                .flicker(Math.random() < 0.5)
+                .build();
+
+        org.bukkit.inventory.meta.FireworkMeta meta =
+                (org.bukkit.inventory.meta.FireworkMeta) fw.getFireworkMeta();
+        meta.addEffect(effect);
+        meta.setPower(2); // potencia 2 ≈ 23-26 bloques de altura, revienta ~5 bloques sobre la cabeza
+        fw.setFireworkMeta(meta);
+    }
+
+    public boolean isBelowArena(Player player) {
+        if (arena == null) return false;
+        int minY = arena.getCenter().getBlockY() - 15;
+        return player.getLocation().getY() < minY;
     }
 
     private void returnToMainLobby() {
         Location lobby = config.getLobbySpawn();
         if (lobby == null) return;
         Bukkit.getOnlinePlayers().forEach(p -> {
-            // Restaurar allowFlight antes de cambiar a ADVENTURE para que
-            // jugadores que estaban en SPECTATOR no queden con vuelo bloqueado
             p.setAllowFlight(false);
             p.setFlying(false);
             p.setGameMode(GameMode.ADVENTURE);

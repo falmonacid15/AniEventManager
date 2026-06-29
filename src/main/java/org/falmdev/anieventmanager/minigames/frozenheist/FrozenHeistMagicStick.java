@@ -20,32 +20,16 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * Magic Stick para Frozen Heist.
- *
- * A diferencia del TNTRun, aquí cada operación es POR EQUIPO.
- * El stick guarda el equipo activo y el modo activo.
- *
- * Modos:
- *   SET_GLOBAL_SPAWN → Spawn global pre-partida
- *   SET_BASE_SPAWN   → Spawn de respawn del equipo activo
- *   SET_CAPTURE      → Zona de captura del equipo activo
- *   SET_FLAG_STAND   → Posición de la bandera del equipo activo
- *   SET_CORNER1      → Esquina 1 de la base del equipo activo
- *   SET_CORNER2      → Esquina 2 de la base del equipo activo
- *
- * El equipo activo se cambia con: /em frozenheist stick <teamId>
- * o se hereda al abrir la GUI de un equipo específico.
- */
 public class FrozenHeistMagicStick implements Listener {
 
     public enum Mode {
-        SET_GLOBAL_SPAWN("Spawn Global",           NamedTextColor.WHITE),
-        SET_BASE_SPAWN  ("Base Spawn [equipo]",    NamedTextColor.GREEN),
-        SET_CAPTURE     ("Capture Zone [equipo]",  NamedTextColor.GOLD),
-        SET_FLAG_STAND  ("Flag Stand [equipo]",    NamedTextColor.RED),
-        SET_CORNER1     ("Base Corner 1 [equipo]", NamedTextColor.AQUA),
-        SET_CORNER2     ("Base Corner 2 [equipo]", NamedTextColor.LIGHT_PURPLE);
+        SET_GLOBAL_SPAWN  ("Spawn Global",            NamedTextColor.WHITE),
+        SET_BASE_SPAWN_1  ("Base Spawn 1 [equipo]",   NamedTextColor.GREEN),
+        SET_BASE_SPAWN_2  ("Base Spawn 2 [equipo]",   NamedTextColor.DARK_GREEN),
+        SET_CAPTURE       ("Capture Zone [equipo]",   NamedTextColor.GOLD),
+        SET_FLAG_STAND    ("Flag Stand [equipo]",      NamedTextColor.RED),
+        SET_CORNER1       ("Base Corner 1 [equipo]",  NamedTextColor.AQUA),
+        SET_CORNER2       ("Base Corner 2 [equipo]",  NamedTextColor.LIGHT_PURPLE);
 
         private final String displayName;
         private final NamedTextColor color;
@@ -68,7 +52,7 @@ public class FrozenHeistMagicStick implements Listener {
 
     private final Anieventmanager plugin;
     private final Map<UUID, Mode>      playerModes = new HashMap<>();
-    private final Map<UUID, EventTeam> playerTeams = new HashMap<>(); // equipo activo por jugador
+    private final Map<UUID, EventTeam> playerTeams = new HashMap<>();
 
     public FrozenHeistMagicStick(Anieventmanager plugin) {
         this.plugin = plugin;
@@ -76,10 +60,6 @@ public class FrozenHeistMagicStick implements Listener {
 
     // ── API pública ───────────────────────────────────────────────────────────
 
-    /**
-     * Da el Magic Stick al jugador.
-     * @param team Equipo activo a preseleccionar (puede ser null → sin equipo activo)
-     */
     public void giveMagicStick(Player player, EventTeam team) {
         if (!playerModes.containsKey(player.getUniqueId())) {
             playerModes.put(player.getUniqueId(), Mode.SET_GLOBAL_SPAWN);
@@ -119,11 +99,7 @@ public class FrozenHeistMagicStick implements Listener {
         if (!isRight) return;
         event.setCancelled(true);
 
-        if (player.isSneaking()) {
-            cycleMode(player);
-            return;
-        }
-
+        if (player.isSneaking()) { cycleMode(player); return; }
         executeMode(player);
     }
 
@@ -153,9 +129,13 @@ public class FrozenHeistMagicStick implements Listener {
                 cfg.setGlobalSpawn(player.getLocation());
                 ok(player, "Spawn global seteado en " + locStr(player.getLocation()) + ".");
             }
-            case SET_BASE_SPAWN -> {
-                cfg.setBaseSpawn(team.getId(), player.getLocation());
-                ok(player, "[" + team.getDisplayName() + "] Base spawn seteado.");
+            case SET_BASE_SPAWN_1 -> {
+                cfg.setBaseSpawn1(team.getId(), player.getLocation());
+                ok(player, "[" + team.getDisplayName() + "] Base spawn 1 seteado.");
+            }
+            case SET_BASE_SPAWN_2 -> {
+                cfg.setBaseSpawn2(team.getId(), player.getLocation());
+                ok(player, "[" + team.getDisplayName() + "] Base spawn 2 seteado.");
             }
             case SET_CAPTURE -> {
                 cfg.setCaptureZone(team.getId(), player.getLocation());
@@ -175,16 +155,13 @@ public class FrozenHeistMagicStick implements Listener {
             }
         }
 
-        // Actualizar stick para reflejar cambios
         player.getInventory().setItemInMainHand(buildStick(mode, team));
     }
 
     // ── Construcción del item ─────────────────────────────────────────────────
 
     private ItemStack buildStick(Mode mode, EventTeam activeTeam) {
-        String teamLabel = activeTeam != null
-                ? activeTeam.getDisplayName()
-                : "ninguno";
+        String teamLabel = activeTeam != null ? activeTeam.getDisplayName() : "ninguno";
 
         ItemBuilder b = ItemBuilder.of(Material.BLAZE_ROD)
                 .name(STICK_NAME, NamedTextColor.GOLD, TextDecoration.BOLD)

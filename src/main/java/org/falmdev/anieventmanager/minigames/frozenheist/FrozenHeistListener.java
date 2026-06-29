@@ -394,8 +394,8 @@ public class FrozenHeistListener implements Listener {
 
         plugin.getTeamManager().getTeamOf(player).ifPresent(team -> {
             TeamHeistData data = miniGame.getTeamData().get(team.getId());
-            if (data != null && data.getBaseSpawn() != null) {
-                event.setRespawnLocation(data.getBaseSpawn());
+            if (data != null && data.getAnyBaseSpawn() != null) {
+                event.setRespawnLocation(data.getAnyBaseSpawn());
             }
         });
     }

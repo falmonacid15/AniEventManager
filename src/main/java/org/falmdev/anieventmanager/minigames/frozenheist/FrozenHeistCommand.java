@@ -10,25 +10,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Comandos del Frozen Heist.
- *
- * ── Configuración global ──────────────────────────────────────────
- *   /em frozenheist setspawn               → Spawn global pre-partida
- *   /em frozenheist setduration <mins>     → Duración de la partida
- *   /em frozenheist settings               → Ver configuración completa
- *
- * ── Configuración por equipo ──────────────────────────────────────
- *   /em frozenheist setbasespawn <id>      → Spawn de respawn de la base
- *   /em frozenheist setcapture <id>        → Zona de entrega de bandera
- *   /em frozenheist setflag <id>           → Posición de la bandera propia
- *   /em frozenheist setbase <id> 1|2       → Esquinas de la zona segura
- *   /em frozenheist teaminfo <id>          → Ver config de un equipo
- *
- * ── Control ───────────────────────────────────────────────────────
- *   /em frozenheist start                  → Iniciar partida
- *   /em frozenheist stop                   → Detener partida
- */
 public class FrozenHeistCommand {
 
     private final Anieventmanager plugin;
@@ -43,8 +24,6 @@ public class FrozenHeistCommand {
         if (args.length == 0) { sendHelp(player); return; }
 
         switch (args[0].toLowerCase()) {
-
-            // ── Configuración global ──────────────────────────────────────────
 
             case "setspawn" -> {
                 miniGame.getConfig().setGlobalSpawn(player.getLocation());
@@ -62,7 +41,7 @@ public class FrozenHeistCommand {
             }
 
             case "settings" -> {
-                var cfg = miniGame.getConfig();
+                var cfg   = miniGame.getConfig();
                 var teams = plugin.getTeamManager().getAllTeams();
                 player.sendMessage(Component.text("━━━ Frozen Heist — Configuración ━━━", NamedTextColor.AQUA));
                 info(player, "Estado",       stateToSpanish(miniGame.getState()));
@@ -74,10 +53,11 @@ public class FrozenHeistCommand {
                     String id = team.getId();
                     player.sendMessage(Component.text("  ─ ", NamedTextColor.DARK_GRAY)
                             .append(Component.text(team.getDisplayName(), team.getColor())));
-                    info(player, "    base-spawn",   cfg.getBaseSpawn(id)   != null ? "✔" : "✘ falta");
-                    info(player, "    capture-zone", cfg.getCaptureZone(id) != null ? "✔" : "✘ falta");
-                    info(player, "    flag-stand",   cfg.getFlagStand(id)   != null ? "✔" : "✘ falta");
-                    info(player, "    base corners", (cfg.getBaseCorner1(id) != null && cfg.getBaseCorner2(id) != null) ? "✔" : "✘ falta");
+                    info(player, "    base-spawn-1",  cfg.getBaseSpawn1(id) != null ? "✔" : "✘ falta");
+                    info(player, "    base-spawn-2",  cfg.getBaseSpawn2(id) != null ? "✔" : "✘ falta");
+                    info(player, "    capture-zone",  cfg.getCaptureZone(id) != null ? "✔" : "✘ falta");
+                    info(player, "    flag-stand",    cfg.getFlagStand(id)   != null ? "✔" : "✘ falta");
+                    info(player, "    base corners",  (cfg.getBaseCorner1(id) != null && cfg.getBaseCorner2(id) != null) ? "✔" : "✘ falta");
                 }
 
                 String error = cfg.validate(teams);
@@ -87,14 +67,25 @@ public class FrozenHeistCommand {
                     player.sendMessage(Component.text("✔ Listo para iniciar.", NamedTextColor.GREEN));
             }
 
-            // ── Configuración por equipo ──────────────────────────────────────
-
+            // /em frozenheist setbasespawn <1|2> <id-equipo>
             case "setbasespawn" -> {
-                if (args.length < 2) { err(player, "Uso: /em frozenheist setbasespawn <id-equipo>"); return; }
-                Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeam(args[1]);
-                if (teamOpt.isEmpty()) { err(player, "Equipo '" + args[1] + "' no encontrado."); return; }
-                miniGame.getConfig().setBaseSpawn(args[1], player.getLocation());
-                ok(player, "Base-spawn del equipo '" + args[1] + "' seteado.");
+                if (args.length < 3) { err(player, "Uso: /em frozenheist setbasespawn <1|2> <id-equipo>"); return; }
+                String posArg  = args[1];
+                String teamArg = args[2];
+                if (!posArg.equals("1") && !posArg.equals("2")) {
+                    err(player, "La posición debe ser 1 o 2.");
+                    return;
+                }
+                Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeam(teamArg);
+                if (teamOpt.isEmpty()) { err(player, "Equipo '" + teamArg + "' no encontrado."); return; }
+
+                if (posArg.equals("1")) {
+                    miniGame.getConfig().setBaseSpawn1(teamArg, player.getLocation());
+                    ok(player, "Base-spawn 1 del equipo '" + teamArg + "' seteado.");
+                } else {
+                    miniGame.getConfig().setBaseSpawn2(teamArg, player.getLocation());
+                    ok(player, "Base-spawn 2 del equipo '" + teamArg + "' seteado.");
+                }
             }
 
             case "setcapture" -> {
@@ -114,21 +105,48 @@ public class FrozenHeistCommand {
             }
 
             case "setbase" -> {
-                // /em frozenheist setbase <id> 1|2
                 if (args.length < 3) { err(player, "Uso: /em frozenheist setbase <id-equipo> 1|2"); return; }
                 Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeam(args[1]);
                 if (teamOpt.isEmpty()) { err(player, "Equipo '" + args[1] + "' no encontrado."); return; }
+
+                FrozenHeistConfig cfg = miniGame.getConfig();
+                String teamId = args[1];
+                EventTeam team = teamOpt.get();
+
                 switch (args[2]) {
                     case "1" -> {
-                        miniGame.getConfig().setBaseCorner1(args[1], player.getLocation());
-                        ok(player, "Esquina 1 de la base del equipo '" + args[1] + "' seteada.");
+                        cfg.setBaseCorner1(teamId, player.getLocation());
+                        ok(player, "Esquina 1 de la base del equipo '" + teamId + "' seteada.");
                     }
                     case "2" -> {
-                        miniGame.getConfig().setBaseCorner2(args[1], player.getLocation());
-                        ok(player, "Esquina 2 de la base del equipo '" + args[1] + "' seteada.");
+                        cfg.setBaseCorner2(teamId, player.getLocation());
+                        ok(player, "Esquina 2 de la base del equipo '" + teamId + "' seteada.");
+                        if (cfg.getBaseCorner1(teamId) != null) {
+                            BaseColorizer.colorize(cfg.getBaseCorner1(teamId), cfg.getBaseCorner2(teamId), team.getColor());
+                            ok(player, "Bloques de la base coloreados al color del equipo " + team.getDisplayName() + ".");
+                        } else {
+                            player.sendMessage(Component.text("  (la esquina 1 aún no está seteada — colorizado pendiente)", NamedTextColor.GRAY));
+                        }
                     }
                     default -> err(player, "Usa 1 o 2.");
                 }
+            }
+
+            case "colorize" -> {
+                if (args.length < 2) { err(player, "Uso: /em frozenheist colorize <id-equipo>"); return; }
+                Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeam(args[1]);
+                if (teamOpt.isEmpty()) { err(player, "Equipo '" + args[1] + "' no encontrado."); return; }
+
+                FrozenHeistConfig cfg = miniGame.getConfig();
+                String teamId = args[1];
+                EventTeam team = teamOpt.get();
+
+                if (cfg.getBaseCorner1(teamId) == null || cfg.getBaseCorner2(teamId) == null) {
+                    err(player, "El equipo '" + teamId + "' no tiene ambas esquinas configuradas.");
+                    return;
+                }
+                BaseColorizer.colorize(cfg.getBaseCorner1(teamId), cfg.getBaseCorner2(teamId), team.getColor());
+                ok(player, "Base de " + team.getDisplayName() + " recoloreada.");
             }
 
             case "teaminfo" -> {
@@ -138,14 +156,13 @@ public class FrozenHeistCommand {
                 var cfg = miniGame.getConfig();
                 String id = args[1];
                 player.sendMessage(Component.text("━━━ Config equipo: " + id + " ━━━", NamedTextColor.AQUA));
-                info(player, "base-spawn",   cfg.getBaseSpawn(id)   != null ? locStr(cfg.getBaseSpawn(id))   : "no configurado");
-                info(player, "capture-zone", cfg.getCaptureZone(id) != null ? locStr(cfg.getCaptureZone(id)) : "no configurado");
-                info(player, "flag-stand",   cfg.getFlagStand(id)   != null ? locStr(cfg.getFlagStand(id))   : "no configurado");
-                info(player, "base corner 1",cfg.getBaseCorner1(id) != null ? locStr(cfg.getBaseCorner1(id)) : "no configurado");
-                info(player, "base corner 2",cfg.getBaseCorner2(id) != null ? locStr(cfg.getBaseCorner2(id)) : "no configurado");
+                info(player, "base-spawn-1",  cfg.getBaseSpawn1(id) != null ? locStr(cfg.getBaseSpawn1(id)) : "no configurado");
+                info(player, "base-spawn-2",  cfg.getBaseSpawn2(id) != null ? locStr(cfg.getBaseSpawn2(id)) : "no configurado");
+                info(player, "capture-zone",  cfg.getCaptureZone(id) != null ? locStr(cfg.getCaptureZone(id)) : "no configurado");
+                info(player, "flag-stand",    cfg.getFlagStand(id)   != null ? locStr(cfg.getFlagStand(id))   : "no configurado");
+                info(player, "base corner 1", cfg.getBaseCorner1(id) != null ? locStr(cfg.getBaseCorner1(id)) : "no configurado");
+                info(player, "base corner 2", cfg.getBaseCorner2(id) != null ? locStr(cfg.getBaseCorner2(id)) : "no configurado");
             }
-
-            // ── Control ───────────────────────────────────────────────────────
 
             case "start" -> {
                 if (miniGame.isRunning()) { err(player, "Ya hay una partida en curso."); return; }
@@ -171,17 +188,29 @@ public class FrozenHeistCommand {
     public List<String> tabComplete(String[] args) {
         if (args.length == 1)
             return filter(List.of("setspawn", "setduration", "settings",
-                    "setbasespawn", "setcapture", "setflag", "setbase",
+                    "setbasespawn", "setcapture", "setflag", "setbase", "colorize",
                     "teaminfo", "start", "stop"), args[0]);
 
         List<String> teamIds = new ArrayList<>(plugin.getTeamManager().getTeamIds());
 
-        if (args.length == 2 && List.of("setbasespawn", "setcapture", "setflag", "setbase", "teaminfo")
-                .contains(args[0].toLowerCase()))
-            return filter(teamIds, args[1]);
+        if (args.length == 2) {
+            // setbasespawn espera 1|2 en posición 2
+            if (args[0].equalsIgnoreCase("setbasespawn"))
+                return filter(List.of("1", "2"), args[1]);
+            // el resto espera teamId en posición 2
+            if (List.of("setcapture", "setflag", "setbase", "colorize", "teaminfo")
+                    .contains(args[0].toLowerCase()))
+                return filter(teamIds, args[1]);
+        }
 
-        if (args.length == 3 && args[0].equalsIgnoreCase("setbase"))
-            return filter(List.of("1", "2"), args[2]);
+        if (args.length == 3) {
+            // setbasespawn <1|2> → equipo en posición 3
+            if (args[0].equalsIgnoreCase("setbasespawn"))
+                return filter(teamIds, args[2]);
+            // setbase <id> → 1|2 en posición 3
+            if (args[0].equalsIgnoreCase("setbase"))
+                return filter(List.of("1", "2"), args[2]);
+        }
 
         return List.of();
     }
@@ -191,18 +220,19 @@ public class FrozenHeistCommand {
     private void sendHelp(Player player) {
         player.sendMessage(Component.text("━━━ /em frozenheist ━━━", NamedTextColor.AQUA));
         player.sendMessage(Component.text("  Configuración global:", NamedTextColor.GRAY));
-        help(player, "/em frozenheist setspawn",              "Spawn global pre-partida");
-        help(player, "/em frozenheist setduration <mins>",   "Duración de la partida");
-        help(player, "/em frozenheist settings",             "Ver configuración completa");
+        help(player, "/em frozenheist setspawn",                "Spawn global pre-partida");
+        help(player, "/em frozenheist setduration <mins>",      "Duración de la partida");
+        help(player, "/em frozenheist settings",                "Ver configuración completa");
         player.sendMessage(Component.text("  Por equipo:", NamedTextColor.GRAY));
-        help(player, "/em frozenheist setbasespawn <id>",    "Spawn de respawn en la base");
-        help(player, "/em frozenheist setcapture <id>",      "Zona de entrega de bandera");
-        help(player, "/em frozenheist setflag <id>",         "Posición de la bandera propia");
-        help(player, "/em frozenheist setbase <id> 1|2",     "Esquinas de la zona segura");
-        help(player, "/em frozenheist teaminfo <id>",        "Ver config de un equipo");
+        help(player, "/em frozenheist setbasespawn <1|2> <id>", "Spawn de respawn (jugador 1 o 2)");
+        help(player, "/em frozenheist setcapture <id>",         "Zona de entrega de bandera");
+        help(player, "/em frozenheist setflag <id>",            "Posición de la bandera propia");
+        help(player, "/em frozenheist setbase <id> 1|2",        "Esquinas de la zona segura");
+        help(player, "/em frozenheist colorize <id>",           "Fuerza recoloreado de la base");
+        help(player, "/em frozenheist teaminfo <id>",           "Ver config de un equipo");
         player.sendMessage(Component.text("  Control:", NamedTextColor.GRAY));
-        help(player, "/em frozenheist start",                "Iniciar partida");
-        help(player, "/em frozenheist stop",                 "Detener partida");
+        help(player, "/em frozenheist start",                   "Iniciar partida");
+        help(player, "/em frozenheist stop",                    "Detener partida");
     }
 
     // ── Utilidades ────────────────────────────────────────────────────────────
