@@ -9,10 +9,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-/**
- * Placeholders %anievent_tntrun_...%
- * Delegado desde AniEventExpansion#resolveTNTRun()
- */
+
 public class TNTRunPlaceholders {
 
     private final Anieventmanager plugin;
@@ -25,7 +22,6 @@ public class TNTRunPlaceholders {
 
     public String resolve(OfflinePlayer offlinePlayer, String params) {
 
-        // ── Globales (sin jugador) ────────────────────────────────────────────
         switch (params) {
             case "tntrun_running" -> { return String.valueOf(game.isRunning()); }
             case "tntrun_state"   -> {
@@ -43,14 +39,12 @@ public class TNTRunPlaceholders {
             case "tntrun_floor_total" -> { return String.valueOf(game.getTotalFloors()); }
         }
 
-        // alive_N
         if (params.startsWith("tntrun_alive_")) {
             int index = Integer.parseInt(params.replace("tntrun_alive_", "")) - 1;
             List<EventTeam> alive = game.getAliveTeams();
             return index < alive.size() ? alive.get(index).getDisplayName() : "-";
         }
 
-        // ── Requieren jugador ─────────────────────────────────────────────────
         Player player = offlinePlayer.getPlayer();
 
         if (params.equals("tntrun_iseliminated")) {
@@ -63,7 +57,6 @@ public class TNTRunPlaceholders {
             return String.valueOf(eliminated);
         }
 
-        // Cooldown doble salto — se obtiene desde el listener
         if (params.equals("tntrun_jump_cooldown")) {
             if (player == null) return "0";
             TNTRunListener listener = game.getGameListener();
@@ -78,7 +71,6 @@ public class TNTRunPlaceholders {
             return buildJumpBar(pct);
         }
 
-        // Placeholders de piso — requieren partida activa
         if (player == null || !game.isRunning()) {
             return switch (params) {
                 case "tntrun_floor"                -> "-";
@@ -131,7 +123,6 @@ public class TNTRunPlaceholders {
         };
     }
 
-    // ── Barra de cooldown ─────────────────────────────────────────────────────
 
     private String buildJumpBar(int pct) {
         int total  = 10;

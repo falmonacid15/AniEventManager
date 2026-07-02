@@ -25,12 +25,10 @@ public class TNTRunAdminGUI implements Listener {
 
     public static final String TITLE = "TNT Run — Configuración";
 
-    // ── Pestañas (fila 0) ─────────────────────────────────────────────────────
     private static final int TAB_SPAWN = 12;
     private static final int TAB_ARENA = 13;
     private static final int TAB_GAME  = 14;
 
-    // ── Pestaña SPAWN ─────────────────────────────────────────────────────────
     private static final int SPAWN_WORLD     = 20;
     private static final int SPAWN_LOBBY     = 23;
     private static final int SPAWN_SPECTATOR = 24;
@@ -39,7 +37,6 @@ public class TNTRunAdminGUI implements Listener {
     private static final int SPAWN_LIST      = 31;
     private static final int SPAWN_CLEAR     = 32;
 
-    // ── Pestaña ARENA ─────────────────────────────────────────────────────────
     private static final int ARENA_SIZE     = 21;
     private static final int ARENA_SHAPE    = 22;
     private static final int ARENA_LAYERS   = 29;
@@ -48,7 +45,6 @@ public class TNTRunAdminGUI implements Listener {
     private static final int ARENA_GENERATE = 32;
     private static final int ARENA_CLEAR    = 33;
 
-    // ── Pestaña GAME ──────────────────────────────────────────────────────────
     private static final int GAME_DELAY        = 21;
     private static final int GAME_COUNTDOWN    = 22;
     private static final int GAME_ENDDELAY     = 23;
@@ -59,9 +55,6 @@ public class TNTRunAdminGUI implements Listener {
     private static final int GAME_SCORE_3      = 41;
     private static final int GAME_SCORE_DEF    = 42;
 
-    // ── Fila 5 — navegación estándar ─────────────────────────────────────────
-    // 45-53 gestionados por GuiUtil.fillNavigationHomeOnly()
-    // 48 = libre  |  49 = Magic Stick  |  50 = ⌂ Inicio  |  52 = Start/Stop
     private static final int NAV_MAGIC_STICK = 4;
     private static final int NAV_START       = 16;
     private static final int NAV_STOP        = 10;
@@ -93,7 +86,6 @@ public class TNTRunAdminGUI implements Listener {
         GuiUtil.fillSlots(inv, GuiUtil.emptyPane(), 0,1,9,7,8,17,36,45,46,52,53,44);
 
 
-        // Pestañas
         inv.setItem(TAB_SPAWN, buildTab("Spawn / Mundo", Material.COMPASS,    tab == 0));
         inv.setItem(TAB_ARENA, buildTab("Arena",         Material.GRASS_BLOCK, tab == 1));
         inv.setItem(TAB_GAME,  buildTab("Juego",         Material.CLOCK,       tab == 2));
@@ -129,8 +121,6 @@ public class TNTRunAdminGUI implements Listener {
 
         player.openInventory(inv);
     }
-
-    // ── Pestaña 0: Spawn ──────────────────────────────────────────────────────
 
     private void fillSpawnTab(Inventory inv) {
         TNTRunConfig cfg = plugin.getTNTRunMiniGame().getConfig();
@@ -177,7 +167,6 @@ public class TNTRunAdminGUI implements Listener {
         return lines;
     }
 
-    // ── Pestaña 1: Arena ──────────────────────────────────────────────────────
 
     private void fillArenaTab(Inventory inv) {
         TNTRunConfig cfg = plugin.getTNTRunMiniGame().getConfig();
@@ -213,8 +202,6 @@ public class TNTRunAdminGUI implements Listener {
                   .emptyLine().lore(NamedTextColor.RED, isRunning ? "No disponible durante la partida." : "Primero configura el centro.").build());
     }
 
-    // ── Pestaña 2: Juego ──────────────────────────────────────────────────────
-
     private void fillGameTab(Inventory inv) {
         TNTRunConfig cfg = plugin.getTNTRunMiniGame().getConfig();
         inv.setItem(GAME_DELAY, buildNumericItem("Delay de Bloque", Material.CLOCK,
@@ -242,7 +229,6 @@ public class TNTRunAdminGUI implements Listener {
         inv.setItem(GAME_SCORE_DEF, buildScoreItem(-1, cfg.getScoreForPlace(4),  "  ", NamedTextColor.DARK_GRAY));
     }
 
-    // ── Click listener ────────────────────────────────────────────────────────
 
     @EventHandler
     public void onClick(InventoryClickEvent event) {
@@ -255,15 +241,12 @@ public class TNTRunAdminGUI implements Listener {
         int tab  = activeTabs.getOrDefault(player.getUniqueId(), 0);
         TNTRunConfig cfg = plugin.getTNTRunMiniGame().getConfig();
 
-        // Pestañas
         if (slot == TAB_SPAWN) { render(player, 0); return; }
         if (slot == TAB_ARENA) { render(player, 1); return; }
         if (slot == TAB_GAME)  { render(player, 2); return; }
 
-        // Navegación: Home (48=nada porque es raíz, 50=Inicio)
         if (GuiUtil.handleNavigation(slot, player, plugin, null)) return;
 
-        // Magic Stick
         if (slot == NAV_MAGIC_STICK) {
             player.closeInventory();
             plugin.getTNTRunMagicStick().giveMagicStick(player);
@@ -271,7 +254,6 @@ public class TNTRunAdminGUI implements Listener {
             return;
         }
 
-        // Start / Stop
         if (slot == NAV_START) {
             if (plugin.getTNTRunMiniGame().validateConfig() != null || plugin.getTNTRunMiniGame().isRunning()) return;
             if (plugin.getTNTRunMiniGame().start())
@@ -289,7 +271,6 @@ public class TNTRunAdminGUI implements Listener {
             return;
         }
 
-        // Contenido por pestaña
         switch (tab) {
             case 0 -> handleSpawnClick(player, slot, cfg);
             case 1 -> handleArenaClick(player, slot, cfg);
@@ -351,8 +332,6 @@ public class TNTRunAdminGUI implements Listener {
         }
     }
 
-    // ── Chat prompts ──────────────────────────────────────────────────────────
-
     private void promptInput(Player player, InputType type, String prompt) {
         awaitingInput.put(player.getUniqueId(), new PendingInput(type, prompt));
         player.closeInventory();
@@ -393,7 +372,6 @@ public class TNTRunAdminGUI implements Listener {
         });
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private ItemStack buildTab(String name, Material icon, boolean active) {
         return ItemBuilder.of(icon).name(name, active ? NamedTextColor.YELLOW : NamedTextColor.DARK_GRAY, active ? TextDecoration.BOLD : TextDecoration.ITALIC)

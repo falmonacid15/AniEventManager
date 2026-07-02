@@ -41,8 +41,6 @@ public class TNTRunMiniGame implements MiniGame {
         this.config = new TNTRunConfig(plugin);
     }
 
-    // ── Ciclo de vida ─────────────────────────────────────────────────────────
-
     public boolean sendToLobby() {
         if (config.validate() != null) return false;
 
@@ -71,11 +69,9 @@ public class TNTRunMiniGame implements MiniGame {
         List<EventTeam> teams = new ArrayList<>(plugin.getTeamManager().getAllTeams());
         if (teams.isEmpty()) return false;
 
-        // Generar arena con la configuración actual
         arena = new TNTRunArena(config.getArenaCenter(), config.buildArenaConfig());
         arena.generate();
 
-        // Teletransportar jugadores
         int spawnIndex = 0;
         for (EventTeam team : teams) {
             if (team.getOnlinePlayers().isEmpty()) continue;
@@ -94,12 +90,11 @@ public class TNTRunMiniGame implements MiniGame {
             }
         }
 
-        // Desregistrar listener anterior si por alguna razón aún existe
         if (gameListener != null) {
             org.bukkit.event.HandlerList.unregisterAll(gameListener);
             gameListener = null;
         }
-        // Registrar listener nuevo
+
         gameListener = new TNTRunListener(plugin, this);
         plugin.getServer().getPluginManager().registerEvents(gameListener, plugin);
 
@@ -112,8 +107,6 @@ public class TNTRunMiniGame implements MiniGame {
         broadcastAll(Component.text("El TNT Run fue detenido por un admin.", NamedTextColor.RED));
         finish(null);
     }
-
-    // ── Cuenta regresiva ──────────────────────────────────────────────────────
 
     private void startCountdown() {
         state = State.COUNTDOWN;
@@ -211,7 +204,6 @@ public class TNTRunMiniGame implements MiniGame {
         }
     }
 
-// ── Fin del juego ─────────────────────────────────────────────────────────
 
     private void finish(EventTeam winner) {
         cancelTasks();
@@ -249,7 +241,6 @@ public class TNTRunMiniGame implements MiniGame {
                     .append(Component.text(team.getDisplayName(), team.getColor())));
         }
 
-        // ── Fuegos artificiales para el equipo ganador ────────────────────────
         final EventTeam winnerFinal = winner;
         final BukkitTask[] fireworkTask = { null };
 
@@ -257,7 +248,6 @@ public class TNTRunMiniGame implements MiniGame {
             org.bukkit.Color teamColor =
                     org.falmdev.anieventmanager.utils.TeamColorUtil.toArmorColor(winnerFinal.getColor());
 
-            // Lanzar la primera salva inmediatamente y luego cada 5-10 segundos aleatorios
             scheduleFireworkSalvo(winnerFinal, teamColor, fireworkTask, 10L);
         }
 
@@ -271,11 +261,6 @@ public class TNTRunMiniGame implements MiniGame {
         }, 30 * 20L); // 30 segundos fijos de end delay
     }
 
-    /**
-     * Programa una salva de 3-4 fuegos artificiales y se re-agenda
-     * automáticamente entre 5 y 10 segundos después.
-     * Almacena el task activo en el array para poder cancelarlo.
-     */
     private void scheduleFireworkSalvo(EventTeam winner,
                                        org.bukkit.Color teamColor,
                                        BukkitTask[] taskHolder,
@@ -284,29 +269,22 @@ public class TNTRunMiniGame implements MiniGame {
             List<org.bukkit.entity.Player> members = winner.getOnlinePlayers();
             if (members.isEmpty()) return;
 
-            // 3 o 4 cohetes aleatorios por salvo
             int count = 3 + (int) (Math.random() * 2); // 3 o 4
             for (int i = 0; i < count; i++) {
-                // Elegir jugador al azar del equipo para dispersar los cohetes
+
                 org.bukkit.entity.Player target = members.get((int) (Math.random() * members.size()));
                 if (target.isOnline()) {
                     spawnWinnerFirework(target, teamColor);
                 }
             }
 
-            // Re-agendar entre 5 y 10 segundos (100-200 ticks)
             long nextDelay = (100L + (long) (Math.random() * 100L)); // 5-10s
             scheduleFireworkSalvo(winner, teamColor, taskHolder, nextDelay);
 
         }, delayTicks);
     }
 
-    /**
-     * Lanza un cohete festivo 5 bloques sobre el jugador.
-     * El cohete explota en el aire con el color del equipo ganador.
-     */
     private void spawnWinnerFirework(org.bukkit.entity.Player player, org.bukkit.Color teamColor) {
-        // Offset horizontal aleatorio pequeño para que no sean todos en el mismo punto
         double offsetX = (Math.random() - 0.5) * 3.0;
         double offsetZ = (Math.random() - 0.5) * 3.0;
 
@@ -320,7 +298,6 @@ public class TNTRunMiniGame implements MiniGame {
             default -> org.bukkit.FireworkEffect.Type.BALL_LARGE;
         };
 
-        // Color secundario: versión más clara del color del equipo mezclada con blanco
         org.bukkit.Color fadeColor = org.bukkit.Color.fromRGB(
                 Math.min(255, teamColor.getRed()   + 80),
                 Math.min(255, teamColor.getGreen() + 80),
@@ -338,7 +315,7 @@ public class TNTRunMiniGame implements MiniGame {
         org.bukkit.inventory.meta.FireworkMeta meta =
                 (org.bukkit.inventory.meta.FireworkMeta) fw.getFireworkMeta();
         meta.addEffect(effect);
-        meta.setPower(2); // potencia 2 ≈ 23-26 bloques de altura, revienta ~5 bloques sobre la cabeza
+        meta.setPower(2);
         fw.setFireworkMeta(meta);
     }
 
@@ -362,8 +339,6 @@ public class TNTRunMiniGame implements MiniGame {
         aliveTeams.clear();
     }
 
-    // ── Visión nocturna ───────────────────────────────────────────────────────
-
     private void applyNightVision(Player player) {
         player.addPotionEffect(new PotionEffect(
                 PotionEffectType.NIGHT_VISION,
@@ -376,53 +351,35 @@ public class TNTRunMiniGame implements MiniGame {
         player.removePotionEffect(PotionEffectType.NIGHT_VISION);
     }
 
-    // ── API de piso para placeholders ─────────────────────────────────────────
-
-    /**
-     * Devuelve el índice (1-based) de la capa de SAND más cercana por debajo
-     * del jugador, o -1 si no hay arena activa.
-     * Capa 1 = la más alta (donde el jugador empieza).
-     */
     public int getPlayerFloor(Player player) {
         if (arena == null || !isStrictlyRunning()) return -1;
-        int py = player.getLocation().getBlockY() - 1; // Y del bloque bajo los pies
+        int py = player.getLocation().getBlockY() - 1;
         int baseY = arena.getCenter().getBlockY();
         TNTRunArena.ArenaConfig cfg = arena.getArenaConfig();
 
-        // Buscar la capa más cercana por debajo
         for (int i = cfg.layerCount() - 1; i >= 0; i--) {
-            int layerSandY = baseY + 10 + i * (2 + cfg.layerGap()) + 1; // Y del SAND de la capa i
+            int layerSandY = baseY + 10 + i * (2 + cfg.layerGap()) + 1;
             if (py >= layerSandY - 2) {
-                return cfg.layerCount() - i; // invertido: capa 1 = más alta
+                return cfg.layerCount() - i;
             }
         }
-        return cfg.layerCount(); // está por debajo de todas las capas
+        return cfg.layerCount();
     }
 
-    /**
-     * Devuelve el total de capas configuradas.
-     */
     public int getTotalFloors() {
         if (arena == null) return 0;
         return arena.getArenaConfig().layerCount();
     }
 
-    /**
-     * Devuelve el Y exacto de la capa SAND del piso indicado (1-based).
-     */
     private int getFloorSandY(int floorIndex) {
         if (arena == null) return -1;
         int baseY = arena.getCenter().getBlockY();
         TNTRunArena.ArenaConfig cfg = arena.getArenaConfig();
-        // floorIndex 1 = capa más alta = layerCount-1 en índice 0-based
         int layerIdx = cfg.layerCount() - floorIndex;
         if (layerIdx < 0 || layerIdx >= cfg.layerCount()) return -1;
         return baseY + 10 + layerIdx * (2 + cfg.layerGap()) + 1;
     }
 
-    /**
-     * Cuenta cuántos bloques SAND quedan en el piso indicado (1-based).
-     */
     public int getSandCountOnFloor(int floorIndex) {
         if (arena == null || !isStrictlyRunning()) return 0;
         int targetY = getFloorSandY(floorIndex);
@@ -436,10 +393,6 @@ public class TNTRunMiniGame implements MiniGame {
         return count;
     }
 
-    /**
-     * Devuelve el total original de bloques SAND en el piso indicado (1-based).
-     * Se calcula a partir de la lista inicial de sandBlocks filtrando por Y.
-     */
     public int getTotalSandOnFloor(int floorIndex) {
         if (arena == null) return 0;
         int targetY = getFloorSandY(floorIndex);
@@ -451,9 +404,6 @@ public class TNTRunMiniGame implements MiniGame {
         return count;
     }
 
-    /**
-     * Devuelve lista de jugadores activos en el piso indicado (1-based).
-     */
     public List<Player> getPlayersOnFloor(int floorIndex) {
         if (arena == null || !isStrictlyRunning()) return List.of();
         int targetY = getFloorSandY(floorIndex);
@@ -462,7 +412,6 @@ public class TNTRunMiniGame implements MiniGame {
         for (UUID uuid : activePlayers) {
             Player p = Bukkit.getPlayer(uuid);
             if (p == null) continue;
-            // El jugador está "en" un piso si sus pies están entre layerSandY y layerSandY + layerGap + 2
             int py = p.getLocation().getBlockY() - 1;
             TNTRunArena.ArenaConfig cfg = arena.getArenaConfig();
             if (py >= targetY - 1 && py <= targetY + cfg.layerGap() + 1) {
@@ -472,12 +421,7 @@ public class TNTRunMiniGame implements MiniGame {
         return result;
     }
 
-    /**
-     * Devuelve el listener activo (para acceder a datos de cooldown).
-     */
     public TNTRunListener getGameListener() { return gameListener; }
-
-    // ── Utilidades ────────────────────────────────────────────────────────────
 
     public boolean isActivePlayer(Player player) { return activePlayers.contains(player.getUniqueId()); }
     public boolean isCountingDown() { return state == State.COUNTDOWN; }
@@ -513,25 +457,16 @@ public class TNTRunMiniGame implements MiniGame {
         if (countdownTask != null && !countdownTask.isCancelled()) countdownTask.cancel();
     }
 
-    // ── MiniGame interface ────────────────────────────────────────────────────
-
     @Override public String getId()          { return "tntrun"; }
     @Override public String getDisplayName() { return "TNT Run"; }
     @Override public String getStateName()   { return state.name(); }
     @Override public boolean isIdle()        { return state == State.IDLE; }
 
-    /**
-     * El contrato de MiniGame amplía isRunning a RUNNING o COUNTDOWN para que
-     * el MiniGameManager sepa que no debe solapar otra partida.
-     * Nota: el método de instancia existente isRunning() devolvía solo RUNNING;
-     * lo reemplazamos aquí para cumplir el contrato más amplio.
-     */
     @Override
     public boolean isRunning() {
         return state == State.RUNNING || state == State.COUNTDOWN;
     }
 
-    /** Alias de isRunning() == RUNNING estricto para uso interno del listener. */
     public boolean isStrictlyRunning() {
         return state == State.RUNNING;
     }

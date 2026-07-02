@@ -45,8 +45,6 @@ public class TNTRunListener implements Listener {
         this.miniGame = miniGame;
     }
 
-    // ── Tick periódico ────────────────────────────────────────────────────────
-
     public void startTick() {
         scheduledBlocks.clear();
         jumpTimestamps.clear();
@@ -59,8 +57,6 @@ public class TNTRunListener implements Listener {
         }
 
         tickTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
-            // Solo procesar cuando el juego está realmente en curso,
-            // no durante el countdown.
             if (!miniGame.isStrictlyRunning()) return;
 
             plugin.getServer().getOnlinePlayers().stream()
@@ -79,10 +75,8 @@ public class TNTRunListener implements Listener {
                             return;
                         }
 
-                        // Bloque central bajo los pies
                         scheduleIfSand(below);
 
-                        // Bloques adyacentes para movimiento diagonal
                         double px = loc.getX() - Math.floor(loc.getX());
                         double pz = loc.getZ() - Math.floor(loc.getZ());
                         int bx = below.getX();
@@ -102,7 +96,6 @@ public class TNTRunListener implements Listener {
                         }
                     });
 
-            // checkWinCondition directo — el tick ya corre en el hilo principal.
             miniGame.checkWinCondition();
 
         }, 0L, 2L);
@@ -132,7 +125,6 @@ public class TNTRunListener implements Listener {
         scheduledBlocks.clear();
 
         plugin.getServer().getOnlinePlayers().forEach(p -> {
-            // No tocar a espectadores — ya fueron procesados por eliminatePlayer()
             if (p.getGameMode() != GameMode.SPECTATOR) {
                 p.setAllowFlight(false);
                 p.setFlying(false);
@@ -145,8 +137,6 @@ public class TNTRunListener implements Listener {
 
         org.bukkit.event.HandlerList.unregisterAll(this);
     }
-
-    // ── Congelar durante countdown ────────────────────────────────────────────
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onPlayerMove(PlayerMoveEvent event) {
@@ -165,7 +155,6 @@ public class TNTRunListener implements Listener {
         }
     }
 
-    // ── Doble salto ───────────────────────────────────────────────────────────
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onPlayerToggleFlight(PlayerToggleFlightEvent event) {
@@ -219,8 +208,6 @@ public class TNTRunListener implements Listener {
         }
     }
 
-    // ── Helpers públicos ──────────────────────────────────────────────────────
-
     public void clearDoubleJumpState(Player player) {
         UUID uuid = player.getUniqueId();
         jumpTimestamps.remove(uuid);
@@ -240,8 +227,6 @@ public class TNTRunListener implements Listener {
         if (elapsed >= cooldownMs) return 0;
         return (int)(100 - (elapsed * 100L / cooldownMs));
     }
-
-    // ── Helpers privados ──────────────────────────────────────────────────────
 
     private void scheduleIfSand(Block block) {
         if (block != null && block.getType() == Material.SAND) {

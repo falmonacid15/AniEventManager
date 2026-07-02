@@ -20,23 +20,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * Magic Stick para el TNT Run.
- *
- * Al tenerlo en mano, el jugador puede hacer click derecho para abrir un
- * selector de modo (o ciclar entre modos con shift+click), y luego al hacer
- * click derecho en el mundo se marca la posición correspondiente.
- *
- * Modos disponibles:
- *   SET_WORLD     → Setea el mundo actual (no necesita click en bloque)
- *   SET_LOBBY     → Setea el lobby spawn en la posición del jugador
- *   SET_SPECTATOR → Setea el spectator spawn en la posición del jugador
- *   SET_CENTER    → Setea el centro de la arena en la posición del jugador
- *   ADD_SPAWN     → Agrega la posición actual como spawn de jugador
- *
- * El item tiene un NBT/meta especial para identificarlo.
- * Identificación: displayName exacto "✦ Magic Stick [TNT Run]".
- */
+
 public class TNTRunMagicStick implements Listener {
 
     public enum Mode {
@@ -72,42 +56,32 @@ public class TNTRunMagicStick implements Listener {
         this.plugin = plugin;
     }
 
-    // ── API pública ───────────────────────────────────────────────────────────
-
-    /** Entrega el Magic Stick al jugador (slot de mano principal). */
     public void giveMagicStick(Player player) {
-        // Poner en modo por defecto si no tiene uno
         if (!playerModes.containsKey(player.getUniqueId())) {
             playerModes.put(player.getUniqueId(), Mode.SET_LOBBY);
         }
         Mode mode = playerModes.get(player.getUniqueId());
         ItemStack stick = buildStick(mode);
 
-        // Dar en la mano principal
         player.getInventory().setItemInMainHand(stick);
         player.sendMessage(Component.text("✦ Magic Stick activo — Modo: ", NamedTextColor.GOLD)
                 .append(Component.text(mode.getDisplayName(), mode.getColor(), TextDecoration.BOLD)));
         sendModeHint(player, mode);
     }
 
-    /** Devuelve el modo activo del jugador, o null si no tiene. */
     public Mode getMode(Player player) {
         return playerModes.get(player.getUniqueId());
     }
-
-    // ── Listener: click derecho con el stick ──────────────────────────────────
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onInteract(PlayerInteractEvent event) {
         Player player = event.getPlayer();
 
-        // Solo mano principal
         if (event.getHand() != EquipmentSlot.HAND) return;
 
         ItemStack item = player.getInventory().getItemInMainHand();
         if (!isMagicStick(item)) return;
 
-        // Shift + click derecho → ciclar modo
         if (player.isSneaking()
                 && (event.getAction() == Action.RIGHT_CLICK_BLOCK
                 || event.getAction() == Action.RIGHT_CLICK_AIR)) {
@@ -116,7 +90,6 @@ public class TNTRunMagicStick implements Listener {
             return;
         }
 
-        // Click derecho → ejecutar modo
         if (event.getAction() == Action.RIGHT_CLICK_BLOCK
                 || event.getAction() == Action.RIGHT_CLICK_AIR) {
             event.setCancelled(true);
@@ -124,7 +97,6 @@ public class TNTRunMagicStick implements Listener {
         }
     }
 
-    /** Al cambiar de slot, actualizar el stick si sigue en inventario. */
     @EventHandler
     public void onHeldChange(PlayerItemHeldEvent event) {
         Player player = event.getPlayer();
@@ -135,14 +107,11 @@ public class TNTRunMagicStick implements Listener {
         player.getInventory().setItem(event.getNewSlot(), buildStick(mode));
     }
 
-    // ── Lógica interna ────────────────────────────────────────────────────────
-
     private void cycleMode(Player player) {
         Mode current = playerModes.getOrDefault(player.getUniqueId(), Mode.SET_LOBBY);
         Mode next    = current.next();
         playerModes.put(player.getUniqueId(), next);
 
-        // Actualizar el item en mano
         player.getInventory().setItemInMainHand(buildStick(next));
 
         player.sendMessage(Component.text("✦ Modo: ", NamedTextColor.GOLD)
@@ -179,11 +148,8 @@ public class TNTRunMagicStick implements Listener {
             }
         }
 
-        // Actualizar el stick para reflejar estado
         player.getInventory().setItemInMainHand(buildStick(mode));
     }
-
-    // ── Construcción del item ─────────────────────────────────────────────────
 
     private ItemStack buildStick(Mode mode) {
         Mode[] modes = Mode.values();
@@ -219,8 +185,6 @@ public class TNTRunMagicStick implements Listener {
         return b.build();
     }
 
-    // ── Identificación ────────────────────────────────────────────────────────
-
     public static boolean isMagicStick(ItemStack item) {
         if (item == null || item.getType() != Material.BLAZE_ROD) return false;
         if (!item.hasItemMeta() || item.getItemMeta().displayName() == null) return false;
@@ -228,8 +192,6 @@ public class TNTRunMagicStick implements Listener {
                 .plainText().serialize(item.getItemMeta().displayName());
         return name.equals(STICK_NAME);
     }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private void sendModeHint(Player player, Mode mode) {
         String hint = switch (mode) {

@@ -20,23 +20,6 @@ import org.falmdev.anieventmanager.minigames.battleroyale.model.BRPlayer;
 
 import java.util.*;
 
-/**
- * DropSystem usando HappyGhasts como "avión".
- *
- * Cada HappyGhast soporta 4 pasajeros oficialmente.
- * Spawneamos N ghasts en formación, separados horizontalmente.
- *
- * Ventajas sobre EnderDragon:
- *  - teleport() funciona correctamente (no tiene boss-entity override)
- *  - Diseñado para ser vehículo aéreo
- *  - Movimiento visual nativo y suave
- *  - Soporta hasta 4 pasajeros sin NMS
- *  - Los jugadores pueden mover la cámara mientras montan
- *
- * Formación:
- *  Los ghasts vuelan en línea perpendicular a la dirección del vuelo,
- *  separados ~5 bloques. Para 16 jugadores → 4 ghasts en línea.
- */
 public class DropSystem {
 
     private static final String PARACHUTE_TAG = "br_parachute";
@@ -110,7 +93,7 @@ public class DropSystem {
             return;
         }
 
-        final double speed = config.getDropSpeed();
+        final double speed = config.getDropSpeed() * 2;
         stepVec = new Vector(dx / len * speed, 0, dz / len * speed);
 
         // Vector perpendicular para spacing entre ghasts (en plano XZ)
