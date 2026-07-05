@@ -10,7 +10,7 @@ import org.falmdev.anieventmanager.utils.gui.ItemBuilder;
 public enum HotbarAbility {
 
     RETURN_CHECKPOINT(
-            1,
+            3,
             Material.COMPASS,
             "Volver al Checkpoint",
             NamedTextColor.AQUA,
@@ -19,18 +19,18 @@ public enum HotbarAbility {
             30
     ),
 
-    DOUBLE_JUMP(
-            2,
+    JUMP_BOOST(
+            4,
             Material.FEATHER,
-            "Doble Salto",
+            "Super Salto",
             NamedTextColor.YELLOW,
-            "Activa el doble salto para ambos jugadores.",
+            "Aplica super salto a ambos jugadores.",
             "Requiere confirmación del compañero.",
             45
     ),
 
     TELEPORT_TO_TEAMMATE(
-            3,
+            5,
             Material.ENDER_PEARL,
             "Ir al Compañero",
             NamedTextColor.LIGHT_PURPLE,
@@ -49,20 +49,20 @@ public enum HotbarAbility {
 
     HotbarAbility(int slot, Material material, String displayName, NamedTextColor color,
                   String descLine1, String descLine2, int cooldownSeconds) {
-        this.slot           = slot;
-        this.material       = material;
-        this.displayName    = displayName;
-        this.color          = color;
-        this.descLine1      = descLine1;
-        this.descLine2      = descLine2;
+        this.slot            = slot;
+        this.material        = material;
+        this.displayName     = displayName;
+        this.color           = color;
+        this.descLine1       = descLine1;
+        this.descLine2       = descLine2;
         this.cooldownSeconds = cooldownSeconds;
     }
 
-    public int getSlot()            { return slot; }
-    public Material getMaterial()   { return material; }
-    public String getDisplayName()  { return displayName; }
-    public NamedTextColor getColor(){ return color; }
-    public int getCooldownSeconds() { return cooldownSeconds; }
+    public int getSlot()             { return slot; }
+    public Material getMaterial()    { return material; }
+    public String getDisplayName()   { return displayName; }
+    public NamedTextColor getColor() { return color; }
+    public int getCooldownSeconds()  { return cooldownSeconds; }
 
     public ItemStack buildItem() {
         return ItemBuilder.of(material)

@@ -2,7 +2,6 @@ package org.falmdev.anieventmanager.minigames.parkourduos;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.entity.Player;
@@ -16,16 +15,16 @@ import java.util.Map;
 
 public class CheckpointManager {
 
-    private final Anieventmanager plugin;
+    private final Anieventmanager     plugin;
     private final ParkourDuosMiniGame miniGame;
-    private final ParkourDuosConfig config;
+    private final ParkourDuosConfig   config;
 
     private BukkitTask tickTask;
 
     private static final Particle CHECKPOINT_PARTICLE = Particle.HAPPY_VILLAGER;
-    private static final Particle FINISH_PARTICLE      = Particle.FIREWORK;
-    private static final double   PARTICLE_RADIUS      = 0.8;
-    private static final int      PARTICLE_POINTS      = 12;
+    private static final Particle FINISH_PARTICLE     = Particle.FIREWORK;
+    private static final double   PARTICLE_RADIUS     = 0.8;
+    private static final int      PARTICLE_POINTS     = 12;
 
     public CheckpointManager(Anieventmanager plugin, ParkourDuosMiniGame miniGame) {
         this.plugin   = plugin;
@@ -71,16 +70,14 @@ public class CheckpointManager {
                 spawnFinishParticles(finish, members);
             }
 
-            showActionBar(team, data, members, inside);
-
-
             if (active != null && inside >= 2) {
                 boolean allCheckpointsDone = data.advanceCheckpoint();
                 data.addInternalScore(config.getScorePerCheckpoint());
 
                 for (Player p : members) {
                     p.sendMessage(Component.text("✔ Checkpoint ", NamedTextColor.GREEN)
-                            .append(Component.text(data.getCompletedCheckpoints() + "/" + data.getTotalCheckpoints(),
+                            .append(Component.text(
+                                    data.getCompletedCheckpoints() + "/" + data.getTotalCheckpoints(),
                                     NamedTextColor.YELLOW))
                             .append(Component.text(" completado!", NamedTextColor.GREEN)));
                 }
@@ -133,36 +130,6 @@ public class CheckpointManager {
             for (Player p : receivers) {
                 p.spawnParticle(FINISH_PARTICLE, loc, 1, 0, 0.2, 0, 0.05);
             }
-        }
-    }
-
-    private void showActionBar(EventTeam team, TeamParkourData data,
-                               List<Player> members, int insideCurrent) {
-        ParkourCheckpoint active = data.getActiveCheckpoint();
-
-        Component bar;
-        if (active == null) {
-            bar = Component.text("🏁 Ve al ", NamedTextColor.GOLD)
-                    .append(Component.text("FINISH", NamedTextColor.GREEN)
-                            .decoration(TextDecoration.BOLD, true))
-                    .append(Component.text("  —  ", NamedTextColor.DARK_GRAY))
-                    .append(Component.text(data.getCompletedCheckpoints() + "/" + data.getTotalCheckpoints() + " CPs",
-                            NamedTextColor.YELLOW));
-        } else {
-            NamedTextColor insideColor = insideCurrent >= 2 ? NamedTextColor.GREEN
-                    : insideCurrent == 1 ? NamedTextColor.YELLOW
-                      : NamedTextColor.RED;
-
-            bar = Component.text("📍 CP ", NamedTextColor.AQUA)
-                    .append(Component.text((active.getIndex() + 1) + "/" + data.getTotalCheckpoints(),
-                            NamedTextColor.WHITE))
-                    .append(Component.text("  —  ", NamedTextColor.DARK_GRAY))
-                    .append(Component.text("Jugadores: ", NamedTextColor.GRAY))
-                    .append(Component.text(insideCurrent + "/2", insideColor));
-        }
-
-        for (Player p : members) {
-            p.sendActionBar(bar);
         }
     }
 }
