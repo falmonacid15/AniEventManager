@@ -2,10 +2,6 @@ package org.falmdev.anieventmanager.minigames.parkourduos;
 
 import org.bukkit.Location;
 
-/**
- * Representa un checkpoint del parkour.
- * Un checkpoint se valida cuando LOS DOS jugadores del equipo están dentro del radio.
- */
 public class ParkourCheckpoint {
 
     private final int index;

@@ -12,36 +12,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Gestiona la configuración del Parkour Duos en:
- * plugins/AniEventManager/minigames/parkourduos.yml
- *
- * Estructura YAML:
- *
- * settings:
- *   duration-minutes: 10
- *   countdown-seconds: 5
- *   chain-max-distance: 8.0
- *   score-first: 20
- *   score-second: 15
- *   score-third: 10
- *   score-default: 5
- *   score-per-checkpoint: 1
- *
- * lobby:
- *   world: world
- *   x/y/z/yaw/pitch
- *
- * teams:
- *   rojo:
- *     spawn1: {world, x, y, z, yaw, pitch}
- *     spawn2: {world, x, y, z, yaw, pitch}
- *     start:  {world, x, y, z, yaw, pitch}
- *     finish: {world, x, y, z, yaw, pitch}
- *     checkpoints:
- *       - {world, x, y, z, radius}
- *       - ...
- */
 public class ParkourDuosConfig {
 
     private final Anieventmanager plugin;
@@ -52,8 +22,6 @@ public class ParkourDuosConfig {
         this.plugin = plugin;
         load();
     }
-
-    // ── Carga y guardado ──────────────────────────────────────────────────────
 
     public void load() {
         File dir = new File(plugin.getDataFolder(), "minigames");
@@ -93,8 +61,6 @@ public class ParkourDuosConfig {
         yaml.set("settings.score-per-checkpoint", 1);
     }
 
-    // ── Settings ──────────────────────────────────────────────────────────────
-
     public int    getDurationMinutes()    { return yaml.getInt("settings.duration-minutes", 10); }
     public int    getCountdownSeconds()   { return yaml.getInt("settings.countdown-seconds", 5); }
     public double getChainMaxDistance()   { return yaml.getDouble("settings.chain-max-distance", 8.0); }
@@ -131,8 +97,6 @@ public class ParkourDuosConfig {
         save();
     }
 
-    // ── Lobby ─────────────────────────────────────────────────────────────────
-
     public Location getLobby() {
         return loadLocation("lobby");
     }
@@ -140,8 +104,6 @@ public class ParkourDuosConfig {
     public void setLobby(Location loc) {
         saveLocation("lobby", loc);
     }
-
-    // ── Spawns, start y finish por equipo ─────────────────────────────────────
 
     public Location getTeamSpawn1(String teamId) {
         return loadLocation("teams." + teamId + ".spawn1");
@@ -174,8 +136,6 @@ public class ParkourDuosConfig {
     public void setTeamFinish(String teamId, Location loc) {
         saveLocation("teams." + teamId + ".finish", loc);
     }
-
-    // ── Checkpoints ───────────────────────────────────────────────────────────
 
     public List<ParkourCheckpoint> getCheckpoints(String teamId) {
         List<ParkourCheckpoint> list = new ArrayList<>();
@@ -236,12 +196,6 @@ public class ParkourDuosConfig {
         return yaml.getMapList(base).size();
     }
 
-    // ── Validación ────────────────────────────────────────────────────────────
-
-    /**
-     * Valida que el equipo tiene la configuración mínima para jugar.
-     * Devuelve null si está ok, o el mensaje de error.
-     */
     public String validateTeam(String teamId) {
         if (getTeamSpawn1(teamId) == null) return "Falta spawn1 del equipo " + teamId;
         if (getTeamSpawn2(teamId) == null) return "Falta spawn2 del equipo " + teamId;
@@ -255,8 +209,6 @@ public class ParkourDuosConfig {
         if (getLobby() == null) return "El lobby no está configurado. Usa /em pd setlobby.";
         return null;
     }
-
-    // ── Utilidades internas ───────────────────────────────────────────────────
 
     private Location loadLocation(String path) {
         if (!yaml.isConfigurationSection(path)) return null;

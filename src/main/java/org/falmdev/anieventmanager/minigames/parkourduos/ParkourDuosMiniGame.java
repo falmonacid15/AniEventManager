@@ -19,12 +19,15 @@ public class ParkourDuosMiniGame implements MiniGame {
 
     public enum State { IDLE, COUNTDOWN, RUNNING, FINISHED }
 
+    private static final int TEAMS_TO_TRIGGER_END = 3;
+
     private final Anieventmanager   plugin;
     private final ParkourDuosConfig config;
     private final ChainManager      chainManager;
 
     private CheckpointManager checkpointManager;
     private ParkourDuosListener gameListener;
+    private AbilityManager abilityManager;
 
     private State state = State.IDLE;
 
@@ -38,18 +41,14 @@ public class ParkourDuosMiniGame implements MiniGame {
     private boolean finishing = false;
 
     public ParkourDuosMiniGame(Anieventmanager plugin) {
-        this.plugin  = plugin;
-        this.config  = new ParkourDuosConfig(plugin);
-        this.chainManager = new ChainManager(plugin,
-                true,
-                config.getChainMaxDistance());
+        this.plugin       = plugin;
+        this.config       = new ParkourDuosConfig(plugin);
+        this.chainManager = new ChainManager(plugin, true, config.getChainMaxDistance());
     }
 
     public void openAdminGUI(Player player) {
         plugin.getParkourDuosAdminGUI().open(player);
     }
-
-    // ── MiniGame interface ────────────────────────────────────────────────────
 
     @Override public String getId()          { return "parkourduos"; }
     @Override public String getDisplayName() { return "Parkour Duos"; }
@@ -61,10 +60,6 @@ public class ParkourDuosMiniGame implements MiniGame {
         return state == State.RUNNING || state == State.COUNTDOWN;
     }
 
-    /**
-     * Parkour Duos no tiene lobby: sendToLobby teletransporta al spawn lobby
-     * sin iniciar la partida.
-     */
     @Override
     public boolean sendToLobby() {
         Location lobby = config.getLobby();
@@ -79,9 +74,7 @@ public class ParkourDuosMiniGame implements MiniGame {
     }
 
     @Override
-    public void reloadConfig() {
-        config.reload();
-    }
+    public void reloadConfig() { config.reload(); }
 
     @Override
     public String validateConfig() {
@@ -93,8 +86,6 @@ public class ParkourDuosMiniGame implements MiniGame {
         }
         return null;
     }
-
-    // ── Start ─────────────────────────────────────────────────────────────────
 
     @Override
     public boolean start() {
@@ -117,7 +108,7 @@ public class ParkourDuosMiniGame implements MiniGame {
             }
         }
 
-        finishing = false;
+        finishing    = false;
         finishCounter = 0;
         teamData.clear();
 
@@ -126,6 +117,7 @@ public class ParkourDuosMiniGame implements MiniGame {
             for (Player p : team.getOnlinePlayers()) {
                 if (lobby != null) p.teleport(lobby);
                 p.setGameMode(GameMode.ADVENTURE);
+                p.getInventory().clear();
             }
         }
 
@@ -139,6 +131,9 @@ public class ParkourDuosMiniGame implements MiniGame {
         }
         gameListener = new ParkourDuosListener(plugin, this);
         plugin.getServer().getPluginManager().registerEvents(gameListener, plugin);
+
+        if (abilityManager != null) abilityManager.cleanupAll();
+        abilityManager = new AbilityManager(plugin, this);
 
         state = State.COUNTDOWN;
         showIntroAndCountdown();
@@ -154,6 +149,9 @@ public class ParkourDuosMiniGame implements MiniGame {
         for (EventTeam team : plugin.getTeamManager().getAllTeams()) {
             for (Player p : team.getOnlinePlayers()) {
                 p.getInventory().clear();
+                p.setGameMode(GameMode.ADVENTURE);
+                p.setAllowFlight(false);
+                p.setFlying(false);
                 if (lobby != null) p.teleport(lobby);
             }
         }
@@ -163,8 +161,6 @@ public class ParkourDuosMiniGame implements MiniGame {
         Bukkit.getScheduler().runTaskLater(plugin, () -> state = State.IDLE, 20L);
     }
 
-    // ── Countdown ─────────────────────────────────────────────────────────────
-
     private void showIntroAndCountdown() {
         Title intro = Title.title(
                 Component.text("PARKOUR DUOS", NamedTextColor.GOLD),
@@ -173,9 +169,11 @@ public class ParkourDuosMiniGame implements MiniGame {
         );
         Bukkit.getOnlinePlayers().forEach(p -> p.showTitle(intro));
         broadcastAll(Component.text("━━━ PARKOUR DUOS ━━━", NamedTextColor.GOLD));
-        broadcastAll(Component.text("Completa el recorrido con tu compañero antes de que acabe el tiempo.",
+        broadcastAll(Component.text(
+                "Completa el recorrido con tu compañero antes de que acabe el tiempo.",
                 NamedTextColor.YELLOW));
-        broadcastAll(Component.text("¡No os alejéis demasiado — estáis encadenados!", NamedTextColor.GRAY));
+        broadcastAll(Component.text(
+                "¡No se alejen demasiado — están encadenados!", NamedTextColor.GRAY));
 
         Bukkit.getScheduler().runTaskLater(plugin, this::startCountdown, 80L);
     }
@@ -205,10 +203,15 @@ public class ParkourDuosMiniGame implements MiniGame {
             List<Player> members = team.getOnlinePlayers();
             Location sp1 = config.getTeamSpawn1(team.getId());
             Location sp2 = config.getTeamSpawn2(team.getId());
-            if (sp1 != null && !members.isEmpty())   members.get(0).teleport(sp1);
-            if (sp2 != null && members.size() > 1)   members.get(1).teleport(sp2);
-            if (sp1 != null && members.size() == 1)  members.get(0).teleport(sp1);
-            members.forEach(p -> p.setGameMode(GameMode.ADVENTURE));
+            if (sp1 != null && !members.isEmpty())  members.get(0).teleport(sp1);
+            if (sp2 != null && members.size() > 1)  members.get(1).teleport(sp2);
+            if (sp1 != null && members.size() == 1) members.get(0).teleport(sp1);
+
+            for (Player p : members) {
+                p.setGameMode(GameMode.ADVENTURE);
+                p.getInventory().clear();
+                abilityManager.giveAbilities(p);  // dar items de habilidad
+            }
         }
 
         chainManager.setMaxDistance(config.getChainMaxDistance());
@@ -224,13 +227,13 @@ public class ParkourDuosMiniGame implements MiniGame {
         );
         Bukkit.getOnlinePlayers().forEach(p -> p.showTitle(go));
         broadcastAll(Component.text("━━━ ¡PARKOUR DUOS COMENZÓ! ━━━", NamedTextColor.GREEN));
-        broadcastAll(Component.text("Tiempo límite: " + config.getDurationMinutes() + " minutos.", NamedTextColor.GRAY));
+        broadcastAll(Component.text(
+                "Tiempo límite: " + config.getDurationMinutes() + " minutos.",
+                NamedTextColor.GRAY));
 
         timeLeftSeconds = config.getDurationMinutes() * 60;
         startTimer();
     }
-
-    // ── Timer ─────────────────────────────────────────────────────────────────
 
     private void startTimer() {
         timerTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
@@ -260,7 +263,7 @@ public class ParkourDuosMiniGame implements MiniGame {
             if (a.isFinished() && b.isFinished())
                 return Integer.compare(a.getFinishRank(), b.getFinishRank());
             if (a.isFinished()) return -1;
-            if (b.isFinished()) return 1;
+            if (b.isFinished()) return  1;
             return Integer.compare(b.getCompletedCheckpoints(), a.getCompletedCheckpoints());
         });
 
@@ -268,7 +271,7 @@ public class ParkourDuosMiniGame implements MiniGame {
         for (int i = 0; i < ranking.size(); i++) {
             TeamParkourData data = ranking.get(i);
             String status = data.isFinished()
-                    ? "✔ Completado"
+                    ? "Completado"
                     : data.getCompletedCheckpoints() + "/" + data.getTotalCheckpoints() + " CPs";
             broadcastAll(Component.text("  " + (i + 1) + ". ", NamedTextColor.GRAY)
                     .append(Component.text(data.getTeam().getDisplayName(), data.getTeam().getColor()))
@@ -278,38 +281,56 @@ public class ParkourDuosMiniGame implements MiniGame {
         finish(ranking);
     }
 
-    // ── Finish por equipo ─────────────────────────────────────────────────────
-
     public void onTeamFinished(EventTeam team, TeamParkourData data) {
         if (data.isFinished()) return;
         finishCounter++;
         data.markFinished(finishCounter);
 
         int score = config.getScoreForPlace(finishCounter);
-        data.setInternalScore(data.getInternalScore() + score);
+        data.addInternalScore(score);
+
+        for (Player p : team.getOnlinePlayers()) {
+            p.setGameMode(GameMode.SPECTATOR);
+            abilityManager.cleanup(p);
+            p.getInventory().clear();
+        }
 
         Title winTitle = Title.title(
-                Component.text("🏁 ¡FINISH!", NamedTextColor.GREEN),
-                Component.text("¡Posición #" + finishCounter + "!", NamedTextColor.YELLOW),
-                Title.Times.times(Duration.ofMillis(100), Duration.ofSeconds(3), Duration.ofMillis(500))
+                Component.text("¡FINISH!", NamedTextColor.GREEN),
+                Component.text("Posición #" + finishCounter + " — +" + score + " pts",
+                        NamedTextColor.YELLOW),
+                Title.Times.times(Duration.ofMillis(100), Duration.ofSeconds(3),
+                        Duration.ofMillis(500))
         );
         team.getOnlinePlayers().forEach(p -> p.showTitle(winTitle));
 
         broadcastAll(Component.text("🏁 ", NamedTextColor.GREEN)
                 .append(Component.text(team.getDisplayName(), team.getColor()))
-                .append(Component.text(" terminó el parkour en posición #" + finishCounter + "!",
+                .append(Component.text(
+                        " terminó el parkour en posición #" + finishCounter + "!",
                         NamedTextColor.GREEN)));
 
-        long done = teamData.values().stream().filter(TeamParkourData::isFinished).count();
-        if (done >= teamData.size()) {
+        long teamsFinished = teamData.values().stream().filter(TeamParkourData::isFinished).count();
+
+        if (teamsFinished >= TEAMS_TO_TRIGGER_END) {
+            if (timerTask != null && !timerTask.isCancelled()) timerTask.cancel();
+            broadcastAll(Component.text(
+                    TEAMS_TO_TRIGGER_END + " equipos completaron el recorrido. ¡Fin de la partida!",
+                    NamedTextColor.GOLD));
+            // Pequeño delay para que se vea el título de fin
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (!finishing) finishByTime();
+            }, 60L);
+            return;
+        }
+
+        if (teamsFinished >= teamData.size()) {
             if (timerTask != null && !timerTask.isCancelled()) timerTask.cancel();
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (!finishing) finishByTime();
             }, 60L);
         }
     }
-
-    // ── Fin ───────────────────────────────────────────────────────────────────
 
     private void finish(List<TeamParkourData> ranking) {
         cleanup();
@@ -318,18 +339,29 @@ public class ParkourDuosMiniGame implements MiniGame {
         Location lobby = config.getLobby();
 
         broadcastAll(Component.text("━━━ Puntajes ━━━", NamedTextColor.GOLD));
+
         for (int i = 0; i < ranking.size(); i++) {
             TeamParkourData data = ranking.get(i);
             EventTeam team = data.getTeam();
+            int position = i + 1;
 
-            int globalScore = data.getInternalScore();
-            plugin.getScoreManager().addScore(team, globalScore);
+            if (!data.isFinished()) {
+                int positionScore = config.getScoreForPlace(position);
+                data.addInternalScore(positionScore);
+            }
 
-            broadcastAll(Component.text("  +" + globalScore + " pts → ", NamedTextColor.YELLOW)
-                    .append(Component.text(team.getDisplayName(), team.getColor())));
+            int totalScore = data.getInternalScore();
+            plugin.getScoreManager().addScore(team, totalScore);
+
+            broadcastAll(Component.text("  #" + position + " ", NamedTextColor.GRAY)
+                    .append(Component.text(team.getDisplayName(), team.getColor()))
+                    .append(Component.text(" — +" + totalScore + " pts", NamedTextColor.YELLOW)));
 
             for (Player p : team.getOnlinePlayers()) {
                 p.getInventory().clear();
+                p.setGameMode(GameMode.ADVENTURE);
+                p.setAllowFlight(false);
+                p.setFlying(false);
                 if (lobby != null) p.teleport(lobby);
             }
         }
@@ -339,27 +371,25 @@ public class ParkourDuosMiniGame implements MiniGame {
     }
 
     private void cleanup() {
-        if (timerTask     != null && !timerTask.isCancelled())     timerTask.cancel();
-        if (countdownTask != null && !countdownTask.isCancelled()) countdownTask.cancel();
+        if (timerTask      != null && !timerTask.isCancelled())     timerTask.cancel();
+        if (countdownTask  != null && !countdownTask.isCancelled()) countdownTask.cancel();
         if (checkpointManager != null) checkpointManager.stop();
         chainManager.stopTick();
+        if (abilityManager != null) abilityManager.cleanupAll();
         if (gameListener != null) {
             org.bukkit.event.HandlerList.unregisterAll(gameListener);
             gameListener = null;
         }
     }
 
-    // ── Utilidades ────────────────────────────────────────────────────────────
-
     private void broadcastAll(Component msg) {
         Bukkit.getOnlinePlayers().forEach(p -> p.sendMessage(msg));
     }
 
-    // ── Getters ───────────────────────────────────────────────────────────────
-
     public State                        getState()           { return state; }
     public ParkourDuosConfig            getConfig()          { return config; }
     public ChainManager                 getChainManager()    { return chainManager; }
+    public AbilityManager               getAbilityManager()  { return abilityManager; }
     public Map<String, TeamParkourData> getTeamData()        { return teamData; }
     public int                          getTimeLeftSeconds() { return timeLeftSeconds; }
 
