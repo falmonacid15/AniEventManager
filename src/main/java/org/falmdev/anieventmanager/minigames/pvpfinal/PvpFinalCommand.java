@@ -12,28 +12,6 @@ import org.falmdev.anieventmanager.model.EventTeam;
 
 import java.util.*;
 
-/**
- * Comando del minijuego PvP Final.
- *
- * Estructura:
- *   /em pvpfinal arena create
- *   /em pvpfinal arena setspawn <n>
- *   /em pvpfinal arena setlobby
- *   /em pvpfinal arena delete
- *   /em pvpfinal arena info
- *
- *   /em pvpfinal kit create <name>
- *   /em pvpfinal kit delete <name>
- *   /em pvpfinal kit list
- *   /em pvpfinal kit preview <name>
- *
- *   /em pvpfinal start 1v1 <p1> <p2> <kit>
- *   /em pvpfinal start teamvsteam <team1> <team2> <kit>
- *   /em pvpfinal start allteams <kit>
- *   /em pvpfinal start ffa <kit>
- *   /em pvpfinal stop
- *   /em pvpfinal status
- */
 public class PvpFinalCommand {
 
     private final Anieventmanager  plugin;
@@ -57,8 +35,6 @@ public class PvpFinalCommand {
         }
     }
 
-    // ── arena ────────────────────────────────────────────────────────────────
-
     private void handleArena(Player player, String[] args) {
         if (args.length < 2) {
             player.sendMessage(Component.text(
@@ -73,6 +49,16 @@ public class PvpFinalCommand {
                 String name = args.length >= 3 ? args[2] : "main";
                 am.createArena(name);
                 player.sendMessage(Component.text("✔ Arena '" + name + "' creada.",
+                        NamedTextColor.GREEN));
+            }
+            case "sethologram" -> {
+                if (!am.hasArena()) {
+                    player.sendMessage(Component.text("✘ No hay arena. Usa 'arena create' primero.",
+                            NamedTextColor.RED));
+                    return;
+                }
+                am.setHologramLocation(player.getLocation());
+                player.sendMessage(Component.text("✔ Ubicación del holograma configurada.",
                         NamedTextColor.GREEN));
             }
             case "setspawn" -> {
@@ -130,14 +116,15 @@ public class PvpFinalCommand {
                 player.sendMessage(Component.text("  Ready: ", NamedTextColor.GRAY)
                         .append(Component.text(a.isReady() ? "Sí" : "No",
                                 a.isReady() ? NamedTextColor.GREEN : NamedTextColor.RED)));
+                player.sendMessage(Component.text("  Holograma: ", NamedTextColor.GRAY)
+                        .append(Component.text(a.getHologramLocation() != null ? "✔" : "✘",
+                                a.getHologramLocation() != null ? NamedTextColor.GREEN : NamedTextColor.RED)));
             }
             default -> player.sendMessage(Component.text(
-                    "Uso: /em pvpfinal arena [create|setspawn|setlobby|delete|info]",
+                    "Uso: /em pvpfinal arena [create|setspawn|setlobby|sethologram|delete|info]",
                     NamedTextColor.YELLOW));
         }
     }
-
-    // ── kit ──────────────────────────────────────────────────────────────────
 
     private void handleKit(Player player, String[] args) {
         if (args.length < 2) {
@@ -211,8 +198,6 @@ public class PvpFinalCommand {
         }
     }
 
-    // ── start ────────────────────────────────────────────────────────────────
-
     private void handleStart(Player player, String[] args) {
         if (game.getCombatManager().isActive()) {
             player.sendMessage(Component.text("✘ Ya hay un combate activo. Usa 'stop' primero.",
@@ -238,7 +223,6 @@ public class PvpFinalCommand {
     }
 
     private void startOneVsOne(Player sender, String[] args) {
-        // /em pvpfinal start 1v1 <p1> <p2> <kit>
         if (args.length < 5) {
             sender.sendMessage(Component.text(
                     "Uso: start 1v1 <jugador1> <jugador2> <kit>", NamedTextColor.YELLOW));
@@ -253,7 +237,6 @@ public class PvpFinalCommand {
         if (p1.equals(p2)) { sender.sendMessage(Component.text("✘ Los jugadores deben ser diferentes.", NamedTextColor.RED)); return; }
         if (kit == null) { sender.sendMessage(Component.text("✘ Kit '" + args[4] + "' no existe.", NamedTextColor.RED)); return; }
 
-        // Mismo equipo → friendly fire ON
         var t1 = plugin.getTeamManager().getTeamOf(p1);
         var t2 = plugin.getTeamManager().getTeamOf(p2);
         boolean sameTeam = t1.isPresent() && t2.isPresent()
@@ -268,7 +251,7 @@ public class PvpFinalCommand {
                 List.of(p1, p2),
                 teamMap,
                 kit,
-                sameTeam);  // friendly fire si son del mismo equipo
+                sameTeam);
 
         if (!started) {
             sender.sendMessage(Component.text(
@@ -278,7 +261,6 @@ public class PvpFinalCommand {
     }
 
     private void startTeamVsTeam(Player sender, String[] args) {
-        // /em pvpfinal start teamvsteam <team1> <team2> <kit>
         if (args.length < 5) {
             sender.sendMessage(Component.text(
                     "Uso: start teamvsteam <equipo1> <equipo2> <kit>", NamedTextColor.YELLOW));
@@ -317,7 +299,6 @@ public class PvpFinalCommand {
     }
 
     private void startAllTeams(Player sender, String[] args) {
-        // /em pvpfinal start allteams <kit>
         if (args.length < 3) {
             sender.sendMessage(Component.text("Uso: start allteams <kit>", NamedTextColor.YELLOW));
             return;
@@ -343,8 +324,6 @@ public class PvpFinalCommand {
     }
 
     private void startFfa(Player sender, String[] args) {
-        // /em pvpfinal start ffa <kit>
-        // Todos vs todos, respetando equipos (no friendly fire), pero entre equipos hay daño
         if (args.length < 3) {
             sender.sendMessage(Component.text("Uso: start ffa <kit>", NamedTextColor.YELLOW));
             return;
@@ -352,8 +331,6 @@ public class PvpFinalCommand {
         PvpKit kit = game.getKitManager().get(args[2]);
         if (kit == null) { sender.sendMessage(Component.text("✘ Kit no existe.", NamedTextColor.RED)); return; }
 
-        // Mismo comportamiento que allteams (todos los equipos, friendly fire OFF entre equipos)
-        // La diferencia conceptual es solo de "vibe" — admin lo usa como pvp casual
         List<Player> participants = new ArrayList<>();
         Map<UUID, String> teamMap = new HashMap<>();
         for (EventTeam team : plugin.getTeamManager().getTeams().values()) {
@@ -371,8 +348,6 @@ public class PvpFinalCommand {
         if (!started) sender.sendMessage(Component.text("✘ No se pudo iniciar el combate.", NamedTextColor.RED));
     }
 
-    // ── stop ─────────────────────────────────────────────────────────────────
-
     private void handleStop(Player player) {
         if (!game.getCombatManager().isActive()) {
             player.sendMessage(Component.text("✘ No hay combate activo.", NamedTextColor.RED));
@@ -381,7 +356,6 @@ public class PvpFinalCommand {
         game.getCombatManager().stopCombat();
     }
 
-    // ── status ───────────────────────────────────────────────────────────────
 
     private void handleStatus(Player player) {
         player.sendMessage(Component.text("─── PvP Final ───", NamedTextColor.GOLD));
@@ -411,8 +385,6 @@ public class PvpFinalCommand {
                 .append(Component.text(game.getKitManager().count(), NamedTextColor.WHITE)));
     }
 
-    // ── Help & tab complete ──────────────────────────────────────────────────
-
     private void sendHelp(Player p) {
         p.sendMessage(Component.text("─── /em pvpfinal ───", NamedTextColor.GOLD));
         h(p, "arena create [nombre]",                "Crear arena");
@@ -430,6 +402,7 @@ public class PvpFinalCommand {
         h(p, "start ffa <kit>",                      "PvP casual");
         h(p, "stop",                                 "Terminar combate actual");
         h(p, "status",                               "Ver estado");
+        h(p, "arena sethologram",                    "Holograma en tu pos");
     }
 
     private void h(Player p, String cmd, String desc) {
@@ -443,7 +416,7 @@ public class PvpFinalCommand {
             return filter(List.of("arena","kit","start","stop","status"), args[0]);
         if (args.length == 2) {
             return switch (args[0].toLowerCase()) {
-                case "arena" -> filter(List.of("create","setspawn","setlobby","delete","info"), args[1]);
+                case "arena" -> filter(List.of("create","setspawn","setlobby","sethologram","delete","info"), args[1]);
                 case "kit"   -> filter(List.of("create","delete","list","preview"), args[1]);
                 case "start" -> filter(List.of("1v1","teamvsteam","allteams","ffa"), args[1]);
                 default      -> List.of();

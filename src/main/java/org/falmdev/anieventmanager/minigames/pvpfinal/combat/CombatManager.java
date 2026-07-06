@@ -6,7 +6,10 @@ import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.title.Title;
 import org.bukkit.*;
 import org.bukkit.attribute.Attribute;
+import org.bukkit.entity.Firework;
 import org.bukkit.entity.Player;
+import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.inventory.meta.FireworkMeta;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
 import org.falmdev.anieventmanager.minigames.pvpfinal.PvpFinalMiniGame;
@@ -18,22 +21,13 @@ import org.falmdev.anieventmanager.minigames.pvpfinal.model.CombatState;
 import java.time.Duration;
 import java.util.*;
 
-/**
- * CombatManager — orquesta el combate actual.
- *
- * Flujo:
- *  1. start()            → PREPARING: teleport, kit, congelar
- *  2. countdown          → COUNTDOWN: 5-4-3-2-1-Go
- *  3. tick               → FIGHTING: combate libre
- *  4. onParticipantDeath → al morir alguien, mover a SPECTATOR en el lobby
- *  5. detectar fin       → ENDING: mostrar resultado
- *  6. cleanup            → IDLE
- *
- * Solo puede haber UN combate activo a la vez.
- */
+
 public class CombatManager {
 
     private static final int COUNTDOWN_SECONDS = 5;
+    private static final int VICTORY_FIREWORK_BURSTS = 3;
+    private static final long VICTORY_FIREWORK_INTERVAL = 15L;
+    private static final long POST_VICTORY_DELAY = 60L;
 
     private final Anieventmanager  plugin;
     private final PvpFinalMiniGame game;
@@ -42,27 +36,20 @@ public class CombatManager {
     private Combat     currentCombat    = null;
     private BukkitTask preparingTask    = null;
     private BukkitTask countdownTask    = null;
+    private final Set<UUID> awaitingRespawn = new HashSet<>();
+    private final PvpFinalHologramManager hologramManager;
+
 
     public CombatManager(Anieventmanager plugin, PvpFinalMiniGame game) {
         this.plugin = plugin;
         this.game   = game;
+        this.hologramManager = new PvpFinalHologramManager(plugin);
     }
-
-    // ── API ───────────────────────────────────────────────────────────────────
 
     public CombatState getState()         { return state; }
     public Combat      getCurrentCombat() { return currentCombat; }
     public boolean     isActive()         { return state != CombatState.IDLE; }
 
-    /**
-     * Inicia un combate con los parámetros dados.
-     * @param mode  modo del combate
-     * @param participants lista de jugadores
-     * @param teamByPlayer  mapa UUID → teamId (null permitido para FFA puro)
-     * @param kit  kit a aplicar a todos
-     * @param friendlyFire  permitir daño entre compañeros
-     * @return true si se pudo iniciar, false si ya hay un combate activo o falta config
-     */
     public boolean startCombat(CombatMode mode, List<Player> participants,
                                Map<UUID, String> teamByPlayer, PvpKit kit,
                                boolean friendlyFire) {
@@ -78,27 +65,23 @@ public class CombatManager {
         currentCombat = new Combat(mode, participants, teamByPlayer, kit, friendlyFire);
         state = CombatState.PREPARING;
 
-        // Asignar spawns
         assignSpawnsAndApplyKit(participants, arena, kit);
 
-        // Anuncio inicial
+        hologramManager.show(arena.getHologramLocation());
+
         broadcast(Component.text("⚔ Combate ", NamedTextColor.GOLD, TextDecoration.BOLD)
                 .append(Component.text(mode.getLabel() + " ", NamedTextColor.YELLOW))
                 .append(Component.text("iniciado · " + participants.size() + " jugadores",
                         NamedTextColor.GRAY)));
 
-        // Pasar a countdown después de 1 segundo de preparación
         preparingTask = Bukkit.getScheduler().runTaskLater(plugin, this::startCountdown, 20L);
         return true;
     }
 
-    /** Forzar fin de combate (admin). */
     public void stopCombat() {
         if (!isActive()) return;
         endCombat(null, "Combate cancelado por administrador.");
     }
-
-    // ── Asignación de spawns y kit ────────────────────────────────────────────
 
     private void assignSpawnsAndApplyKit(List<Player> participants, PvpArena arena, PvpKit kit) {
         List<Location> spawns = arena.getSpawns();
@@ -115,12 +98,9 @@ public class CombatManager {
             p.setFireTicks(0);
             for (var effect : p.getActivePotionEffects()) p.removePotionEffect(effect.getType());
 
-            // Aplicar kit
             game.getKitManager().apply(kit, p);
         }
     }
-
-    // ── Countdown ─────────────────────────────────────────────────────────────
 
     private void startCountdown() {
         state = CombatState.COUNTDOWN;
@@ -146,7 +126,6 @@ public class CombatManager {
                 }
                 seconds[0]--;
             } else {
-                // ¡GO!
                 Title goTitle = Title.title(
                         Component.text("¡PELEEN!", NamedTextColor.RED, TextDecoration.BOLD),
                         Component.empty(),
@@ -165,19 +144,13 @@ public class CombatManager {
         }, 0L, 20L);
     }
 
-    // ── Muerte de un participante ─────────────────────────────────────────────
-
-    /**
-     * Llamado desde CombatListener cuando un participante muere.
-     * Lo mueve al lobby como espectador y verifica fin de combate.
-     */
     public void onParticipantDeath(Player victim, Player killer) {
         if (currentCombat == null) return;
         if (!currentCombat.isAlive(victim.getUniqueId())) return;
 
         currentCombat.markDead(victim.getUniqueId());
+        awaitingRespawn.add(victim.getUniqueId());
 
-        // Anuncio
         Component msg;
         if (killer != null && !killer.equals(victim)) {
             msg = Component.text("☠ ", NamedTextColor.RED)
@@ -190,32 +163,14 @@ public class CombatManager {
         }
         broadcast(msg);
 
-        // Forzar respawn y mandar al lobby como spectator
-        Bukkit.getScheduler().runTask(plugin, () -> {
-            if (!victim.isOnline()) return;
-            victim.spigot().respawn();
-            PvpArena arena = game.getArenaManager().getArena();
-            if (arena != null && arena.getLobby() != null) {
-                victim.teleport(arena.getLobby());
-            }
-            victim.setGameMode(GameMode.SPECTATOR);
-            game.getKitManager().clearInventory(victim);
-            victim.setHealth(victim.getAttribute(Attribute.MAX_HEALTH).getValue());
-            victim.setFoodLevel(20);
-        });
-
-        // Verificar fin de combate
         checkWinCondition();
     }
 
     private void checkWinCondition() {
         if (currentCombat == null) return;
 
-        // Para FFA: gana el último jugador vivo
-        // Para modos con equipos: gana cuando queda solo 1 equipo con vivos
         int aliveTeams = currentCombat.countAliveTeams();
         if (aliveTeams <= 1) {
-            // Determinar ganador
             String winnerInfo;
             Set<UUID> survivors = currentCombat.getAlive();
             if (survivors.isEmpty()) {
@@ -229,7 +184,6 @@ public class CombatManager {
                 }
                 winnerInfo = String.join(", ", names);
             } else {
-                // Team-based: mostrar el equipo ganador
                 Set<String> aliveTeamIds = currentCombat.getAliveTeamIds();
                 if (aliveTeamIds.isEmpty()) {
                     winnerInfo = "Sin ganadores";
@@ -238,7 +192,6 @@ public class CombatManager {
                     var teamOpt = plugin.getTeamManager().getTeam(teamId);
                     String teamName = teamOpt.map(t -> t.getDisplayName()).orElse(teamId);
 
-                    // Listar sobrevivientes del equipo ganador
                     List<String> names = new ArrayList<>();
                     for (UUID uuid : survivors) {
                         Player p = Bukkit.getPlayer(uuid);
@@ -251,16 +204,20 @@ public class CombatManager {
         }
     }
 
-    // ── Fin de combate ────────────────────────────────────────────────────────
-
     private void endCombat(String winnerInfo, String cancelReason) {
         state = CombatState.ENDING;
         if (countdownTask != null) { countdownTask.cancel(); countdownTask = null; }
         if (preparingTask != null) { preparingTask.cancel(); preparingTask = null; }
 
+        Combat finishedCombat = currentCombat;
+
         if (cancelReason != null) {
             broadcast(Component.text("⚠ " + cancelReason, NamedTextColor.YELLOW));
-        } else if (winnerInfo != null) {
+            finishCombat(finishedCombat);
+            return;
+        }
+
+        if (winnerInfo != null) {
             Title title = Title.title(
                     Component.text("¡GANADOR!", NamedTextColor.GOLD, TextDecoration.BOLD),
                     Component.text(winnerInfo, NamedTextColor.YELLOW),
@@ -269,12 +226,51 @@ public class CombatManager {
             broadcast(Component.text("🏆 ", NamedTextColor.GOLD)
                     .append(Component.text("Ganador: ", NamedTextColor.GRAY))
                     .append(Component.text(winnerInfo, NamedTextColor.GOLD, TextDecoration.BOLD)));
+            launchVictoryFireworks(finishedCombat);
         }
 
-        // Limpiar a todos los participantes (vivos y muertos) → lobby, sin kit, SURVIVAL
+        Bukkit.getScheduler().runTaskLater(plugin, () -> finishCombat(finishedCombat), POST_VICTORY_DELAY);
+    }
+
+    private void launchVictoryFireworks(Combat combat) {
+        if (combat == null) return;
+        Set<UUID> survivors = combat.getAlive();
+        BukkitTask[] holder = new BukkitTask[1];
+        int[] count = {0};
+        holder[0] = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+            if (count[0] >= VICTORY_FIREWORK_BURSTS) {
+                holder[0].cancel();
+                return;
+            }
+            for (UUID uuid : survivors) {
+                Player p = Bukkit.getPlayer(uuid);
+                if (p != null && p.isOnline()) spawnFirework(p.getLocation());
+            }
+            count[0]++;
+        }, 0L, VICTORY_FIREWORK_INTERVAL);
+    }
+
+    private void spawnFirework(Location location) {
+        Firework firework = location.getWorld().spawn(location, Firework.class);
+        FireworkMeta meta = firework.getFireworkMeta();
+        FireworkEffect effect = FireworkEffect.builder()
+                .withColor(Color.YELLOW, Color.ORANGE, Color.WHITE)
+                .withFade(Color.RED)
+                .with(FireworkEffect.Type.BALL_LARGE)
+                .trail(true)
+                .flicker(true)
+                .build();
+        meta.addEffect(effect);
+        meta.setPower(1);
+        firework.setFireworkMeta(meta);
+    }
+
+    private void finishCombat(Combat combat) {
+        hologramManager.hide();
         PvpArena arena = game.getArenaManager().getArena();
-        if (currentCombat != null && arena != null && arena.getLobby() != null) {
-            for (UUID uuid : currentCombat.getParticipants()) {
+        if (combat != null && arena != null && arena.getLobby() != null) {
+            for (UUID uuid : combat.getParticipants()) {
+                if (awaitingRespawn.contains(uuid)) continue;
                 Player p = Bukkit.getPlayer(uuid);
                 if (p == null || !p.isOnline()) continue;
                 p.teleport(arena.getLobby());
@@ -285,15 +281,36 @@ public class CombatManager {
                 for (var effect : p.getActivePotionEffects()) p.removePotionEffect(effect.getType());
             }
         }
-
-        // Resetear después de un par de segundos para que se aprecie el resultado
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            currentCombat = null;
-            state = CombatState.IDLE;
-        }, 40L);
+        currentCombat = null;
+        state = CombatState.IDLE;
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    public boolean isAwaitingCombatRespawn(UUID uuid) {
+        return awaitingRespawn.contains(uuid);
+    }
+
+    public void handleCombatRespawn(Player player, PlayerRespawnEvent event) {
+        UUID uuid = player.getUniqueId();
+        if (!awaitingRespawn.remove(uuid)) return;
+
+        PvpArena arena = game.getArenaManager().getArena();
+        Location lobby = arena != null ? arena.getLobby() : null;
+        if (lobby != null) event.setRespawnLocation(lobby);
+
+        GameMode targetMode = (state == CombatState.ENDING || state == CombatState.IDLE)
+                ? GameMode.SURVIVAL : GameMode.SPECTATOR;
+
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!player.isOnline()) return;
+            player.setGameMode(targetMode);
+            game.getKitManager().clearInventory(player);
+            player.setHealth(player.getAttribute(Attribute.MAX_HEALTH).getValue());
+            player.setFoodLevel(20);
+            player.setSaturation(20);
+            player.setFireTicks(0);
+            for (var effect : player.getActivePotionEffects()) player.removePotionEffect(effect.getType());
+        });
+    }
 
     private void broadcast(Component msg) {
         for (Player p : Bukkit.getOnlinePlayers()) p.sendMessage(msg);

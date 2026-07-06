@@ -7,18 +7,7 @@ import org.falmdev.anieventmanager.model.EventTeam;
 
 import java.util.*;
 
-/**
- * Combat — representa un combate activo.
- *
- * Estructura interna:
- *  - participants:  todos los jugadores que entraron al combate
- *  - alive:         set de UUIDs de los que aún están vivos
- *  - teams:         map UUID → ID del equipo (puede ser null para FFA puro)
- *  - kit:           kit aplicado a todos
- *  - friendlyFire:  si los del mismo equipo se pueden dañar
- *
- * Para 1v1, si son del mismo equipo se activa friendly fire automáticamente.
- */
+
 public class Combat {
 
     private final CombatMode    mode;
@@ -58,10 +47,6 @@ public class Combat {
 
     public String getTeamId(UUID uuid)   { return teamByPlayer.get(uuid); }
 
-    /**
-     * Cuenta equipos distintos con al menos 1 jugador vivo.
-     * Útil para detectar fin de combate en modos team-based.
-     */
     public int countAliveTeams() {
         Set<String> teams = new HashSet<>();
         for (UUID uuid : alive) {
@@ -72,9 +57,15 @@ public class Combat {
         return teams.size();
     }
 
-    /**
-     * Devuelve los IDs de equipos que aún tienen al menos un jugador vivo.
-     */
+    public List<List<UUID>> getSidesOrdered() {
+        Map<String, List<UUID>> grouped = new LinkedHashMap<>();
+        for (UUID uuid : participants) {
+            String key = teamByPlayer.getOrDefault(uuid, uuid.toString());
+            grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(uuid);
+        }
+        return new ArrayList<>(grouped.values());
+    }
+
     public Set<String> getAliveTeamIds() {
         Set<String> teams = new HashSet<>();
         for (UUID uuid : alive) {
@@ -84,19 +75,10 @@ public class Combat {
         return teams;
     }
 
-    /** Segundos transcurridos desde el inicio. */
     public int getElapsedSeconds() {
         return (int) ((System.currentTimeMillis() - startTime) / 1000);
     }
 
-    /**
-     * Devuelve true si dos jugadores se pueden dañar entre sí en este combate.
-     * Reglas:
-     *  - Si friendly fire está activo → siempre true
-     *  - Si están en distintos equipos → true
-     *  - Si están en el mismo equipo → false
-     *  - Si alguno no tiene equipo asignado → true (FFA)
-     */
     public boolean canDamage(UUID attacker, UUID victim) {
         if (friendlyFire) return true;
         String teamA = teamByPlayer.get(attacker);

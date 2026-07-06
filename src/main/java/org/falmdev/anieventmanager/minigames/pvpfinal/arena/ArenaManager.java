@@ -15,14 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * ArenaManager — gestión de la única arena del minijuego.
- *
- * Persistencia: plugins/AniEventManager/minigames/pvpfinal-arena.yml
- *
- * Por diseño, solo existe UNA arena. Los comandos crean/modifican esa única
- * arena. Si no existe, los combates fallan.
- */
+
 public class ArenaManager {
 
     private final Anieventmanager plugin;
@@ -34,8 +27,6 @@ public class ArenaManager {
         this.plugin = plugin;
         load();
     }
-
-    // ── API ───────────────────────────────────────────────────────────────────
 
     public PvpArena getArena()       { return arena; }
     public boolean  hasArena()       { return arena != null; }
@@ -65,7 +56,6 @@ public class ArenaManager {
         return true;
     }
 
-    // ── Persistencia ──────────────────────────────────────────────────────────
 
     public void load() {
         File dir = new File(plugin.getDataFolder(), "minigames");
@@ -101,7 +91,13 @@ public class ArenaManager {
             lobby = readLocation(m);
         }
 
-        arena = new PvpArena(name, spawns, lobby);
+        Location hologram = null;
+        if (sec.isConfigurationSection("hologram")) {
+            Map<String, Object> m = sec.getConfigurationSection("hologram").getValues(false);
+            hologram = readLocation(m);
+        }
+
+        arena = new PvpArena(name, spawns, lobby, hologram);
         plugin.getLogger().info("[PvP] Arena '" + name + "' cargada con "
                 + spawns.size() + " spawns.");
     }
@@ -124,13 +120,15 @@ public class ArenaManager {
             yaml.set("arena.lobby", locationToMap(arena.getLobby()));
         }
 
+        if (arena.getHologramLocation() != null) {
+            yaml.set("arena.hologram", locationToMap(arena.getHologramLocation()));
+        }
+
         try { yaml.save(file); }
         catch (IOException e) {
             plugin.getLogger().severe("[PvP] No se pudo guardar arena: " + e.getMessage());
         }
     }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private Location readLocation(Map<?, ?> m) {
         if (m == null) return null;
@@ -161,5 +159,12 @@ public class ArenaManager {
     private double toDouble(Object o) {
         if (o instanceof Number n) return n.doubleValue();
         try { return Double.parseDouble(String.valueOf(o)); } catch (Exception e) { return 0; }
+    }
+
+    public boolean setHologramLocation(Location loc) {
+        if (arena == null) return false;
+        arena.setHologramLocation(loc);
+        save();
+        return true;
     }
 }

@@ -7,12 +7,14 @@ repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
     maven("https://repo.extendedclip.com/releases/")
+    maven("https://repo.fancyinnovations.com/releases")
 }
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
     compileOnly("me.clip:placeholderapi:2.11.6")
     compileOnly("net.dmulloy2:ProtocolLib:5.4.0")
+    compileOnly("de.oliver:FancyHolograms:2.9.1")
 }
 
 java {
