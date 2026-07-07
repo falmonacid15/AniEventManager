@@ -13,23 +13,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 
-/**
- * Configuración del Battle Royale.
- * plugins/AniEventManager/minigames/battleroyale.yml
- *
- * La zona se calcula automáticamente desde la arena (pos1/pos2):
- *   - Centro: punto medio de pos1/pos2
- *   - Radio máximo: mitad del lado más corto de la arena
- *   - 5 fases con porcentajes: 100% → 60% → 30% → 10% → 2%
- *
- * En el yaml solo se configura: tiempos (wait/shrink) y daño por fase.
- */
 public class BattleRoyaleConfig {
 
-    /** Porcentajes del radio máximo para las 5 fases. */
     public static final double[] ZONE_PHASE_PERCENTAGES = { 1.00, 0.60, 0.30, 0.10, 0.02 };
 
-    /** Radio mínimo absoluto (en bloques) — la última zona nunca es menor que esto. */
     public static final double ZONE_MIN_RADIUS = 2.0;
 
     private final Anieventmanager plugin;
@@ -80,10 +67,8 @@ public class BattleRoyaleConfig {
         yaml.set("arena.y-min", 0);
         yaml.set("arena.y-max", 256);
 
-        // Fases — solo tiempos y daño. El radio se calcula automáticamente.
         List<java.util.Map<String, Object>> phases = new ArrayList<>();
         int[][] phaseData = {
-                // wait, shrink, damage
                 {120, 60, 1},
                 { 90, 45, 2},
                 { 60, 30, 4},
@@ -99,16 +84,18 @@ public class BattleRoyaleConfig {
         }
         yaml.set("zone.phases", phases);
 
-        // Visuales de la zona
         yaml.set("zone.particles.height-below",   10);
         yaml.set("zone.particles.height-above",   30);
         yaml.set("zone.particles.step",            1.0);
         yaml.set("zone.particles.max-render-dist", 150);
         yaml.set("zone.particles.size",            3.0);
         yaml.set("zone.particles.interval-ticks",  5);
-    }
 
-    // ── Settings ──────────────────────────────────────────────────────────────
+        yaml.set("points.first",  100);
+        yaml.set("points.second",  60);
+        yaml.set("points.third",   30);
+        yaml.set("points.other",   10);
+    }
 
     public int  getCountdownSeconds() { return yaml.getInt("settings.countdown-seconds", 10); }
     public int  getMinPlayers()       { return yaml.getInt("settings.min-players", 2); }
@@ -118,17 +105,31 @@ public class BattleRoyaleConfig {
     public void setMinPlayers(int v)       { yaml.set("settings.min-players", v);       save(); }
     public void setStartingCoins(int v)    { yaml.set("settings.starting-coins", v);    save(); }
 
-    // ── Coins ─────────────────────────────────────────────────────────────────
-
     public int  getCoinsPerKill()       { return yaml.getInt("coins.per-kill", 50); }
     public void setCoinsPerKill(int v)  { yaml.set("coins.per-kill", v); save(); }
 
-    // ── Lobby ─────────────────────────────────────────────────────────────────
+    public int getPointsForPlacement(int placement) {
+        return switch (placement) {
+            case 1  -> yaml.getInt("points.first", 100);
+            case 2  -> yaml.getInt("points.second", 60);
+            case 3  -> yaml.getInt("points.third", 30);
+            default -> yaml.getInt("points.other", 10);
+        };
+    }
+
+    public void setPointsForPlacement(int placement, int points) {
+        String key = switch (placement) {
+            case 1  -> "points.first";
+            case 2  -> "points.second";
+            case 3  -> "points.third";
+            default -> "points.other";
+        };
+        yaml.set(key, points);
+        save();
+    }
 
     public Location getLobbySpawn()           { return readLocation("lobby-spawn"); }
     public void     setLobbySpawn(Location l) { writeLocation("lobby-spawn", l); save(); }
-
-    // ── Arena ─────────────────────────────────────────────────────────────────
 
     public String getArenaWorld() {
         Location center = getArenaCenter();
@@ -190,8 +191,6 @@ public class BattleRoyaleConfig {
                 && loc.getY() >= getYMin() && loc.getY() <= getYMax();
     }
 
-    // ── Respawn Points ────────────────────────────────────────────────────────
-
     public java.util.List<Location> getRespawnPoints() {
         java.util.List<Location> list = new java.util.ArrayList<>();
         if (!yaml.isList("respawn-points")) return list;
@@ -245,8 +244,6 @@ public class BattleRoyaleConfig {
         save();
     }
 
-    // ── Drop ──────────────────────────────────────────────────────────────────
-
     public double getDropHeight()        { return yaml.getDouble("drop.height", 200); }
     public void   setDropHeight(double v){ yaml.set("drop.height", v); save(); }
 
@@ -275,15 +272,8 @@ public class BattleRoyaleConfig {
     public void setParachuteSFAmplifier(int v){ yaml.set("drop.parachute-slow-falling-amplifier", v); save(); }
     public void setParachuteTicks(int v)      { yaml.set("drop.parachute-ticks", v); save(); }
 
-    // ── Zone ──────────────────────────────────────────────────────────────────
-
-    /** Datos de una fase de zona — el radio se calcula, solo wait/shrink/damage en yaml. */
     public record ZonePhaseData(double radius, int waitSeconds, int shrinkSeconds, double damagePerSecond) {}
 
-    /**
-     * Calcula el centro de la zona automáticamente como el punto medio
-     * de pos1/pos2 de la arena.
-     */
     public Location getZoneCenter() {
         Location p1 = getArenaPos1();
         Location p2 = getArenaPos2();
@@ -294,10 +284,6 @@ public class BattleRoyaleConfig {
                 (p1.getZ() + p2.getZ()) / 2.0);
     }
 
-    /**
-     * Calcula el radio máximo de la zona = mitad del lado más corto de la arena.
-     * Garantiza que la primera zona quepa dentro del rectángulo.
-     */
     public double getZoneMaxRadius() {
         Location p1 = getArenaPos1();
         Location p2 = getArenaPos2();
@@ -307,16 +293,12 @@ public class BattleRoyaleConfig {
         return Math.min(dx, dz) / 2.0;
     }
 
-    /**
-     * Devuelve las fases con radio calculado automáticamente desde la arena.
-     * Los porcentajes están en ZONE_PHASE_PERCENTAGES.
-     */
     public List<ZonePhaseData> getZonePhases() {
         List<ZonePhaseData> list = new ArrayList<>();
         if (!yaml.isList("zone.phases")) return list;
 
         double maxRadius = getZoneMaxRadius();
-        if (maxRadius <= 0) return list; // arena no configurada
+        if (maxRadius <= 0) return list;
 
         List<?> rawPhases = yaml.getList("zone.phases");
         int phaseCount = Math.min(rawPhases.size(), ZONE_PHASE_PERCENTAGES.length);
@@ -325,7 +307,6 @@ public class BattleRoyaleConfig {
             Object o = rawPhases.get(i);
             if (!(o instanceof java.util.Map<?,?> m)) continue;
 
-            // Radio calculado automáticamente desde el porcentaje
             double radius = Math.max(ZONE_MIN_RADIUS, maxRadius * ZONE_PHASE_PERCENTAGES[i]);
 
             int    wait   = (int) toD(m.get("wait-seconds"));
@@ -338,16 +319,12 @@ public class BattleRoyaleConfig {
         return list;
     }
 
-    // ── Visuales de la zona ───────────────────────────────────────────────────
-
     public int    getZoneParticleHeightBelow()  { return yaml.getInt("zone.particles.height-below", 10); }
     public int    getZoneParticleHeightAbove()  { return yaml.getInt("zone.particles.height-above", 30); }
     public double getZoneParticleStep()         { return yaml.getDouble("zone.particles.step", 1.0); }
     public double getZoneParticleMaxRenderDist(){ return yaml.getDouble("zone.particles.max-render-dist", 150); }
     public float  getZoneParticleSize()         { return (float) yaml.getDouble("zone.particles.size", 3.0); }
     public int    getZoneParticleIntervalTicks(){ return yaml.getInt("zone.particles.interval-ticks", 5); }
-
-    // ── Validación ────────────────────────────────────────────────────────────
 
     public String validate() {
         if (getLobbySpawn()  == null) return "Falta lobby spawn. /em battleroyale setlobby";
@@ -359,8 +336,6 @@ public class BattleRoyaleConfig {
         if (getZonePhases().isEmpty()) return "Sin fases de zona configuradas.";
         return null;
     }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private Location readLocation(String path) {
         if (!yaml.isConfigurationSection(path)) return null;
