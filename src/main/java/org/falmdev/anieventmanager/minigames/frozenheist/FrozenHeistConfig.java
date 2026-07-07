@@ -10,25 +10,6 @@ import org.falmdev.anieventmanager.Anieventmanager;
 import java.io.File;
 import java.io.IOException;
 
-/**
- * Configuración del Frozen Heist en:
- * plugins/AniEventManager/minigames/frozenheist.yml
- *
- * Estructura por equipo:
- *
- * settings:
- *   duration-minutes: 10
- *   global-spawn:            ← spawn general antes de que empiece
- *     world: ...  x: y: z: yaw: pitch:
- *
- * teams:
- *   rojo:
- *     base-spawn:            ← respawn dentro de la base
- *     capture-zone:          ← zona donde se entrega la bandera enemiga
- *     flag-stand:            ← posición original de la bandera propia
- *     base-corner-1:         ← esquina 1 de la zona segura (no PvP)
- *     base-corner-2:         ← esquina 2 de la zona segura
- */
 public class FrozenHeistConfig {
 
     private final Anieventmanager plugin;
@@ -40,9 +21,7 @@ public class FrozenHeistConfig {
         load();
     }
 
-    public void reload() {
-        load();
-    }
+    public void reload() { load(); }
 
     // ── Carga y guardado ──────────────────────────────────────────────────────
 
@@ -72,34 +51,41 @@ public class FrozenHeistConfig {
 
     // ── Settings globales ─────────────────────────────────────────────────────
 
-    public int getDurationMinutes() {
-        return yaml.getInt("settings.duration-minutes", 10);
-    }
+    public int getDurationMinutes() { return yaml.getInt("settings.duration-minutes", 10); }
 
     public void setDurationMinutes(int minutes) {
         yaml.set("settings.duration-minutes", minutes);
         save();
     }
 
-    public Location getGlobalSpawn() {
-        return readLocation("settings.global-spawn");
-    }
+    public Location getGlobalSpawn() { return readLocation("settings.global-spawn"); }
 
     public void setGlobalSpawn(Location loc) {
         writeLocation("settings.global-spawn", loc);
         save();
     }
 
-    // ── Configuración por equipo ──────────────────────────────────────────────
+    // ── Base spawns (1 y 2 por equipo) ────────────────────────────────────────
 
-    public Location getBaseSpawn(String teamId) {
-        return readLocation("teams." + teamId + ".base-spawn");
+    public Location getBaseSpawn1(String teamId) {
+        return readLocation("teams." + teamId + ".base-spawn-1");
     }
 
-    public void setBaseSpawn(String teamId, Location loc) {
-        writeLocation("teams." + teamId + ".base-spawn", loc);
+    public void setBaseSpawn1(String teamId, Location loc) {
+        writeLocation("teams." + teamId + ".base-spawn-1", loc);
         save();
     }
+
+    public Location getBaseSpawn2(String teamId) {
+        return readLocation("teams." + teamId + ".base-spawn-2");
+    }
+
+    public void setBaseSpawn2(String teamId, Location loc) {
+        writeLocation("teams." + teamId + ".base-spawn-2", loc);
+        save();
+    }
+
+    // ── Resto de configuración por equipo ─────────────────────────────────────
 
     public Location getCaptureZone(String teamId) {
         return readLocation("teams." + teamId + ".capture-zone");
@@ -137,9 +123,11 @@ public class FrozenHeistConfig {
         save();
     }
 
-    /** Aplica la config guardada a un TeamHeistData */
+    // ── applyToTeamData ───────────────────────────────────────────────────────
+
     public void applyToTeamData(String teamId, TeamHeistData data) {
-        data.setBaseSpawn(getBaseSpawn(teamId));
+        data.setBaseSpawn1(getBaseSpawn1(teamId));
+        data.setBaseSpawn2(getBaseSpawn2(teamId));
         data.setCaptureZone(getCaptureZone(teamId));
         data.setFlagStand(getFlagStand(teamId));
         data.setBaseCorner1(getBaseCorner1(teamId));
@@ -153,8 +141,10 @@ public class FrozenHeistConfig {
             return "El spawn global no está configurado. Usa /em frozenheist setspawn.";
         for (var team : teams) {
             String id = team.getId();
-            if (getBaseSpawn(id) == null)
-                return "El equipo '" + id + "' no tiene base-spawn. Usa /em frozenheist setbasespawn " + id + ".";
+            if (getBaseSpawn1(id) == null)
+                return "El equipo '" + id + "' no tiene base-spawn-1. Usa /em frozenheist setbasespawn 1 " + id + ".";
+            if (getBaseSpawn2(id) == null)
+                return "El equipo '" + id + "' no tiene base-spawn-2. Usa /em frozenheist setbasespawn 2 " + id + ".";
             if (getCaptureZone(id) == null)
                 return "El equipo '" + id + "' no tiene capture-zone. Usa /em frozenheist setcapture " + id + ".";
             if (getFlagStand(id) == null)
@@ -180,10 +170,10 @@ public class FrozenHeistConfig {
 
     private void writeLocation(String path, Location loc) {
         yaml.set(path + ".world", loc.getWorld().getName());
-        yaml.set(path + ".x",    loc.getX());
-        yaml.set(path + ".y",    loc.getY());
-        yaml.set(path + ".z",    loc.getZ());
-        yaml.set(path + ".yaw",  (double) loc.getYaw());
-        yaml.set(path + ".pitch",(double) loc.getPitch());
+        yaml.set(path + ".x",     loc.getX());
+        yaml.set(path + ".y",     loc.getY());
+        yaml.set(path + ".z",     loc.getZ());
+        yaml.set(path + ".yaw",   (double) loc.getYaw());
+        yaml.set(path + ".pitch", (double) loc.getPitch());
     }
 }

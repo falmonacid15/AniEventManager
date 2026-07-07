@@ -10,7 +10,7 @@ depend:
 
 softdepend:
   - PlaceholderAPI
-
+  - FancyHolograms
 commands:
   em:
     description: Comando principal de AniEventManager

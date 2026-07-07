@@ -12,40 +12,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Maneja la configuración persistente del TNT Run en:
- * plugins/AniEventManager/minigames/tntrun.yml
- *
- * Estructura del archivo:
- *
- * world: "tntrun_world"
- *
- * lobby-spawn:      { world, x, y, z, yaw, pitch }
- * spectator-spawn:  { world, x, y, z, yaw, pitch }
- * arena-center:     { world, x, y, z }
- *
- * player-spawns:
- *   - { world, x, y, z, yaw, pitch }
- *   ...
- *
- * arena:
- *   size:        60         ← lado del cuadrado / diámetro del círculo
- *   shape:       SQUARE     ← SQUARE | CIRCLE
- *   layer-count: 3          ← número de capas de TNT+SAND
- *   layer-gap:   3          ← bloques de AIR entre capas
- *   dome-height: 30         ← altura de la cúpula sobre el jugador
- *
- * settings:
- *   block-remove-delay:  10   ← ticks antes de que caiga el bloque
- *   countdown-seconds:   5
- *   end-delay-seconds:   30   ← segundos que el ganador permanece en la arena
- *   double-jump-enabled: true
- *   double-jump-cooldown: 5   ← segundos de cooldown entre dobles saltos
- *   score-first:   10
- *   score-second:   6
- *   score-third:    3
- *   score-default:  1
- */
 public class TNTRunConfig {
 
     private final Anieventmanager plugin;
@@ -60,8 +26,6 @@ public class TNTRunConfig {
     public void reload() {
         load();
     }
-
-    // ── Carga y guardado ──────────────────────────────────────────────────────
 
     public void load() {
         File dir = new File(plugin.getDataFolder(), "minigames");
@@ -81,8 +45,6 @@ public class TNTRunConfig {
         }
     }
 
-    // ── World ─────────────────────────────────────────────────────────────────
-
     public String getWorldName() { return yaml.getString("world", ""); }
 
     public void setWorldName(String name) {
@@ -95,8 +57,6 @@ public class TNTRunConfig {
         return name.isEmpty() ? null : org.bukkit.Bukkit.getWorld(name);
     }
 
-    // ── Spawns ────────────────────────────────────────────────────────────────
-
     public Location getLobbySpawn()     { return LocationUtil.read(yaml, "lobby-spawn"); }
     public Location getSpectatorSpawn() { return LocationUtil.read(yaml, "spectator-spawn"); }
     public Location getArenaCenter()    { return LocationUtil.read(yaml, "arena-center"); }
@@ -104,8 +64,6 @@ public class TNTRunConfig {
     public void setLobbySpawn(Location loc)     { LocationUtil.write(yaml, "lobby-spawn",     loc); save(); }
     public void setSpectatorSpawn(Location loc) { LocationUtil.write(yaml, "spectator-spawn", loc); save(); }
     public void setArenaCenter(Location loc)    { LocationUtil.write(yaml, "arena-center",    loc); save(); }
-
-    // ── Player spawns ─────────────────────────────────────────────────────────
 
     public List<Location> getPlayerSpawns() {
         List<Location> list = new ArrayList<>();
@@ -136,8 +94,6 @@ public class TNTRunConfig {
         yaml.set("player-spawns", new ArrayList<>());
         save();
     }
-
-    // ── Configuración de arena ────────────────────────────────────────────────
 
     public int getArenaSize() {
         return yaml.getInt("arena.size", TNTRunArena.ArenaConfig.defaults().arenaSize());
@@ -199,12 +155,6 @@ public class TNTRunConfig {
         );
     }
 
-    // ── Settings de juego ─────────────────────────────────────────────────────
-
-    /**
-     * Ticks antes de que el bloque desaparezca tras pisarlo.
-     * 20 ticks = 1 segundo. Default: 10.
-     */
     public int getBlockRemoveDelay() { return yaml.getInt("settings.block-remove-delay", 10); }
 
     public void setBlockRemoveDelay(int ticks) {
@@ -212,7 +162,6 @@ public class TNTRunConfig {
         save();
     }
 
-    /** Segundos de cuenta regresiva antes de iniciar. Default: 5. */
     public int getCountdownSeconds() { return yaml.getInt("settings.countdown-seconds", 5); }
 
     public void setCountdownSeconds(int seconds) {
@@ -220,11 +169,6 @@ public class TNTRunConfig {
         save();
     }
 
-    /**
-     * Segundos que el ganador (y los espectadores) permanecen en la arena
-     * antes de que todos sean devueltos al lobby. Default: 30.
-     * MODIFICAR con /em tntrun setenddelay <segundos>.
-     */
     public int getEndDelaySeconds() {
         return yaml.getInt("settings.end-delay-seconds", 30);
     }
@@ -234,12 +178,9 @@ public class TNTRunConfig {
         save();
     }
 
-    /** Convierte el end-delay de segundos a ticks de Bukkit (×20). */
     public long getEndDelayTicks() {
         return getEndDelaySeconds() * 20L;
     }
-
-    // ── Doble salto ───────────────────────────────────────────────────────────
 
     public boolean isDoubleJumpEnabled() {
         return yaml.getBoolean("settings.double-jump-enabled", true);
@@ -258,8 +199,6 @@ public class TNTRunConfig {
         yaml.set("settings.double-jump-cooldown", Math.max(0, seconds));
         save();
     }
-
-    // ── Puntajes por posición ─────────────────────────────────────────────────
 
     public int getScoreForPlace(int place) {
         return switch (place) {
@@ -281,8 +220,6 @@ public class TNTRunConfig {
         save();
     }
 
-    // ── Validación ────────────────────────────────────────────────────────────
-
     public String validate() {
         if (getWorld() == null)
             return "El mundo no está configurado. Usa /em tntrun setworld.";
@@ -296,8 +233,6 @@ public class TNTRunConfig {
             return "No hay spawns de jugadores. Usa /em tntrun addspawn.";
         return null;
     }
-
-    // ── Helper privado ────────────────────────────────────────────────────────
 
     @SuppressWarnings("unchecked")
     private java.util.Map<String, Object> castMap(java.util.Map<?, ?> m) {

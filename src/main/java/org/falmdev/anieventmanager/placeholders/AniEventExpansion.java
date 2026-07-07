@@ -10,6 +10,7 @@ import org.falmdev.anieventmanager.minigames.boatracing.BoatRacingMiniGame;
 import org.falmdev.anieventmanager.minigames.boatracing.RacerData;
 import org.falmdev.anieventmanager.minigames.frozenheist.FlagManager;
 import org.falmdev.anieventmanager.minigames.frozenheist.TeamHeistData;
+import org.falmdev.anieventmanager.minigames.parkourduos.HotbarAbility;
 import org.falmdev.anieventmanager.minigames.tntrun.TNTRunMiniGame;
 import org.falmdev.anieventmanager.model.EventTeam;
 import org.falmdev.anieventmanager.utils.interval.IntervalManager;
@@ -171,109 +172,7 @@ public class AniEventExpansion extends PlaceholderExpansion {
     }
 
     private String resolveTNTRun(OfflinePlayer offlinePlayer, String params) {
-        TNTRunMiniGame tnt = plugin.getTNTRunMiniGame();
-
-        // ── Placeholders globales (no requieren jugador) ──────────────────────
-        switch (params) {
-            case "tntrun_running"     -> { return String.valueOf(tnt.isRunning()); }
-            case "tntrun_state"       -> { return switch (tnt.getState()) {
-                case IDLE      -> "En espera";
-                case LOBBY     -> "Lobby";
-                case COUNTDOWN -> "Iniciando";
-                case RUNNING   -> "En juego";
-                case FINISHED  -> "Finalizando";
-            }; }
-            case "tntrun_players"     -> { return String.valueOf(tnt.getActivePlayerCount()); }
-            case "tntrun_teams"       -> { return String.valueOf(tnt.getAliveTeamCount()); }
-            case "tntrun_elapsed"     -> { return tnt.isRunning() ? tnt.getElapsedFormatted() : "--:--"; }
-            case "tntrun_floor_total" -> { return String.valueOf(tnt.getTotalFloors()); }
-        }
-
-        // alive_N
-        if (params.startsWith("tntrun_alive_")) {
-            int index = Integer.parseInt(params.replace("tntrun_alive_", "")) - 1;
-            List<EventTeam> alive = tnt.getAliveTeams();
-            return index < alive.size() ? alive.get(index).getDisplayName() : "-";
-        }
-
-        // ── Placeholders que requieren jugador ────────────────────────────────
-        Player player = offlinePlayer.getPlayer();
-
-        if (params.equals("tntrun_iseliminated")) {
-            if (player == null || !tnt.isRunning()) return "false";
-            Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeamOf(player);
-            if (teamOpt.isEmpty()) return "false";
-            boolean eliminated = tnt.getAliveTeams().stream()
-                    .noneMatch(t -> t.getId().equals(teamOpt.get().getId()));
-            return String.valueOf(eliminated);
-        }
-
-        // Cooldown del doble salto — no necesita partida activa para mostrar 0
-        if (params.equals("tntrun_jump_cooldown")) {
-            if (player == null) return "0";
-            var listener = tnt.getGameListener();
-            if (listener == null) return "0";
-            return String.valueOf(listener.getJumpCooldownPercent(player.getUniqueId()));
-        }
-
-        if (params.equals("tntrun_jump_bar")) {
-            if (player == null) return buildJumpBar(0);
-            var listener = tnt.getGameListener();
-            int pct = (listener != null) ? listener.getJumpCooldownPercent(player.getUniqueId()) : 0;
-            return buildJumpBar(pct);
-        }
-
-        // Placeholders de piso — requieren partida activa y jugador
-        if (player == null || !tnt.isRunning()) {
-            return switch (params) {
-                case "tntrun_floor"                 -> "-";
-                case "tntrun_floor_players"         -> "0";
-                case "tntrun_floor_playernames"     -> "";
-                case "tntrun_floor_blocks"          -> "0";
-                case "tntrun_floor_blocks_total"    -> "0";
-                case "tntrun_floor_blocks_percent"  -> "0";
-                default -> null;
-            };
-        }
-
-        int floor      = tnt.getPlayerFloor(player);
-        int totalFloors = tnt.getTotalFloors();
-
-        return switch (params) {
-            case "tntrun_floor" -> floor > 0 ? String.valueOf(floor) : "-";
-
-            case "tntrun_floor_players" -> {
-                if (floor < 1) yield "0";
-                yield String.valueOf(tnt.getPlayersOnFloor(floor).size());
-            }
-
-            case "tntrun_floor_playernames" -> {
-                if (floor < 1) yield "";
-                List<Player> onFloor = tnt.getPlayersOnFloor(floor);
-                yield onFloor.stream().map(Player::getName).collect(Collectors.joining(", "));
-            }
-
-            case "tntrun_floor_blocks" -> {
-                if (floor < 1) yield "0";
-                yield String.valueOf(tnt.getSandCountOnFloor(floor));
-            }
-
-            case "tntrun_floor_blocks_total" -> {
-                if (floor < 1) yield "0";
-                yield String.valueOf(tnt.getTotalSandOnFloor(floor));
-            }
-
-            case "tntrun_floor_blocks_percent" -> {
-                if (floor < 1) yield "0";
-                int total   = tnt.getTotalSandOnFloor(floor);
-                int current = tnt.getSandCountOnFloor(floor);
-                if (total <= 0) yield "0";
-                int pct = (int) Math.round((current * 100.0) / total);
-                yield String.valueOf(Math.max(0, Math.min(100, pct)));
-            }
-
-            default -> null;
-        };
+        return plugin.getTNTRunPlaceholders().resolve(offlinePlayer, params);
     }
 
     // ── Barra de cooldown de doble salto (para below-name) ───────────────────
@@ -297,45 +196,174 @@ public class AniEventExpansion extends PlaceholderExpansion {
     private String resolveParkourDuos(OfflinePlayer offlinePlayer, String params) {
         var pd = plugin.getParkourDuosMiniGame();
 
+        // ── Estado global ─────────────────────────────────────────────────────
+
         if (params.equals("pd_running")) return String.valueOf(pd.isRunning());
+
         if (params.equals("pd_state")) return switch (pd.getState()) {
             case IDLE      -> "En espera";
             case COUNTDOWN -> "Iniciando";
             case RUNNING   -> "En juego";
             case FINISHED  -> "Finalizado";
         };
-        if (params.equals("pd_time")) return pd.isRunning() ? pd.getTimeLeftFormatted() : "--:--";
+
+        if (params.equals("pd_time")) {
+            return pd.isRunning() ? pd.getTimeLeftFormatted() : "--:--";
+        }
+
+        if (params.equals("pd_time_seconds")) {
+            return pd.isRunning() ? String.valueOf(pd.getTimeLeftSeconds()) : "0";
+        }
+
+        if (params.equals("pd_time_total_seconds")) {
+            return String.valueOf(pd.getConfig().getDurationMinutes() * 60);
+        }
+
+        if (params.equals("pd_timepercent")) {
+            if (!pd.isRunning()) return "0";
+            int total = pd.getConfig().getDurationMinutes() * 60;
+            if (total <= 0) return "0";
+            int pct = (int) Math.round((pd.getTimeLeftSeconds() / (double) total) * 100);
+            return String.valueOf(Math.max(0, Math.min(100, pct)));
+        }
+
+        // ── Ranking de equipos por checkpoints ────────────────────────────────
+        // %anievent_pd_top_1_name%  pd_top_1_cps%  pd_top_1_color%  pd_top_1_finished%
+        // hasta pd_top_8
+
+        if (params.startsWith("pd_top_")) {
+            String[] parts = params.split("_");
+            if (parts.length != 4) return "-";
+            int pos;
+            try { pos = Integer.parseInt(parts[2]); }
+            catch (NumberFormatException e) { return "-"; }
+            if (pos < 1 || pos > 8) return "-";
+            if (!pd.isRunning()) return "-";
+
+            var ranking = pd.getTeamData().values().stream()
+                    .sorted((a, b) -> {
+                        if (a.isFinished() && b.isFinished())
+                            return Integer.compare(a.getFinishRank(), b.getFinishRank());
+                        if (a.isFinished()) return -1;
+                        if (b.isFinished()) return 1;
+                        return Integer.compare(b.getCompletedCheckpoints(), a.getCompletedCheckpoints());
+                    })
+                    .toList();
+
+            if (pos > ranking.size()) return "-";
+            var entry = ranking.get(pos - 1);
+
+            return switch (parts[3]) {
+                case "name"     -> entry.getTeam().getDisplayName();
+                case "color"    -> namedColorToLegacy(entry.getTeam().getColor().toString());
+                case "cps"      -> entry.getCompletedCheckpoints() + "/" + entry.getTotalCheckpoints();
+                case "finished" -> String.valueOf(entry.isFinished());
+                case "score"    -> String.valueOf(entry.getInternalScore());
+                default         -> "-";
+            };
+        }
+
+        // ── Placeholders que requieren jugador online ─────────────────────────
 
         Player player = offlinePlayer.getPlayer();
-        if (player == null) return switch (params) {
-            case "pd_checkpoint", "pd_checkpoints", "pd_players_in_cp",
-                 "pd_rank", "pd_score" -> "-";
-            case "pd_progress"  -> "-/-";
-            case "pd_finished"  -> "false";
-            default             -> null;
-        };
+
+        if (player == null || plugin.getTeamManager().getTeamOf(player).isEmpty()) {
+            return switch (params) {
+                case "pd_checkpoint", "pd_checkpoints", "pd_players_in_cp",
+                     "pd_rank", "pd_score",
+                     "pd_cd_return", "pd_cd_jump", "pd_cd_tp",
+                     "pd_cd_return_pct", "pd_cd_jump_pct", "pd_cd_tp_pct",
+                     "pd_jumpboost_seconds", "pd_jumpboost_pct" -> "0";
+                case "pd_progress"   -> "-/-";
+                case "pd_finished"   -> "false";
+                case "pd_cd_return_ready", "pd_cd_jump_ready",
+                     "pd_cd_tp_ready", "pd_jumpboost_active" -> "false";
+                case "pd_status_return", "pd_status_jump",
+                     "pd_status_tp" -> "Listo";
+                default -> null;
+            };
+        }
 
         Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeamOf(player);
-        if (teamOpt.isEmpty()) return switch (params) {
-            case "pd_checkpoint", "pd_checkpoints", "pd_players_in_cp",
-                 "pd_rank", "pd_score" -> "-";
-            case "pd_progress"  -> "-/-";
-            case "pd_finished"  -> "false";
-            default             -> null;
-        };
-
         var data = pd.getDataFor(teamOpt.get());
-        if (data == null) return "-";
+
+        // ── Progreso del equipo ───────────────────────────────────────────────
+
+        if (params.equals("pd_checkpoint") && data != null)
+            return String.valueOf(data.getCompletedCheckpoints() + 1);
+
+        if (params.equals("pd_checkpoints") && data != null)
+            return String.valueOf(data.getTotalCheckpoints());
+
+        if (params.equals("pd_checkpoints_remaining") && data != null) {
+            int remaining = data.getTotalCheckpoints() - data.getCompletedCheckpoints();
+            return String.valueOf(Math.max(0, remaining));
+        }
+
+        if (params.equals("pd_progress") && data != null)
+            return (data.getCompletedCheckpoints() + 1) + "/" + data.getTotalCheckpoints();
+
+        if (params.equals("pd_progress_pct") && data != null) {
+            if (data.getTotalCheckpoints() == 0) return "0";
+            int pct = (int) Math.round(data.getProgressFraction() * 100);
+            return String.valueOf(pct);
+        }
+
+        if (params.equals("pd_players_in_cp") && data != null)
+            return data.getPlayersInCurrentCheckpoint() + "/2";
+
+        if (params.equals("pd_finished") && data != null)
+            return String.valueOf(data.isFinished());
+
+        if (params.equals("pd_rank") && data != null)
+            return data.isFinished() ? "#" + data.getFinishRank() : "-";
+
+        if (params.equals("pd_score") && data != null)
+            return String.valueOf(data.getInternalScore());
+
+        // ── Cooldowns de habilidades ──────────────────────────────────────────
+        // pd_cd_return          → segundos restantes de RETURN_CHECKPOINT
+        // pd_cd_jump            → segundos restantes de JUMP_BOOST
+        // pd_cd_tp              → segundos restantes de TELEPORT_TO_TEAMMATE
+        // pd_cd_return_pct      → porcentaje restante (100 recién usado → 0 listo)
+        // pd_cd_jump_pct        → ídem para JUMP_BOOST
+        // pd_cd_tp_pct          → ídem para TELEPORT
+        // pd_cd_return_ready    → "true" si no está en cooldown
+        // pd_cd_jump_ready      → ídem
+        // pd_cd_tp_ready        → ídem
+
+        if (!pd.isRunning() || pd.getAbilityManager() == null) {
+            return switch (params) {
+                case "pd_cd_return", "pd_cd_jump", "pd_cd_tp",
+                     "pd_cd_return_pct", "pd_cd_jump_pct", "pd_cd_tp_pct",
+                     "pd_jumpboost_seconds", "pd_jumpboost_pct" -> "0";
+                case "pd_cd_return_ready", "pd_cd_jump_ready",
+                     "pd_cd_tp_ready", "pd_jumpboost_active" -> "true";
+                case "pd_status_return", "pd_status_jump",
+                     "pd_status_tp" -> "Listo";
+                default -> null;
+            };
+        }
+
+        var am = pd.getAbilityManager();
 
         return switch (params) {
-            case "pd_checkpoint"    -> String.valueOf(data.getCompletedCheckpoints() + 1);
-            case "pd_checkpoints"   -> String.valueOf(data.getTotalCheckpoints());
-            case "pd_progress"      -> (data.getCompletedCheckpoints() + 1) + "/" + data.getTotalCheckpoints();
-            case "pd_players_in_cp" -> data.getPlayersInCurrentCheckpoint() + "/2";
-            case "pd_finished"      -> String.valueOf(data.isFinished());
-            case "pd_rank"          -> data.isFinished() ? "#" + data.getFinishRank() : "-";
-            case "pd_score"         -> String.valueOf(data.getInternalScore());
-            default                 -> null;
+            case "pd_cd_return"       -> String.valueOf(am.getCooldownLeft(player, HotbarAbility.RETURN_CHECKPOINT));
+            case "pd_cd_jump"         -> String.valueOf(am.getCooldownLeft(player, HotbarAbility.JUMP_BOOST));
+            case "pd_cd_tp"           -> String.valueOf(am.getCooldownLeft(player, HotbarAbility.TELEPORT_TO_TEAMMATE));
+            case "pd_cd_return_pct"   -> String.valueOf(am.getCooldownPercent(player, HotbarAbility.RETURN_CHECKPOINT));
+            case "pd_cd_jump_pct"     -> String.valueOf(am.getCooldownPercent(player, HotbarAbility.JUMP_BOOST));
+            case "pd_cd_tp_pct"       -> String.valueOf(am.getCooldownPercent(player, HotbarAbility.TELEPORT_TO_TEAMMATE));
+            case "pd_cd_return_ready" -> String.valueOf(!am.isOnCooldown(player, HotbarAbility.RETURN_CHECKPOINT));
+            case "pd_cd_jump_ready"   -> String.valueOf(!am.isOnCooldown(player, HotbarAbility.JUMP_BOOST));
+            case "pd_cd_tp_ready"     -> String.valueOf(!am.isOnCooldown(player, HotbarAbility.TELEPORT_TO_TEAMMATE));
+            case "pd_jumpboost_active"  -> String.valueOf(am.getJumpBoostSecondsLeft(player) > 0);
+            case "pd_jumpboost_seconds" -> String.valueOf(am.getJumpBoostSecondsLeft(player));
+            case "pd_jumpboost_pct"     -> String.valueOf(am.getJumpBoostPercent(player));
+            case "pd_status_return"     -> am.getAbilityStatus(player, HotbarAbility.RETURN_CHECKPOINT);
+            case "pd_status_jump"       -> am.getAbilityStatus(player, HotbarAbility.JUMP_BOOST);
+            case "pd_status_tp"         -> am.getAbilityStatus(player, HotbarAbility.TELEPORT_TO_TEAMMATE);
+            default -> null;
         };
     }
 
@@ -396,13 +424,18 @@ public class AniEventExpansion extends PlaceholderExpansion {
     private String resolveFrozenHeist(OfflinePlayer offlinePlayer, String params) {
         var fh = plugin.getFrozenHeistMiniGame();
 
+        // ── Estado global ────────────────────────────────────────────────────
+
         if (params.equals("fh_running")) return String.valueOf(fh.isRunning());
+
         if (params.equals("fh_state")) return switch (fh.getState()) {
             case IDLE     -> "En espera";
             case RUNNING  -> "En juego";
             case FINISHED -> "Finalizado";
         };
+
         if (params.equals("fh_time")) return fh.isRunning() ? fh.getTimeLeftFormatted() : "--:--";
+
         if (params.equals("fh_timepercent")) {
             if (!fh.isRunning()) return "0";
             int total = fh.getConfig().getDurationMinutes() * 60;
@@ -410,6 +443,8 @@ public class AniEventExpansion extends PlaceholderExpansion {
             int pct = (int) Math.round((fh.getTimeLeftSeconds() / (double) total) * 100);
             return String.valueOf(Math.max(0, Math.min(100, pct)));
         }
+
+        // ── Ranking top N ────────────────────────────────────────────────────
 
         if (params.startsWith("fh_top_")) {
             String[] parts = params.split("_");
@@ -429,23 +464,32 @@ public class AniEventExpansion extends PlaceholderExpansion {
             };
         }
 
+        // ── Placeholders que requieren jugador online ─────────────────────────
+
         Player player = offlinePlayer.getPlayer();
+
         if (player == null) return switch (params) {
-            case "fh_score", "fh_frozen_seconds" -> "0";
+            case "fh_score", "fh_frozen_seconds",
+                 "fh_base_member_count"          -> "0";
             case "fh_rank", "fh_flag_state", "fh_flag_carrier",
-                 "fh_carrying_team", "fh_racepos" -> "-";
-            case "fh_carrying", "fh_frozen" -> "false";
+                 "fh_carrying_team"              -> "-";
+            case "fh_carrying", "fh_frozen",
+                 "fh_base_has_members"           -> "false";
             default -> null;
         };
 
         Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeamOf(player);
 
         return switch (params) {
+
+            // ── Puntos y ranking del equipo ───────────────────────────────────
+
             case "fh_score" -> {
                 if (!fh.isRunning() || teamOpt.isEmpty()) yield "0";
                 var data = fh.getTeamData().get(teamOpt.get().getId());
                 yield data != null ? String.valueOf(data.getPoints()) : "0";
             }
+
             case "fh_rank" -> {
                 if (!fh.isRunning() || teamOpt.isEmpty()) yield "-";
                 String myId = teamOpt.get().getId();
@@ -455,11 +499,19 @@ public class AniEventExpansion extends PlaceholderExpansion {
                     if (ranked.get(i).getTeam().getId().equals(myId)) yield "#" + (i + 1);
                 yield "-";
             }
+
+            // ── Estado de la bandera del equipo del jugador ───────────────────
+
             case "fh_flag_state" -> {
                 if (!fh.isRunning() || teamOpt.isEmpty()) yield "-";
                 FlagManager.FlagState state = fh.getFlagManager().getState(teamOpt.get().getId());
-                yield switch (state) { case IN_BASE -> "En base"; case CARRIED -> "Robada"; case DROPPED -> "Caída"; };
+                yield switch (state) {
+                    case IN_BASE -> "En base";
+                    case CARRIED -> "Robada";
+                    case DROPPED -> "Caída";
+                };
             }
+
             case "fh_flag_carrier" -> {
                 if (!fh.isRunning() || teamOpt.isEmpty()) yield "-";
                 UUID carrierUUID = fh.getFlagManager().getCarrier(teamOpt.get().getId());
@@ -467,11 +519,15 @@ public class AniEventExpansion extends PlaceholderExpansion {
                 Player carrier = Bukkit.getPlayer(carrierUUID);
                 yield carrier != null ? carrier.getName() : "-";
             }
+
+            // ── Estado del jugador ─────────────────────────────────────────────
+
             case "fh_carrying" -> {
                 if (!fh.isRunning()) yield "false";
                 var ps = fh.getPlayerState(player.getUniqueId());
                 yield ps != null ? String.valueOf(ps.isCarryingFlag()) : "false";
             }
+
             case "fh_carrying_team" -> {
                 if (!fh.isRunning()) yield "-";
                 var ps = fh.getPlayerState(player.getUniqueId());
@@ -479,16 +535,40 @@ public class AniEventExpansion extends PlaceholderExpansion {
                 var flagData = fh.getTeamData().get(ps.getCarryingFlagOf());
                 yield flagData != null ? flagData.getTeam().getDisplayName() : "-";
             }
+
             case "fh_frozen" -> {
                 if (!fh.isRunning()) yield "false";
                 var ps = fh.getPlayerState(player.getUniqueId());
                 yield ps != null ? String.valueOf(ps.isFrozen()) : "false";
             }
+
             case "fh_frozen_seconds" -> {
                 if (!fh.isRunning()) yield "0";
                 var ps = fh.getPlayerState(player.getUniqueId());
                 yield ps != null ? String.valueOf(ps.getFrozenSecondsLeft()) : "0";
             }
+
+            // ── Miembros en la base del equipo del jugador ────────────────────
+
+            case "fh_base_has_members" -> {
+                if (!fh.isRunning() || teamOpt.isEmpty()) yield "false";
+                var data = fh.getTeamData().get(teamOpt.get().getId());
+                if (data == null) yield "false";
+                boolean anyInBase = teamOpt.get().getOnlinePlayers().stream()
+                        .anyMatch(p -> data.isInsideBase(p.getLocation()));
+                yield String.valueOf(anyInBase);
+            }
+
+            case "fh_base_member_count" -> {
+                if (!fh.isRunning() || teamOpt.isEmpty()) yield "0";
+                var data = fh.getTeamData().get(teamOpt.get().getId());
+                if (data == null) yield "0";
+                long count = teamOpt.get().getOnlinePlayers().stream()
+                        .filter(p -> data.isInsideBase(p.getLocation()))
+                        .count();
+                yield String.valueOf(count);
+            }
+
             default -> null;
         };
     }
@@ -627,38 +707,45 @@ public class AniEventExpansion extends PlaceholderExpansion {
 
     private String resolveTeamById(String params) {
         String withoutPrefix = params.substring("teamid_".length());
-        int lastUnderscore = withoutPrefix.lastIndexOf('_');
-        if (lastUnderscore <= 0) return null;
 
-        String teamId = withoutPrefix.substring(0, lastUnderscore);
-        String field  = withoutPrefix.substring(lastUnderscore + 1);
+        String matchedTeamId = null;
+        String matchedField  = null;
 
-        if (field.equals("fh")) return null;
-
-        if (teamId.endsWith("_fh")) {
-            int fhIdx = withoutPrefix.lastIndexOf("_fh_");
-            if (fhIdx > 0) {
-                teamId = withoutPrefix.substring(0, fhIdx);
-                field  = "fh_" + withoutPrefix.substring(fhIdx + 4);
+        for (String id : plugin.getTeamManager().getTeamIds()) {
+            String expectedPrefix = id + "_";
+            if (withoutPrefix.startsWith(expectedPrefix)) {
+                String candidate = withoutPrefix.substring(expectedPrefix.length());
+                if (matchedTeamId == null || id.length() > matchedTeamId.length()) {
+                    matchedTeamId = id;
+                    matchedField  = candidate;
+                }
             }
         }
 
-        final String finalTeamId = teamId;
+        if (matchedTeamId == null || matchedField == null || matchedField.isEmpty()) return null;
+
+        final String finalTeamId = matchedTeamId;
+        final String field       = matchedField;
         Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeam(finalTeamId);
 
         return switch (field) {
-            case "name"    -> teamOpt.map(EventTeam::getDisplayName).orElse("-");
-            case "color"   -> teamOpt.map(t -> namedColorToLegacy(t.getColor().toString())).orElse("&f");
-            case "score"   -> teamOpt.map(t -> String.valueOf(plugin.getScoreManager().getScore(t))).orElse("0");
-            case "members" -> teamOpt.map(t -> {
+
+            // ── Datos básicos del equipo ──────────────────────────────────────
+            // Accesibles con o sin prefijo fh_ para compatibilidad con hologramas
+            case "name",    "fh_name"    -> teamOpt.map(EventTeam::getDisplayName).orElse("-");
+            case "color",   "fh_color"   -> teamOpt.map(t -> namedColorToLegacy(t.getColor().toString())).orElse("&f");
+            case "members", "fh_members" -> teamOpt.map(t -> {
                 var names = t.getOnlinePlayers().stream().map(Player::getName).toList();
                 return names.isEmpty() ? "ninguno" : String.join(", ", names);
             }).orElse("ninguno");
-            case "size"    -> teamOpt.map(t -> String.valueOf(t.getMemberCount())).orElse("0");
-            case "rank"    -> teamOpt.map(t -> {
+            case "size",    "fh_size"    -> teamOpt.map(t -> String.valueOf(t.getMemberCount())).orElse("0");
+            case "score"                 -> teamOpt.map(t -> String.valueOf(plugin.getScoreManager().getScore(t))).orElse("0");
+            case "rank"                  -> teamOpt.map(t -> {
                 int rank = plugin.getScoreManager().getRank(t);
                 return rank == -1 ? "-" : "#" + rank;
             }).orElse("-");
+
+            // ── Frozen Heist ──────────────────────────────────────────────────
             case "fh_score" -> {
                 var fh = plugin.getFrozenHeistMiniGame();
                 if (!fh.isRunning()) yield "0";
@@ -685,6 +772,30 @@ public class AniEventExpansion extends PlaceholderExpansion {
                     if (ranked.get(i).getTeam().getId().equals(finalTeamId)) yield "#" + (i + 1);
                 yield "-";
             }
+            case "fh_base_has_members" -> {
+                var fh = plugin.getFrozenHeistMiniGame();
+                if (!fh.isRunning()) yield "false";
+                var data = fh.getTeamData().get(finalTeamId);
+                if (data == null) yield "false";
+                Optional<EventTeam> t = plugin.getTeamManager().getTeam(finalTeamId);
+                if (t.isEmpty()) yield "false";
+                boolean any = t.get().getOnlinePlayers().stream()
+                        .anyMatch(p -> data.isInsideBase(p.getLocation()));
+                yield String.valueOf(any);
+            }
+            case "fh_base_member_count" -> {
+                var fh = plugin.getFrozenHeistMiniGame();
+                if (!fh.isRunning()) yield "0";
+                var data = fh.getTeamData().get(finalTeamId);
+                if (data == null) yield "0";
+                Optional<EventTeam> t = plugin.getTeamManager().getTeam(finalTeamId);
+                if (t.isEmpty()) yield "0";
+                long count = t.get().getOnlinePlayers().stream()
+                        .filter(p -> data.isInsideBase(p.getLocation()))
+                        .count();
+                yield String.valueOf(count);
+            }
+
             default -> null;
         };
     }

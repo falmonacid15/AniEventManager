@@ -20,23 +20,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * Magic Stick para Parkour Duos.
- *
- * Modos:
- *   SET_LOBBY      → Lobby general
- *   SET_SPAWN1     → Spawn jugador 1 del equipo activo
- *   SET_SPAWN2     → Spawn jugador 2 del equipo activo
- *   SET_START      → Punto de inicio del equipo activo
- *   SET_FINISH     → Punto de finalización del equipo activo
- *   ADD_CHECKPOINT → Agrega checkpoint al equipo activo (radio configurable)
- *
- * Flujo recomendado:
- *   1. Abrir GUI → Equipos → click en equipo → botón Magic Stick
- *   2. El stick llega con ese equipo preseleccionado
- *   3. Marcar todos los puntos del equipo con click derecho
- *   4. Shift+Click en modo ADD_CHECKPOINT para cambiar el radio
- */
 public class ParkourDuosMagicStick implements Listener {
 
     public enum Mode {
@@ -76,8 +59,6 @@ public class ParkourDuosMagicStick implements Listener {
         this.plugin = plugin;
     }
 
-    // ── API pública ───────────────────────────────────────────────────────────
-
     public void giveMagicStick(Player player, EventTeam team) {
         if (!playerModes.containsKey(player.getUniqueId())) {
             playerModes.put(player.getUniqueId(), Mode.SET_LOBBY);
@@ -103,8 +84,6 @@ public class ParkourDuosMagicStick implements Listener {
     public Mode getMode(Player player) {
         return playerModes.get(player.getUniqueId());
     }
-
-    // ── Listener ──────────────────────────────────────────────────────────────
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onInteract(PlayerInteractEvent event) {
@@ -133,8 +112,6 @@ public class ParkourDuosMagicStick implements Listener {
 
         executeMode(player, mode);
     }
-
-    // ── Ejecución ─────────────────────────────────────────────────────────────
 
     private void executeMode(Player player, Mode mode) {
         ParkourDuosConfig cfg = plugin.getParkourDuosMiniGame().getConfig();
@@ -230,8 +207,6 @@ public class ParkourDuosMagicStick implements Listener {
         }
     }
 
-    // ── Construcción del item ─────────────────────────────────────────────────
-
     private ItemStack buildStick(Mode mode, EventTeam activeTeam) {
         ItemBuilder b = ItemBuilder.of(Material.BLAZE_ROD)
                 .name(STICK_NAME, NamedTextColor.GOLD, TextDecoration.BOLD)
@@ -248,7 +223,6 @@ public class ParkourDuosMagicStick implements Listener {
                         .decoration(TextDecoration.ITALIC, false));
 
         if (mode == Mode.ADD_CHECKPOINT) {
-            // Mostrar radio actual en el lore
             double r = cpRadii.getOrDefault(activeTeam != null ? activeTeam.getMembers().stream().findFirst().orElse(null) : null, 3.0);
             b.lore(Component.text("  Radio: 3.0 bloques", NamedTextColor.GRAY)
                             .decoration(TextDecoration.ITALIC, false))

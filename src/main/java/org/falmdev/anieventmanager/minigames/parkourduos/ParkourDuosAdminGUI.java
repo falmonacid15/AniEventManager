@@ -25,11 +25,9 @@ public class ParkourDuosAdminGUI implements Listener {
     public static final String TITLE      = "Parkour Duos — Configuración";
     public static final String TITLE_TEAM = "PD — Equipo: ";
 
-    // ── Pestañas ──────────────────────────────────────────────────────────────
     private static final int TAB_GLOBAL = 1;
     private static final int TAB_TEAMS  = 2;
 
-    // ── Pestaña GLOBAL ────────────────────────────────────────────────────────
     private static final int GLOB_LOBBY     = 10;
     private static final int GLOB_DURATION  = 12;
     private static final int GLOB_COUNTDOWN = 14;
@@ -40,7 +38,6 @@ public class ParkourDuosAdminGUI implements Listener {
     private static final int GLOB_SCORE_DEF = 34;
     private static final int GLOB_SCORE_CP  = 36;
 
-    // ── Sub-vista por equipo ──────────────────────────────────────────────────
     private static final int TEAM_SPAWN1   = 10;
     private static final int TEAM_SPAWN2   = 12;
     private static final int TEAM_START    = 14;
@@ -53,9 +50,6 @@ public class ParkourDuosAdminGUI implements Listener {
     private static final int TEAM_STATUS   = 40;
     private static final int[] CP_SLOTS = {36, 37, 38, 39, 40, 41, 42};
 
-    // ── Fila 5 — navegación ───────────────────────────────────────────────────
-    // Pantalla raíz: GuiUtil.fillNavigationHomeOnly → 50=⌂Inicio
-    // Sub-vista:     GuiUtil.fillNavigation         → 48=Volver, 50=⌂Inicio
     private static final int NAV_MAGIC_STICK = 49;
     private static final int NAV_START       = 52;
     private static final int NAV_STOP        = 53;

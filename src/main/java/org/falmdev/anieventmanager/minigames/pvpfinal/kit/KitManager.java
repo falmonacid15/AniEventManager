@@ -10,14 +10,6 @@ import org.falmdev.anieventmanager.Anieventmanager;
 import java.io.*;
 import java.util.*;
 
-/**
- * KitManager — gestión de kits de PvP.
- *
- * Persistencia: plugins/AniEventManager/minigames/pvpfinal-kits.yml
- *
- * Almacena los ItemStack como Base64 usando ItemStack.serializeAsBytes()
- * (formato nativo Bukkit, preserva NBT, encantamientos, items custom).
- */
 public class KitManager {
 
     private final Anieventmanager  plugin;
@@ -30,18 +22,12 @@ public class KitManager {
         load();
     }
 
-    // ── API pública ───────────────────────────────────────────────────────────
-
     public Collection<PvpKit> getAll() { return kits.values(); }
     public PvpKit              get(String name) { return kits.get(name.toLowerCase()); }
     public boolean             exists(String name) { return kits.containsKey(name.toLowerCase()); }
     public int                 count() { return kits.size(); }
     public Set<String>         getNames() { return new TreeSet<>(kits.keySet()); }
 
-    /**
-     * Captura el inventario del jugador y lo guarda como kit.
-     * Si ya existe, lo sobrescribe.
-     */
     public PvpKit createFromPlayer(String name, Player player) {
         PvpKit kit = PvpKit.captureFrom(name, player);
         kits.put(name.toLowerCase(), kit);
@@ -55,9 +41,6 @@ public class KitManager {
         return true;
     }
 
-    /**
-     * Aplica el kit al jugador: limpia inventario y pone los items del kit.
-     */
     public void apply(PvpKit kit, Player player) {
         player.getInventory().clear();
         player.getInventory().setArmorContents(new ItemStack[4]);
@@ -65,18 +48,12 @@ public class KitManager {
         kit.applyTo(player);
     }
 
-    /**
-     * Limpia el inventario completo del jugador.
-     * Usado al terminar el combate para quitar el kit.
-     */
     public void clearInventory(Player player) {
         player.getInventory().clear();
         player.getInventory().setArmorContents(new ItemStack[4]);
         player.getInventory().setItemInOffHand(null);
         player.updateInventory();
     }
-
-    // ── Persistencia ──────────────────────────────────────────────────────────
 
     public void load() {
         File dir = new File(plugin.getDataFolder(), "minigames");
@@ -118,21 +95,18 @@ public class KitManager {
     private void serialize(PvpKit kit, String path) {
         yaml.set(path + ".name", kit.getName());
 
-        // Contents
         List<String> contentsB64 = new ArrayList<>();
         for (ItemStack item : kit.getContents()) {
             contentsB64.add(itemToBase64(item));
         }
         yaml.set(path + ".contents", contentsB64);
 
-        // Armor
         List<String> armorB64 = new ArrayList<>();
         for (ItemStack item : kit.getArmor()) {
             armorB64.add(itemToBase64(item));
         }
         yaml.set(path + ".armor", armorB64);
 
-        // Offhand
         yaml.set(path + ".offhand", itemToBase64(kit.getOffhand()));
     }
 

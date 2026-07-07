@@ -3,27 +3,27 @@ package org.falmdev.anieventmanager.minigames.frozenheist;
 import org.bukkit.Location;
 import org.falmdev.anieventmanager.model.EventTeam;
 
-/**
- * Datos de un equipo durante la partida de Frozen Heist.
- * Los puntos aquí son LOCALES al minijuego (no van al ScoreManager global).
- */
 public class TeamHeistData {
 
-    // ── Puntos del minijuego (independientes del sistema global) ──────────────
-    // MODIFICAR AQUI para cambiar los puntos por acción
-    public static final int POINTS_CAPTURE  = 5; // capturar bandera enemiga
-    public static final int POINTS_RECOVER  = 2; // recuperar bandera propia
-    // ─────────────────────────────────────────────────────────────────────────
+    public static final int POINTS_CAPTURE = 5;
+    public static final int POINTS_RECOVER = 2;
 
     private final EventTeam team;
     private int localPoints = 0;
 
-    // Configuración de base (cargada desde config)
-    private Location baseSpawn;       // spawn de respawn dentro de la base
-    private Location captureZone;     // zona donde se entrega la bandera enemiga
-    private Location flagStand;       // posición original de su propia bandera
-    private Location baseCorner1;     // esquina 1 de la zona segura
-    private Location baseCorner2;     // esquina 2 de la zona segura
+    // Dos spawns de respawn dentro de la base (uno por jugador)
+    private Location baseSpawn1;
+    private Location baseSpawn2;
+
+    // Índice rotativo: alterna qué spawn usar para el próximo respawn.
+    // 0 = próximo usa spawn1, 1 = próximo usa spawn2.
+    // Se avanza cada vez que se teleporta a un jugador en teleportToBase.
+    private int spawnIndex = 0;
+
+    private Location captureZone;
+    private Location flagStand;
+    private Location baseCorner1;
+    private Location baseCorner2;
 
     public TeamHeistData(EventTeam team) {
         this.team = team;
@@ -34,12 +34,49 @@ public class TeamHeistData {
     public void addPoints(int points) { localPoints += points; }
     public int  getPoints()           { return localPoints; }
 
-    // ── Getters / Setters ─────────────────────────────────────────────────────
+    // ── Spawns de base ────────────────────────────────────────────────────────
+
+    public Location getBaseSpawn1() { return baseSpawn1; }
+    public void setBaseSpawn1(Location l) { this.baseSpawn1 = l; }
+
+    public Location getBaseSpawn2() { return baseSpawn2; }
+    public void setBaseSpawn2(Location l) { this.baseSpawn2 = l; }
+
+    /**
+     * Devuelve el spawn para el índice dado (1 o 2).
+     * Si el spawn pedido es null, devuelve el otro como fallback.
+     */
+    public Location getBaseSpawnFor(int index) {
+        if (index == 2) {
+            return baseSpawn2 != null ? baseSpawn2 : baseSpawn1;
+        }
+        return baseSpawn1 != null ? baseSpawn1 : baseSpawn2;
+    }
+
+    /**
+     * Devuelve el siguiente spawn disponible para un respawn,
+     * alternando entre spawn1 y spawn2.
+     * Si solo hay uno configurado, siempre devuelve ese.
+     */
+    public Location getNextRespawnSpawn() {
+        if (baseSpawn1 == null) return baseSpawn2;
+        if (baseSpawn2 == null) return baseSpawn1;
+        Location result = (spawnIndex % 2 == 0) ? baseSpawn1 : baseSpawn2;
+        spawnIndex++;
+        return result;
+    }
+
+    /**
+     * Devuelve cualquier spawn disponible (para eventos como onRespawn
+     * donde no queremos avanzar el índice).
+     */
+    public Location getAnyBaseSpawn() {
+        return baseSpawn1 != null ? baseSpawn1 : baseSpawn2;
+    }
+
+    // ── Resto de getters/setters ──────────────────────────────────────────────
 
     public EventTeam getTeam()       { return team; }
-
-    public Location getBaseSpawn()   { return baseSpawn; }
-    public void setBaseSpawn(Location l) { this.baseSpawn = l; }
 
     public Location getCaptureZone() { return captureZone; }
     public void setCaptureZone(Location l) { this.captureZone = l; }
@@ -53,10 +90,8 @@ public class TeamHeistData {
     public Location getBaseCorner2() { return baseCorner2; }
     public void setBaseCorner2(Location l) { this.baseCorner2 = l; }
 
-    /**
-     * Verifica si una ubicación está dentro de la zona segura de esta base.
-     * Usa un cubo definido por corner1 y corner2.
-     */
+    // ── Verificaciones de zona ────────────────────────────────────────────────
+
     public boolean isInsideBase(Location loc) {
         if (baseCorner1 == null || baseCorner2 == null) return false;
         if (!loc.getWorld().getName().equals(baseCorner1.getWorld().getName())) return false;
@@ -74,26 +109,21 @@ public class TeamHeistData {
                 && z >= minZ && z <= maxZ;
     }
 
-    /**
-     * Verifica si una ubicación está dentro del radio de la zona de captura (3 bloques).
-     */
     public boolean isInsideCaptureZone(Location loc) {
         if (captureZone == null) return false;
         if (!loc.getWorld().getName().equals(captureZone.getWorld().getName())) return false;
-        return loc.distanceSquared(captureZone) <= 9; // radio 3
+        return loc.distanceSquared(captureZone) <= 9;
     }
 
-    /**
-     * Verifica si una ubicación está cerca del stand de la bandera (radio 2).
-     */
     public boolean isNearFlagStand(Location loc) {
         if (flagStand == null) return false;
         if (!loc.getWorld().getName().equals(flagStand.getWorld().getName())) return false;
-        return loc.distanceSquared(flagStand) <= 4; // radio 2
+        return loc.distanceSquared(flagStand) <= 4;
     }
 
     public boolean hasFullConfig() {
-        return baseSpawn != null && captureZone != null
-                && flagStand != null && baseCorner1 != null && baseCorner2 != null;
+        return baseSpawn1 != null && baseSpawn2 != null
+                && captureZone != null && flagStand != null
+                && baseCorner1 != null && baseCorner2 != null;
     }
 }

@@ -7,38 +7,6 @@ import org.falmdev.anieventmanager.Anieventmanager;
 
 import java.util.List;
 
-/**
- * Maneja todos los subcomandos de /em tntrun.
- *
- * ── Configuración de spawn/mundo ───────────────────────────────────────────────
- *   /em tntrun setworld
- *   /em tntrun setlobby
- *   /em tntrun setspectator
- *   /em tntrun setcenter
- *   /em tntrun addspawn
- *   /em tntrun clearspawns
- *
- * ── Configuración de arena ─────────────────────────────────────────────────────
- *   /em tntrun setsize <n>
- *   /em tntrun setshape <square|circle>
- *   /em tntrun setlayers <n>
- *   /em tntrun setlayergap <n>
- *   /em tntrun setdomeheight <n>
- *   /em tntrun generate
- *   /em tntrun clear
- *
- * ── Configuración de juego ─────────────────────────────────────────────────────
- *   /em tntrun setdelay <ticks>
- *   /em tntrun setscore <lugar> <pts>
- *   /em tntrun setjump <on|off>
- *   /em tntrun setjumpcooldown <segundos>
- *   /em tntrun settings
- *
- * ── Control del juego ──────────────────────────────────────────────────────────
- *   /em tntrun lobby
- *   /em tntrun start
- *   /em tntrun stop
- */
 public class TNTRunCommand {
 
     private final Anieventmanager plugin;
@@ -53,8 +21,6 @@ public class TNTRunCommand {
         if (args.length == 0) { sendHelp(player); return; }
 
         switch (args[0].toLowerCase()) {
-
-            // ── Spawn / mundo ──────────────────────────────────────────────────
 
             case "setworld" -> {
                 String worldName = player.getWorld().getName();
@@ -88,7 +54,6 @@ public class TNTRunCommand {
                 ok(player, "Todos los spawns de jugadores eliminados.");
             }
 
-            // ── Configuración de arena ─────────────────────────────────────────
 
             case "setsize" -> {
                 if (args.length < 2) { err(player, "Uso: /em tntrun setsize <bloques>  (mínimo 10)"); return; }
@@ -174,8 +139,6 @@ public class TNTRunCommand {
                 ok(player, "Arena eliminada correctamente.");
             }
 
-            // ── Configuración de juego ─────────────────────────────────────────
-
             case "setdelay" -> {
                 if (args.length < 2) { err(player, "Uso: /em tntrun setdelay <ticks>  (20 ticks = 1s)"); return; }
                 try {
@@ -230,8 +193,6 @@ public class TNTRunCommand {
 
             case "settings" -> printSettings(player);
 
-            // ── Control del juego ──────────────────────────────────────────────
-
             case "lobby" -> {
                 if (isGameActive()) {
                     err(player, "Hay una partida en curso. Usa /em tntrun stop primero.");
@@ -264,8 +225,6 @@ public class TNTRunCommand {
         }
     }
 
-    // ── Tab completion ─────────────────────────────────────────────────────────
-
     public List<String> tabComplete(String[] args) {
         if (args.length == 1) {
             return filter(List.of(
@@ -280,14 +239,12 @@ public class TNTRunCommand {
 
         return switch (args[0].toLowerCase()) {
 
-            // ── Valores booleanos / enum ───────────────────────────────────────
             case "setshape" ->
                     args.length == 2 ? filter(List.of("square", "circle"), args[1]) : List.of();
 
             case "setjump" ->
                     args.length == 2 ? filter(List.of("on", "off"), args[1]) : List.of();
 
-            // ── Valores numéricos con sugerencias ─────────────────────────────
             case "setsize" ->
                     args.length == 2
                             ? filter(List.of("20", "30", "40", "60", "80", "100"), args[1])
@@ -333,8 +290,6 @@ public class TNTRunCommand {
         };
     }
 
-    // ── Settings ───────────────────────────────────────────────────────────────
-
     private void printSettings(Player player) {
         var cfg = miniGame.getConfig();
         player.sendMessage(Component.text("━━━ TNT Run — Configuración ━━━", NamedTextColor.GOLD));
@@ -374,8 +329,6 @@ public class TNTRunCommand {
         }
     }
 
-    // ── Ayuda ──────────────────────────────────────────────────────────────────
-
     private void sendHelp(Player player) {
         player.sendMessage(Component.text("━━━ /em tntrun ━━━", NamedTextColor.GOLD));
 
@@ -409,8 +362,6 @@ public class TNTRunCommand {
         help(player, "/em tntrun start",                   "Iniciar la partida");
         help(player, "/em tntrun stop",                    "Detener la partida");
     }
-
-    // ── Utilidades ─────────────────────────────────────────────────────────────
 
     private boolean isGameActive() {
         return miniGame.getState() == TNTRunMiniGame.State.RUNNING

@@ -386,6 +386,9 @@ public class EMCommand implements CommandExecutor, TabCompleter {
             return plugin.getBattleRoyaleCommand()
                     .tabComplete(Arrays.copyOfRange(args, 1, args.length));
 
+        if (args[0].equalsIgnoreCase("pvpfinal"))
+            return plugin.getPvpFinalCommand().tabComplete(Arrays.copyOfRange(args, 1, args.length));
+
         if (args[0].equalsIgnoreCase("interval")) {
             if (args.length == 2)
                 return filter(List.of("add", "stop", "cancel", "status"), args[1]);
@@ -402,6 +405,8 @@ public class EMCommand implements CommandExecutor, TabCompleter {
 
         if (args[0].equalsIgnoreCase("pd"))
             return plugin.getParkourDuosCommand().tabComplete(Arrays.copyOfRange(args, 1, args.length));
+
+
 
         return List.of();
     }

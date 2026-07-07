@@ -41,8 +41,6 @@ public class TNTRunMiniGame implements MiniGame {
         this.config = new TNTRunConfig(plugin);
     }
 
-    // ── Ciclo de vida ─────────────────────────────────────────────────────────
-
     public boolean sendToLobby() {
         if (config.validate() != null) return false;
 
@@ -71,11 +69,9 @@ public class TNTRunMiniGame implements MiniGame {
         List<EventTeam> teams = new ArrayList<>(plugin.getTeamManager().getAllTeams());
         if (teams.isEmpty()) return false;
 
-        // Generar arena con la configuración actual
         arena = new TNTRunArena(config.getArenaCenter(), config.buildArenaConfig());
         arena.generate();
 
-        // Teletransportar jugadores
         int spawnIndex = 0;
         for (EventTeam team : teams) {
             if (team.getOnlinePlayers().isEmpty()) continue;
@@ -94,12 +90,11 @@ public class TNTRunMiniGame implements MiniGame {
             }
         }
 
-        // Desregistrar listener anterior si por alguna razón aún existe
         if (gameListener != null) {
             org.bukkit.event.HandlerList.unregisterAll(gameListener);
             gameListener = null;
         }
-        // Registrar listener nuevo
+
         gameListener = new TNTRunListener(plugin, this);
         plugin.getServer().getPluginManager().registerEvents(gameListener, plugin);
 
@@ -112,8 +107,6 @@ public class TNTRunMiniGame implements MiniGame {
         broadcastAll(Component.text("El TNT Run fue detenido por un admin.", NamedTextColor.RED));
         finish(null);
     }
-
-    // ── Cuenta regresiva ──────────────────────────────────────────────────────
 
     private void startCountdown() {
         state = State.COUNTDOWN;
@@ -155,47 +148,22 @@ public class TNTRunMiniGame implements MiniGame {
         broadcastAll(Component.text("━━━ ¡TNT RUN COMENZÓ! ━━━", NamedTextColor.GREEN));
     }
 
-    // ── Eliminación ───────────────────────────────────────────────────────────
-
     public void eliminatePlayer(Player player) {
         if (!activePlayers.remove(player.getUniqueId())) return;
 
-        // 1. Limpiar el estado de doble salto (pone allowFlight=false, flying=false)
-        //    ANTES de cambiar el gamemode, para que el cliente no siga en estado
-        //    "volando" y atraviese el suelo del spawn espectador.
         if (gameListener != null) gameListener.clearDoubleJumpState(player);
-
         removeNightVision(player);
-
-        // 2. Fijar salud/comida antes del TP para evitar una muerte real.
-        player.setHealth(20);
-        player.setFoodLevel(20);
         player.setFireTicks(0);
 
-        // 3. Cambiar a SPECTATOR y teleportar.
+        player.setAllowFlight(true);
+        player.setFlying(true);
         player.setGameMode(GameMode.SPECTATOR);
+
         Location spectator = config.getSpectatorSpawn();
         if (spectator != null) player.teleport(spectator);
 
-        // 4. Restaurar allowFlight=true DESPUÉS del gamemode SPECTATOR.
-        //    clearDoubleJumpState lo puso en false (necesario para evitar el bug
-        //    de atravesar el suelo), pero SPECTATOR requiere allowFlight=true
-        //    para que el jugador pueda volar con la tecla de espacio.
-        //    En SURVIVAL esto quedaría en false correctamente, pero en SPECTATOR
-        //    Bukkit no lo activa automáticamente si fue desactivado manualmente.
-        player.setAllowFlight(true);
-
-        applyNightVision(player);
         player.sendMessage(Component.text("Caíste. Ahora eres espectador.", NamedTextColor.RED));
 
-        aliveTeams.removeIf(t -> {
-            boolean hasNoActivePlayers = t.getOnlinePlayers().stream()
-                    .noneMatch(p -> activePlayers.contains(p.getUniqueId()));
-            if (hasNoActivePlayers && !elimination.contains(t)) {
-                elimination.add(0, t);
-            }
-            return hasNoActivePlayers;
-        });
 
         Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeamOf(player);
         if (teamOpt.isEmpty()) { checkWinCondition(); return; }
@@ -236,14 +204,13 @@ public class TNTRunMiniGame implements MiniGame {
         }
     }
 
-    // ── Fin del juego ─────────────────────────────────────────────────────────
 
     private void finish(EventTeam winner) {
         cancelTasks();
         state = State.FINISHED;
 
         if (gameListener != null) {
-            gameListener.stopTick();  // stopTick() también hace unregisterAll
+            gameListener.stopTick();
             gameListener = null;
         }
         gameStartTime = 0;
@@ -274,19 +241,94 @@ public class TNTRunMiniGame implements MiniGame {
                     .append(Component.text(team.getDisplayName(), team.getColor())));
         }
 
+        final EventTeam winnerFinal = winner;
+        final BukkitTask[] fireworkTask = { null };
+
+        if (winnerFinal != null) {
+            org.bukkit.Color teamColor =
+                    org.falmdev.anieventmanager.utils.TeamColorUtil.toArmorColor(winnerFinal.getColor());
+
+            scheduleFireworkSalvo(winnerFinal, teamColor, fireworkTask, 10L);
+        }
+
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (fireworkTask[0] != null && !fireworkTask[0].isCancelled()) {
+                fireworkTask[0].cancel();
+            }
             if (arena != null) arena.restore();
             returnToMainLobby();
             state = State.IDLE;
-        }, config.getEndDelayTicks());
+        }, 30 * 20L); // 30 segundos fijos de end delay
+    }
+
+    private void scheduleFireworkSalvo(EventTeam winner,
+                                       org.bukkit.Color teamColor,
+                                       BukkitTask[] taskHolder,
+                                       long delayTicks) {
+        taskHolder[0] = Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            List<org.bukkit.entity.Player> members = winner.getOnlinePlayers();
+            if (members.isEmpty()) return;
+
+            int count = 3 + (int) (Math.random() * 2); // 3 o 4
+            for (int i = 0; i < count; i++) {
+
+                org.bukkit.entity.Player target = members.get((int) (Math.random() * members.size()));
+                if (target.isOnline()) {
+                    spawnWinnerFirework(target, teamColor);
+                }
+            }
+
+            long nextDelay = (100L + (long) (Math.random() * 100L)); // 5-10s
+            scheduleFireworkSalvo(winner, teamColor, taskHolder, nextDelay);
+
+        }, delayTicks);
+    }
+
+    private void spawnWinnerFirework(org.bukkit.entity.Player player, org.bukkit.Color teamColor) {
+        double offsetX = (Math.random() - 0.5) * 3.0;
+        double offsetZ = (Math.random() - 0.5) * 3.0;
+
+        org.bukkit.Location spawnLoc = player.getLocation().add(offsetX, 0, offsetZ);
+
+        org.bukkit.entity.Firework fw = player.getWorld().spawn(spawnLoc, org.bukkit.entity.Firework.class);
+
+        org.bukkit.FireworkEffect.Type type = switch ((int) (Math.random() * 3)) {
+            case 0  -> org.bukkit.FireworkEffect.Type.STAR;
+            case 1  -> org.bukkit.FireworkEffect.Type.BURST;
+            default -> org.bukkit.FireworkEffect.Type.BALL_LARGE;
+        };
+
+        org.bukkit.Color fadeColor = org.bukkit.Color.fromRGB(
+                Math.min(255, teamColor.getRed()   + 80),
+                Math.min(255, teamColor.getGreen() + 80),
+                Math.min(255, teamColor.getBlue()  + 80)
+        );
+
+        org.bukkit.FireworkEffect effect = org.bukkit.FireworkEffect.builder()
+                .with(type)
+                .withColor(teamColor, teamColor)
+                .withFade(fadeColor)
+                .trail(true)
+                .flicker(Math.random() < 0.5)
+                .build();
+
+        org.bukkit.inventory.meta.FireworkMeta meta =
+                (org.bukkit.inventory.meta.FireworkMeta) fw.getFireworkMeta();
+        meta.addEffect(effect);
+        meta.setPower(2);
+        fw.setFireworkMeta(meta);
+    }
+
+    public boolean isBelowArena(Player player) {
+        if (arena == null) return false;
+        int minY = arena.getCenter().getBlockY() - 15;
+        return player.getLocation().getY() < minY;
     }
 
     private void returnToMainLobby() {
         Location lobby = config.getLobbySpawn();
         if (lobby == null) return;
         Bukkit.getOnlinePlayers().forEach(p -> {
-            // Restaurar allowFlight antes de cambiar a ADVENTURE para que
-            // jugadores que estaban en SPECTATOR no queden con vuelo bloqueado
             p.setAllowFlight(false);
             p.setFlying(false);
             p.setGameMode(GameMode.ADVENTURE);
@@ -296,8 +338,6 @@ public class TNTRunMiniGame implements MiniGame {
         activePlayers.clear();
         aliveTeams.clear();
     }
-
-    // ── Visión nocturna ───────────────────────────────────────────────────────
 
     private void applyNightVision(Player player) {
         player.addPotionEffect(new PotionEffect(
@@ -311,53 +351,35 @@ public class TNTRunMiniGame implements MiniGame {
         player.removePotionEffect(PotionEffectType.NIGHT_VISION);
     }
 
-    // ── API de piso para placeholders ─────────────────────────────────────────
-
-    /**
-     * Devuelve el índice (1-based) de la capa de SAND más cercana por debajo
-     * del jugador, o -1 si no hay arena activa.
-     * Capa 1 = la más alta (donde el jugador empieza).
-     */
     public int getPlayerFloor(Player player) {
         if (arena == null || !isStrictlyRunning()) return -1;
-        int py = player.getLocation().getBlockY() - 1; // Y del bloque bajo los pies
+        int py = player.getLocation().getBlockY() - 1;
         int baseY = arena.getCenter().getBlockY();
         TNTRunArena.ArenaConfig cfg = arena.getArenaConfig();
 
-        // Buscar la capa más cercana por debajo
         for (int i = cfg.layerCount() - 1; i >= 0; i--) {
-            int layerSandY = baseY + 10 + i * (2 + cfg.layerGap()) + 1; // Y del SAND de la capa i
+            int layerSandY = baseY + 10 + i * (2 + cfg.layerGap()) + 1;
             if (py >= layerSandY - 2) {
-                return cfg.layerCount() - i; // invertido: capa 1 = más alta
+                return cfg.layerCount() - i;
             }
         }
-        return cfg.layerCount(); // está por debajo de todas las capas
+        return cfg.layerCount();
     }
 
-    /**
-     * Devuelve el total de capas configuradas.
-     */
     public int getTotalFloors() {
         if (arena == null) return 0;
         return arena.getArenaConfig().layerCount();
     }
 
-    /**
-     * Devuelve el Y exacto de la capa SAND del piso indicado (1-based).
-     */
     private int getFloorSandY(int floorIndex) {
         if (arena == null) return -1;
         int baseY = arena.getCenter().getBlockY();
         TNTRunArena.ArenaConfig cfg = arena.getArenaConfig();
-        // floorIndex 1 = capa más alta = layerCount-1 en índice 0-based
         int layerIdx = cfg.layerCount() - floorIndex;
         if (layerIdx < 0 || layerIdx >= cfg.layerCount()) return -1;
         return baseY + 10 + layerIdx * (2 + cfg.layerGap()) + 1;
     }
 
-    /**
-     * Cuenta cuántos bloques SAND quedan en el piso indicado (1-based).
-     */
     public int getSandCountOnFloor(int floorIndex) {
         if (arena == null || !isStrictlyRunning()) return 0;
         int targetY = getFloorSandY(floorIndex);
@@ -371,10 +393,6 @@ public class TNTRunMiniGame implements MiniGame {
         return count;
     }
 
-    /**
-     * Devuelve el total original de bloques SAND en el piso indicado (1-based).
-     * Se calcula a partir de la lista inicial de sandBlocks filtrando por Y.
-     */
     public int getTotalSandOnFloor(int floorIndex) {
         if (arena == null) return 0;
         int targetY = getFloorSandY(floorIndex);
@@ -386,9 +404,6 @@ public class TNTRunMiniGame implements MiniGame {
         return count;
     }
 
-    /**
-     * Devuelve lista de jugadores activos en el piso indicado (1-based).
-     */
     public List<Player> getPlayersOnFloor(int floorIndex) {
         if (arena == null || !isStrictlyRunning()) return List.of();
         int targetY = getFloorSandY(floorIndex);
@@ -397,7 +412,6 @@ public class TNTRunMiniGame implements MiniGame {
         for (UUID uuid : activePlayers) {
             Player p = Bukkit.getPlayer(uuid);
             if (p == null) continue;
-            // El jugador está "en" un piso si sus pies están entre layerSandY y layerSandY + layerGap + 2
             int py = p.getLocation().getBlockY() - 1;
             TNTRunArena.ArenaConfig cfg = arena.getArenaConfig();
             if (py >= targetY - 1 && py <= targetY + cfg.layerGap() + 1) {
@@ -407,12 +421,7 @@ public class TNTRunMiniGame implements MiniGame {
         return result;
     }
 
-    /**
-     * Devuelve el listener activo (para acceder a datos de cooldown).
-     */
     public TNTRunListener getGameListener() { return gameListener; }
-
-    // ── Utilidades ────────────────────────────────────────────────────────────
 
     public boolean isActivePlayer(Player player) { return activePlayers.contains(player.getUniqueId()); }
     public boolean isCountingDown() { return state == State.COUNTDOWN; }
@@ -448,25 +457,16 @@ public class TNTRunMiniGame implements MiniGame {
         if (countdownTask != null && !countdownTask.isCancelled()) countdownTask.cancel();
     }
 
-    // ── MiniGame interface ────────────────────────────────────────────────────
-
     @Override public String getId()          { return "tntrun"; }
     @Override public String getDisplayName() { return "TNT Run"; }
     @Override public String getStateName()   { return state.name(); }
     @Override public boolean isIdle()        { return state == State.IDLE; }
 
-    /**
-     * El contrato de MiniGame amplía isRunning a RUNNING o COUNTDOWN para que
-     * el MiniGameManager sepa que no debe solapar otra partida.
-     * Nota: el método de instancia existente isRunning() devolvía solo RUNNING;
-     * lo reemplazamos aquí para cumplir el contrato más amplio.
-     */
     @Override
     public boolean isRunning() {
         return state == State.RUNNING || state == State.COUNTDOWN;
     }
 
-    /** Alias de isRunning() == RUNNING estricto para uso interno del listener. */
     public boolean isStrictlyRunning() {
         return state == State.RUNNING;
     }

@@ -12,30 +12,18 @@ import org.falmdev.anieventmanager.model.EventTeam;
 
 import java.util.List;
 
-/**
- * Mecánica de "cadena" entre los dos jugadores del equipo.
- *
- * - Distancia máxima configurable.
- * - Si se separan demasiado: aplica fuerza de pull elástico hacia el compañero.
- * - Visual: partículas entre los dos jugadores (solo si están cerca).
- * - Se puede activar/desactivar globalmente en el plugin (como friendlyfire),
- *   pero en ParkourDuos siempre está activa durante la partida.
- */
 public class ChainManager {
 
     private final Anieventmanager plugin;
 
-    // Distancia a partir de la cual se aplica el pull
     private double maxDistance;
 
-    // Fuerza del pull (bloques/tick²)
     private static final double PULL_FORCE         = 0.18;
-    private static final double PULL_FORCE_STRONG  = 0.35; // si supera 1.5x la distancia máx
+    private static final double PULL_FORCE_STRONG  = 0.35;
     private static final double PARTICLE_SPACING   = 0.6;
 
     private BukkitTask tickTask;
 
-    // Estado global del sistema de cadena (activable por comando)
     private boolean chainEnabled;
 
     public ChainManager(Anieventmanager plugin, boolean chainEnabled, double maxDistance) {
@@ -44,12 +32,6 @@ public class ChainManager {
         this.maxDistance  = maxDistance;
     }
 
-    // ── Ciclo de vida ─────────────────────────────────────────────────────────
-
-    /**
-     * Inicia el tick de la cadena para los equipos dados.
-     * En ParkourDuos se llama al comenzar la partida.
-     */
     public void startForTeams(List<EventTeam> teams) {
         stopTick();
         tickTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
@@ -60,14 +42,13 @@ public class ChainManager {
                 Player p2 = members.get(1);
                 tickChain(p1, p2);
             }
-        }, 1L, 1L); // cada tick
+        }, 1L, 1L);
     }
 
     public void stopTick() {
         if (tickTask != null && !tickTask.isCancelled()) tickTask.cancel();
     }
 
-    // ── Lógica principal ──────────────────────────────────────────────────────
 
     private void tickChain(Player p1, Player p2) {
         if (!p1.isOnline() || !p2.isOnline()) return;
@@ -75,21 +56,17 @@ public class ChainManager {
 
         double dist = p1.getLocation().distance(p2.getLocation());
 
-        // Partículas de cadena (solo si están a menos de maxDistance * 1.5)
         if (dist < maxDistance * 1.5) {
             drawChainParticles(p1, p2);
         }
 
-        // No hace falta pull si están cerca
         if (dist <= maxDistance) return;
 
-        // Calcular fuerza de pull
         double force = dist > maxDistance * 1.5 ? PULL_FORCE_STRONG : PULL_FORCE;
 
         applyPull(p1, p2, force);
         applyPull(p2, p1, force);
 
-        // Avisar si se están alejando demasiado (throttle: solo cada ~1 seg = 20 ticks)
         if ((plugin.getServer().getCurrentTick() % 20) == 0) {
             Component msg = Component.text("🔗 ", NamedTextColor.GOLD)
                     .append(Component.text("¡Estás muy lejos de tu compañero!", NamedTextColor.YELLOW));
@@ -98,17 +75,12 @@ public class ChainManager {
         }
     }
 
-    /**
-     * Aplica un vector de pull hacia el objetivo.
-     * Conserva la velocidad Y del jugador (para no interrumpir saltos).
-     */
     private void applyPull(Player pulled, Player target, double force) {
         Location from = pulled.getLocation();
         Location to   = target.getLocation();
 
         Vector direction = to.toVector().subtract(from.toVector()).normalize().multiply(force);
 
-        // Preservar componente Y si el jugador está subiendo (saltando)
         Vector current = pulled.getVelocity();
         double newY    = current.getY() > 0.1 ? current.getY() * 0.9 : direction.getY();
 
@@ -119,10 +91,6 @@ public class ChainManager {
         ));
     }
 
-    /**
-     * Dibuja partículas a lo largo de la línea entre los dos jugadores.
-     * Solo visibles para ellos mismos.
-     */
     private void drawChainParticles(Player p1, Player p2) {
         Location loc1 = p1.getLocation().add(0, 1, 0);
         Location loc2 = p2.getLocation().add(0, 1, 0);
@@ -148,8 +116,6 @@ public class ChainManager {
                             org.bukkit.Color.fromRGB(180, 180, 180), 0.6f));
         }
     }
-
-    // ── Getters / Setters ─────────────────────────────────────────────────────
 
     public boolean isChainEnabled()          { return chainEnabled; }
     public void    setChainEnabled(boolean v){ this.chainEnabled = v; }

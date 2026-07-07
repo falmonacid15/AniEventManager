@@ -11,32 +11,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
-/**
- * Comandos del Parkour Duos.
- * Todos bajo /em pd <subcomando>
- *
- * Configuración:
- *   /em pd setlobby                              → Lobby general
- *   /em pd setspawn1 <equipo>                    → Spawn jugador 1 del equipo
- *   /em pd setspawn2 <equipo>                    → Spawn jugador 2 del equipo
- *   /em pd setstart <equipo>                     → Punto de inicio del equipo
- *   /em pd setfinish <equipo>                    → Punto de finalización del equipo
- *   /em pd cp add <equipo> [radio]               → Agregar checkpoint en tu posición
- *   /em pd cp remove <equipo> <índice>           → Eliminar checkpoint por índice
- *   /em pd cp list <equipo>                      → Listar checkpoints del equipo
- *   /em pd cp clear <equipo>                     → Eliminar todos los checkpoints del equipo
- *
- * Parámetros:
- *   /em pd setduration <minutos>
- *   /em pd setscore <lugar> <pts>
- *   /em pd setchain <distancia>
- *
- * Gestión:
- *   /em pd start
- *   /em pd stop
- *   /em pd lobby                                 → Teleportar a todos al lobby
- *   /em pd settings
- */
 public class ParkourDuosCommand {
 
     private final Anieventmanager     plugin;
@@ -46,8 +20,6 @@ public class ParkourDuosCommand {
         this.plugin   = plugin;
         this.miniGame = miniGame;
     }
-
-    // ── Entry point desde EMCommand ───────────────────────────────────────────
 
     public void handle(Player player, String[] args) {
         if (args.length == 0) { sendHelp(player); return; }
@@ -189,8 +161,6 @@ public class ParkourDuosCommand {
         }
     }
 
-    // ── Checkpoints ───────────────────────────────────────────────────────────
-
     private void handleCheckpoint(Player player, String[] args) {
         if (args.length == 0) { sendCpHelp(player); return; }
 
@@ -254,8 +224,6 @@ public class ParkourDuosCommand {
         }
     }
 
-    // ── Tab complete ──────────────────────────────────────────────────────────
-
     public List<String> tabComplete(String[] args) {
         if (args.length == 1)
             return filter(List.of("start", "stop", "lobby", "setlobby", "setspawn1", "setspawn2",
@@ -277,8 +245,6 @@ public class ParkourDuosCommand {
 
         return List.of();
     }
-
-    // ── Ayuda ─────────────────────────────────────────────────────────────────
 
     private void sendHelp(Player player) {
         player.sendMessage(Component.text("━━━ /em pd ━━━", NamedTextColor.GOLD));
@@ -308,7 +274,6 @@ public class ParkourDuosCommand {
         help(player, "/em pd cp clear <equipo>",       "Limpiar todos los checkpoints");
     }
 
-    // ── Utilidades ────────────────────────────────────────────────────────────
 
     private boolean teamExists(String id) {
         return plugin.getTeamManager().getTeam(id).isPresent();

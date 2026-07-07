@@ -126,12 +126,10 @@ public class LootManager {
     }
 
     private boolean isLootableContainer(Block block) {
-        // Cualquier Container del mundo cuenta. Excluimos algunos para evitar problemas:
         Material mat = block.getType();
-        // Ender chests no se pueden modificar inventario por bloque (es per-player)
-        if (mat == Material.ENDER_CHEST) return false;
-        // Shulker boxes pueden contener loot pre-puesto, evitarlos
-        if (mat.name().endsWith("SHULKER_BOX")) return false;
+        if (mat != Material.CHEST) {
+            return false;
+        }
 
         BlockState state = block.getState(false);
         return state instanceof Container;

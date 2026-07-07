@@ -9,15 +9,6 @@ import org.falmdev.anieventmanager.minigames.pvpfinal.combat.CombatListener;
 import org.falmdev.anieventmanager.minigames.pvpfinal.combat.CombatManager;
 import org.falmdev.anieventmanager.minigames.pvpfinal.kit.KitManager;
 
-/**
- * PvP Final — minijuego sorpresa al final del evento.
- *
- * No tiene "estado de partida" como otros minijuegos. Es un sistema
- * de combates puntuales lanzados por comando. La "partida" es simplemente
- * tener una arena lista y kits disponibles.
- *
- * isRunning() = true solo cuando hay un combate activo.
- */
 public class PvpFinalMiniGame implements MiniGame {
 
     private final Anieventmanager  plugin;
@@ -36,14 +27,10 @@ public class PvpFinalMiniGame implements MiniGame {
         Bukkit.getPluginManager().registerEvents(combatListener, plugin);
     }
 
-    // ── Getters ───────────────────────────────────────────────────────────────
-
     public KitManager     getKitManager()     { return kitManager; }
     public ArenaManager   getArenaManager()   { return arenaManager; }
     public CombatManager  getCombatManager()  { return combatManager; }
     public CombatListener getCombatListener() { return combatListener; }
-
-    // ── MiniGame interface ────────────────────────────────────────────────────
 
     @Override public String  getId()          { return "pvpfinal"; }
     @Override public String  getDisplayName() { return "PvP Final"; }

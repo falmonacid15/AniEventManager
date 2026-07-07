@@ -2,6 +2,8 @@ package org.falmdev.anieventmanager.minigames.battleroyale;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
+import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -19,6 +21,7 @@ import org.falmdev.anieventmanager.minigames.battleroyale.model.BRPlayer;
 import org.falmdev.anieventmanager.minigames.battleroyale.model.BRTeam;
 import org.falmdev.anieventmanager.minigames.battleroyale.zone.ZoneManager;
 
+import java.time.Duration;
 import java.util.*;
 
 public class BattleRoyaleMiniGame implements MiniGame {
@@ -148,11 +151,51 @@ public class BattleRoyaleMiniGame implements MiniGame {
             }
         }
         countdownTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            if (countdownSecs <= 0) { cancelCountdown(); transitionTo(State.DROPPING); return; }
-            if (countdownSecs <= 5 || countdownSecs % 10 == 0)
+            if (countdownSecs <= 0) {
+                showStartTitle();
+                cancelCountdown();
+                transitionTo(State.DROPPING);
+                return;
+            }
+            if (countdownSecs <= 5) {
+                showCountdownTitle(countdownSecs);
+            } else if (countdownSecs % 10 == 0) {
                 broadcast(Component.text("⏱ " + countdownSecs + "...", NamedTextColor.GOLD));
+            }
             countdownSecs--;
         }, 20L, 20L);
+    }
+
+    private void showCountdownTitle(int secs) {
+        Component main = Component.text(secs, NamedTextColor.GOLD, TextDecoration.BOLD);
+        Component sub = Component.text("Preparate...", NamedTextColor.YELLOW);
+
+        Title title = Title.title(
+                main,
+                sub,
+                Title.Times.times(Duration.ZERO, Duration.ofMillis(900), Duration.ZERO)
+        );
+
+        for (BRPlayer brp : players.values()) {
+            Player p = Bukkit.getPlayer(brp.getUuid());
+            if (p != null && p.isOnline()) p.showTitle(title);
+        }
+    }
+
+    private void showStartTitle() {
+        Component main = Component.text("Battle Royale", NamedTextColor.RED, TextDecoration.BOLD);
+        Component sub = Component.text("¡Sobrevive y sé el último en pie!", NamedTextColor.YELLOW);
+
+        Title title = Title.title(
+                main,
+                sub,
+                Title.Times.times(Duration.ofMillis(300), Duration.ofSeconds(2), Duration.ofMillis(500))
+        );
+
+        for (BRPlayer brp : players.values()) {
+            Player p = Bukkit.getPlayer(brp.getUuid());
+            if (p != null && p.isOnline()) p.showTitle(title);
+        }
     }
 
     private void startDrop() {

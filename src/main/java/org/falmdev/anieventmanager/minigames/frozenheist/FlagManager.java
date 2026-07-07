@@ -15,17 +15,7 @@ import org.falmdev.anieventmanager.utils.TeamColorUtil;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Gestiona el estado de todas las banderas en la partida.
- *
- * Estados:
- *   IN_BASE  → bandera en su stand original
- *   CARRIED  → jugador lleva la bandera
- *   DROPPED  → bandera en el suelo (item entity)
- *
- * Auto-return: si una bandera está DROPPED por más de FLAG_TIMEOUT_MS,
- * vuelve automáticamente a su base.
- */
+
 public class FlagManager {
 
     // MODIFICAR AQUI para cambiar el tiempo de auto-retorno de banderas
@@ -60,7 +50,6 @@ public class FlagManager {
 
     // ── Inicialización ────────────────────────────────────────────────────────
 
-    /** Inicializa todas las banderas en estado IN_BASE al comenzar */
     public void initAll() {
         for (String teamId : teamData.keySet()) {
             flagStates.put(teamId, FlagState.IN_BASE);

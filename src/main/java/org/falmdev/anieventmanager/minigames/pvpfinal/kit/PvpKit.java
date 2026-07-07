@@ -4,22 +4,11 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 
-/**
- * Kit de PvP — snapshot del inventario completo de un jugador.
- *
- * Almacena:
- *  - 36 slots de hotbar + inventario principal
- *  - 4 slots de armadura
- *  - 1 slot de offhand
- *
- * La serialización usa el formato nativo de Bukkit ItemStack (NBT completo),
- * preservando encantamientos, items custom, lore, durabilidad, etc.
- */
 public class PvpKit {
 
     private final String      name;
-    private final ItemStack[] contents;   // slots 0-35
-    private final ItemStack[] armor;      // helmet, chest, leggings, boots
+    private final ItemStack[] contents;
+    private final ItemStack[] armor;
     private final ItemStack   offhand;
 
     public PvpKit(String name, ItemStack[] contents, ItemStack[] armor, ItemStack offhand) {
@@ -34,9 +23,6 @@ public class PvpKit {
     public ItemStack[] getArmor()     { return armor; }
     public ItemStack getOffhand()     { return offhand; }
 
-    /**
-     * Crea un kit a partir del estado actual del inventario del jugador.
-     */
     public static PvpKit captureFrom(String name, Player player) {
         PlayerInventory inv = player.getInventory();
 
@@ -59,10 +45,6 @@ public class PvpKit {
         return new PvpKit(name, contents, armor, offhand);
     }
 
-    /**
-     * Aplica este kit al inventario del jugador.
-     * Previamente se debe vaciar el inventario (lo hace KitManager.apply).
-     */
     public void applyTo(Player player) {
         PlayerInventory inv = player.getInventory();
 
