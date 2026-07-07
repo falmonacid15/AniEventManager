@@ -67,7 +67,6 @@ public class FrozenHeistCommand {
                     player.sendMessage(Component.text("✔ Listo para iniciar.", NamedTextColor.GREEN));
             }
 
-            // /em frozenheist setbasespawn <1|2> <id-equipo>
             case "setbasespawn" -> {
                 if (args.length < 3) { err(player, "Uso: /em frozenheist setbasespawn <1|2> <id-equipo>"); return; }
                 String posArg  = args[1];
@@ -174,7 +173,7 @@ public class FrozenHeistCommand {
             }
 
             case "stop" -> {
-                if (!miniGame.isRunning()) { err(player, "No hay ninguna partida en curso."); return; }
+                if (miniGame.getState() == FrozenHeistMiniGame.State.IDLE) { err(player, "No hay ninguna partida en curso."); return; }
                 miniGame.forceStop();
                 ok(player, "Partida detenida.");
             }
@@ -182,8 +181,6 @@ public class FrozenHeistCommand {
             default -> sendHelp(player);
         }
     }
-
-    // ── Tab completion ─────────────────────────────────────────────────────────
 
     public List<String> tabComplete(String[] args) {
         if (args.length == 1)
@@ -194,28 +191,22 @@ public class FrozenHeistCommand {
         List<String> teamIds = new ArrayList<>(plugin.getTeamManager().getTeamIds());
 
         if (args.length == 2) {
-            // setbasespawn espera 1|2 en posición 2
             if (args[0].equalsIgnoreCase("setbasespawn"))
                 return filter(List.of("1", "2"), args[1]);
-            // el resto espera teamId en posición 2
             if (List.of("setcapture", "setflag", "setbase", "colorize", "teaminfo")
                     .contains(args[0].toLowerCase()))
                 return filter(teamIds, args[1]);
         }
 
         if (args.length == 3) {
-            // setbasespawn <1|2> → equipo en posición 3
             if (args[0].equalsIgnoreCase("setbasespawn"))
                 return filter(teamIds, args[2]);
-            // setbase <id> → 1|2 en posición 3
             if (args[0].equalsIgnoreCase("setbase"))
                 return filter(List.of("1", "2"), args[2]);
         }
 
         return List.of();
     }
-
-    // ── Ayuda ─────────────────────────────────────────────────────────────────
 
     private void sendHelp(Player player) {
         player.sendMessage(Component.text("━━━ /em frozenheist ━━━", NamedTextColor.AQUA));
@@ -235,13 +226,12 @@ public class FrozenHeistCommand {
         help(player, "/em frozenheist stop",                    "Detener partida");
     }
 
-    // ── Utilidades ────────────────────────────────────────────────────────────
-
     private String stateToSpanish(FrozenHeistMiniGame.State state) {
         return switch (state) {
-            case IDLE     -> "En espera";
-            case RUNNING  -> "En juego";
-            case FINISHED -> "Finalizado";
+            case IDLE      -> "En espera";
+            case COUNTDOWN -> "Iniciando";
+            case RUNNING   -> "En juego";
+            case FINISHED  -> "Finalizado";
         };
     }
 

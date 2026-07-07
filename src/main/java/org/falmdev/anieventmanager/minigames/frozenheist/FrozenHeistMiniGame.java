@@ -2,6 +2,7 @@ package org.falmdev.anieventmanager.minigames.frozenheist;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
@@ -20,7 +21,9 @@ import java.util.*;
 
 public class FrozenHeistMiniGame implements MiniGame {
 
-    public enum State { IDLE, RUNNING, FINISHED }
+    public enum State { IDLE, COUNTDOWN, RUNNING, FINISHED }
+
+    private static final int COUNTDOWN_SECONDS = 5;
 
     private final Anieventmanager plugin;
     private final FrozenHeistConfig config;
@@ -35,7 +38,9 @@ public class FrozenHeistMiniGame implements MiniGame {
 
     private BukkitTask timerTask;
     private BukkitTask scoreboardTask;
+    private BukkitTask countdownTask;
     private int timeLeftSeconds;
+    private int countdownSecondsLeft;
 
     public FrozenHeistMiniGame(Anieventmanager plugin) {
         this.plugin = plugin;
@@ -45,8 +50,6 @@ public class FrozenHeistMiniGame implements MiniGame {
     public void openAdminGUI(Player player) {
         plugin.getFrozenHeistAdminGUI().open(player);
     }
-
-    // ── MiniGame interface ────────────────────────────────────────────────────
 
     @Override public String getId()          { return "frozenheist"; }
     @Override public String getDisplayName() { return "Frozen Heist"; }
@@ -64,8 +67,6 @@ public class FrozenHeistMiniGame implements MiniGame {
     public String validateConfig() {
         return config.validate(plugin.getTeamManager().getAllTeams());
     }
-
-    // ── Inicio ────────────────────────────────────────────────────────────────
 
     @Override
     public boolean start() {
@@ -90,10 +91,6 @@ public class FrozenHeistMiniGame implements MiniGame {
         flagManager = new FlagManager(plugin, teamData);
         flagManager.initAll();
 
-        if (listener != null) org.bukkit.event.HandlerList.unregisterAll(listener);
-        listener = new FrozenHeistListener(plugin, this);
-        plugin.getServer().getPluginManager().registerEvents(listener, plugin);
-
         for (TeamHeistData data : teamData.values()) {
             List<Player> members = new ArrayList<>(data.getTeam().getOnlinePlayers());
             for (int i = 0; i < members.size(); i++) {
@@ -104,6 +101,88 @@ public class FrozenHeistMiniGame implements MiniGame {
             }
         }
 
+        beginCountdown();
+        return true;
+    }
+
+    @Override
+    public void forceStop() { finish(true); }
+
+    private void beginCountdown() {
+        state = State.COUNTDOWN;
+        lockAllMovement();
+
+        Title introTitle = Title.title(
+                Component.text("❄ Frozen Heist", NamedTextColor.AQUA, TextDecoration.BOLD),
+                Component.text("Suma todos los puntos que puedas", NamedTextColor.YELLOW),
+                Title.Times.times(Duration.ofMillis(300), Duration.ofSeconds(2), Duration.ofMillis(500))
+        );
+        showTitleToActivePlayers(introTitle);
+
+        countdownSecondsLeft = COUNTDOWN_SECONDS;
+
+        countdownTask = Bukkit.getScheduler().runTaskLater(plugin, this::runCountdownTick, 40L);
+    }
+
+    private void runCountdownTick() {
+        if (countdownSecondsLeft <= 0) {
+            unlockAllMovement();
+            actuallyStartGame();
+            return;
+        }
+
+        showCountdownNumberTitle(countdownSecondsLeft);
+        countdownSecondsLeft--;
+        countdownTask = Bukkit.getScheduler().runTaskLater(plugin, this::runCountdownTick, 20L);
+    }
+
+    private void showCountdownNumberTitle(int seconds) {
+        Title title = Title.title(
+                Component.text(seconds, NamedTextColor.AQUA, TextDecoration.BOLD),
+                Component.text("Prepárate...", NamedTextColor.YELLOW),
+                Title.Times.times(Duration.ZERO, Duration.ofMillis(900), Duration.ZERO)
+        );
+        showTitleToActivePlayers(title);
+    }
+
+    private void showTitleToActivePlayers(Title title) {
+        playerStates.keySet().stream()
+                .map(Bukkit::getPlayer)
+                .filter(Objects::nonNull)
+                .forEach(p -> p.showTitle(title));
+    }
+
+    private void lockAllMovement() {
+        playerStates.keySet().stream()
+                .map(Bukkit::getPlayer)
+                .filter(Objects::nonNull)
+                .forEach(this::applyMovementLock);
+    }
+
+    private void unlockAllMovement() {
+        playerStates.keySet().stream()
+                .map(Bukkit::getPlayer)
+                .filter(Objects::nonNull)
+                .forEach(this::removeMovementLock);
+    }
+
+    private void applyMovementLock(Player p) {
+        p.addPotionEffect(new org.bukkit.potion.PotionEffect(
+                org.bukkit.potion.PotionEffectType.SLOWNESS, Integer.MAX_VALUE, 250, false, false, false));
+        p.addPotionEffect(new org.bukkit.potion.PotionEffect(
+                org.bukkit.potion.PotionEffectType.JUMP_BOOST, Integer.MAX_VALUE, 128, false, false, false));
+    }
+
+    private void removeMovementLock(Player p) {
+        p.removePotionEffect(org.bukkit.potion.PotionEffectType.SLOWNESS);
+        p.removePotionEffect(org.bukkit.potion.PotionEffectType.JUMP_BOOST);
+    }
+
+    private void actuallyStartGame() {
+        if (listener != null) org.bukkit.event.HandlerList.unregisterAll(listener);
+        listener = new FrozenHeistListener(plugin, this);
+        plugin.getServer().getPluginManager().registerEvents(listener, plugin);
+
         state = State.RUNNING;
         timeLeftSeconds = config.getDurationMinutes() * 60;
 
@@ -113,13 +192,7 @@ public class FrozenHeistMiniGame implements MiniGame {
 
         startTimer();
         startScoreboardUpdater();
-        return true;
     }
-
-    @Override
-    public void forceStop() { finish(true); }
-
-    // ── Timer ─────────────────────────────────────────────────────────────────
 
     private void startTimer() {
         timerTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
@@ -138,8 +211,6 @@ public class FrozenHeistMiniGame implements MiniGame {
             }
         }, 20L, 20L);
     }
-
-    // ── Scoreboard updater ────────────────────────────────────────────────────
 
     private void startScoreboardUpdater() {
         scoreboardTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
@@ -176,11 +247,11 @@ public class FrozenHeistMiniGame implements MiniGame {
         }, 0L, 20L);
     }
 
-    // ── Fin ───────────────────────────────────────────────────────────────────
-
     private void finish(boolean cancelled) {
+        if (countdownTask   != null && !countdownTask.isCancelled())   countdownTask.cancel();
         if (timerTask      != null && !timerTask.isCancelled())      timerTask.cancel();
         if (scoreboardTask != null && !scoreboardTask.isCancelled()) scoreboardTask.cancel();
+        unlockAllMovement();
         if (listener != null) {
             listener.cleanup();
             org.bukkit.event.HandlerList.unregisterAll(listener);
@@ -203,6 +274,8 @@ public class FrozenHeistMiniGame implements MiniGame {
                         .append(Component.text(" — " + d.getPoints() + " pts", NamedTextColor.YELLOW)));
             }
 
+            awardGlobalPoints(ranking);
+
             if (!ranking.isEmpty()) {
                 TeamHeistData winner = ranking.get(0);
                 Title winTitle = Title.title(
@@ -217,7 +290,10 @@ public class FrozenHeistMiniGame implements MiniGame {
         playerStates.keySet().stream()
                 .map(Bukkit::getPlayer)
                 .filter(Objects::nonNull)
-                .forEach(this::cleanupPlayer);
+                .forEach(p -> {
+                    cleanupPlayer(p);
+                    teleportToGlobalSpawn(p);
+                });
 
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             teamData.clear();
@@ -226,7 +302,15 @@ public class FrozenHeistMiniGame implements MiniGame {
         }, 20L);
     }
 
-    // ── Respawn ───────────────────────────────────────────────────────────────
+    private void awardGlobalPoints(List<TeamHeistData> ranking) {
+        for (int i = 0; i < ranking.size(); i++) {
+            int placement = i + 1;
+            int points = config.getPointsForPlacement(placement);
+            if (points <= 0) continue;
+            EventTeam team = ranking.get(i).getTeam();
+            plugin.getScoreManager().addScore(team, points);
+        }
+    }
 
     public void respawn(Player player) {
         PlayerState ps = playerStates.get(player.getUniqueId());
@@ -257,7 +341,6 @@ public class FrozenHeistMiniGame implements MiniGame {
         plugin.getTeamManager().getTeamOf(player).ifPresent(team -> {
             TeamHeistData data = teamData.get(team.getId());
             if (data != null) {
-                // Usar getNextRespawnSpawn para alternar entre los dos spawns en cada muerte
                 Location spawn = data.getNextRespawnSpawn();
                 if (spawn != null) {
                     player.teleport(spawn);
@@ -270,8 +353,6 @@ public class FrozenHeistMiniGame implements MiniGame {
         player.setFoodLevel(20);
         player.setFireTicks(0);
     }
-
-    // ── Congelación ───────────────────────────────────────────────────────────
 
     public void freezePlayer(Player player) {
         PlayerState ps = playerStates.get(player.getUniqueId());
@@ -322,8 +403,6 @@ public class FrozenHeistMiniGame implements MiniGame {
                 .append(Component.text(".", NamedTextColor.GREEN)));
     }
 
-    // ── Puntos ────────────────────────────────────────────────────────────────
-
     public void addPoints(String teamId, int points, String reason) {
         TeamHeistData data = teamData.get(teamId);
         if (data == null) return;
@@ -332,8 +411,6 @@ public class FrozenHeistMiniGame implements MiniGame {
                 .append(Component.text(data.getTeam().getDisplayName(), data.getTeam().getColor()))
                 .append(Component.text("  (" + reason + ")", NamedTextColor.GRAY)));
     }
-
-    // ── Efectos ───────────────────────────────────────────────────────────────
 
     private void applyFreezeEffects(Player p) {
         p.addPotionEffect(new org.bukkit.potion.PotionEffect(
@@ -402,13 +479,13 @@ public class FrozenHeistMiniGame implements MiniGame {
         return item;
     }
 
-    /**
-     * Teleporta al jugador a su spawn asignado según su posición en la lista del equipo.
-     * El jugador en índice 0 va al spawn1, el de índice 1 va al spawn2.
-     * @param memberIndex índice del jugador dentro del equipo (0-based)
-     */
     private void teleportToBase(Player p, TeamHeistData data, int memberIndex) {
         Location spawn = data.getBaseSpawnFor(memberIndex == 1 ? 2 : 1);
+        if (spawn != null) p.teleport(spawn);
+    }
+
+    private void teleportToGlobalSpawn(Player p) {
+        Location spawn = config.getGlobalSpawn();
         if (spawn != null) p.teleport(spawn);
     }
 
@@ -433,8 +510,6 @@ public class FrozenHeistMiniGame implements MiniGame {
                         && p.getLocation().distanceSquared(center.getLocation()) <= 400)
                 .forEach(p -> p.sendMessage(msg));
     }
-
-    // ── Getters ───────────────────────────────────────────────────────────────
 
     public State getState()                         { return state; }
     public FrozenHeistConfig getConfig()            { return config; }

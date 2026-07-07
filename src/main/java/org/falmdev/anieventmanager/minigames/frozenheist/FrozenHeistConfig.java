@@ -23,8 +23,6 @@ public class FrozenHeistConfig {
 
     public void reload() { load(); }
 
-    // ── Carga y guardado ──────────────────────────────────────────────────────
-
     public void load() {
         File dir = new File(plugin.getDataFolder(), "minigames");
         dir.mkdirs();
@@ -33,7 +31,7 @@ public class FrozenHeistConfig {
             try {
                 file.createNewFile();
                 yaml = new YamlConfiguration();
-                yaml.set("settings.duration-minutes", 10);
+                writeDefaults();
                 yaml.save(file);
             } catch (IOException e) {
                 plugin.getLogger().severe("No se pudo crear frozenheist.yml: " + e.getMessage());
@@ -49,7 +47,14 @@ public class FrozenHeistConfig {
         }
     }
 
-    // ── Settings globales ─────────────────────────────────────────────────────
+    private void writeDefaults() {
+        yaml.set("settings.duration-minutes", 10);
+
+        yaml.set("points.first",  100);
+        yaml.set("points.second",  60);
+        yaml.set("points.third",   30);
+        yaml.set("points.other",   10);
+    }
 
     public int getDurationMinutes() { return yaml.getInt("settings.duration-minutes", 10); }
 
@@ -65,7 +70,25 @@ public class FrozenHeistConfig {
         save();
     }
 
-    // ── Base spawns (1 y 2 por equipo) ────────────────────────────────────────
+    public int getPointsForPlacement(int placement) {
+        return switch (placement) {
+            case 1  -> yaml.getInt("points.first", 100);
+            case 2  -> yaml.getInt("points.second", 60);
+            case 3  -> yaml.getInt("points.third", 30);
+            default -> yaml.getInt("points.other", 10);
+        };
+    }
+
+    public void setPointsForPlacement(int placement, int points) {
+        String key = switch (placement) {
+            case 1  -> "points.first";
+            case 2  -> "points.second";
+            case 3  -> "points.third";
+            default -> "points.other";
+        };
+        yaml.set(key, points);
+        save();
+    }
 
     public Location getBaseSpawn1(String teamId) {
         return readLocation("teams." + teamId + ".base-spawn-1");
@@ -84,8 +107,6 @@ public class FrozenHeistConfig {
         writeLocation("teams." + teamId + ".base-spawn-2", loc);
         save();
     }
-
-    // ── Resto de configuración por equipo ─────────────────────────────────────
 
     public Location getCaptureZone(String teamId) {
         return readLocation("teams." + teamId + ".capture-zone");
@@ -123,8 +144,6 @@ public class FrozenHeistConfig {
         save();
     }
 
-    // ── applyToTeamData ───────────────────────────────────────────────────────
-
     public void applyToTeamData(String teamId, TeamHeistData data) {
         data.setBaseSpawn1(getBaseSpawn1(teamId));
         data.setBaseSpawn2(getBaseSpawn2(teamId));
@@ -133,8 +152,6 @@ public class FrozenHeistConfig {
         data.setBaseCorner1(getBaseCorner1(teamId));
         data.setBaseCorner2(getBaseCorner2(teamId));
     }
-
-    // ── Validación ────────────────────────────────────────────────────────────
 
     public String validate(java.util.Collection<org.falmdev.anieventmanager.model.EventTeam> teams) {
         if (getGlobalSpawn() == null)
@@ -154,8 +171,6 @@ public class FrozenHeistConfig {
         }
         return null;
     }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private Location readLocation(String path) {
         if (!yaml.isConfigurationSection(path)) return null;

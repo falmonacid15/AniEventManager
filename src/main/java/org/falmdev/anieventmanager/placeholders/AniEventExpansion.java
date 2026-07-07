@@ -429,6 +429,7 @@ public class AniEventExpansion extends PlaceholderExpansion {
         if (params.equals("fh_running")) return String.valueOf(fh.isRunning());
 
         if (params.equals("fh_state")) return switch (fh.getState()) {
+            case COUNTDOWN -> "Cuenta atras";
             case IDLE     -> "En espera";
             case RUNNING  -> "En juego";
             case FINISHED -> "Finalizado";
