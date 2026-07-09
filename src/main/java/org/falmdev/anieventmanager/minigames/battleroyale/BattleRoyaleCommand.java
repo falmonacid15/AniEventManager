@@ -3,6 +3,7 @@ package org.falmdev.anieventmanager.minigames.battleroyale;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
+import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.falmdev.anieventmanager.Anieventmanager;
 import org.falmdev.anieventmanager.minigames.battleroyale.death.RespawnManager;
@@ -69,6 +70,7 @@ public class BattleRoyaleCommand {
             case "points"  -> handlePoints(player, args);
             case "respawn" -> handleRespawn(player, args);
             case "revive"  -> handleRevive(player, args);
+            case "revivemate" -> handleReviveMate(player, args);
 
             default -> sendHelp(player);
         }
@@ -289,7 +291,11 @@ public class BattleRoyaleCommand {
         }
     }
 
-    private void handleMoney(Player sender, String[] args) {
+    public void handleMoneyConsole(org.bukkit.command.CommandSender sender, String[] args) {
+        handleMoney(sender, args);
+    }
+
+    private void handleMoney(org.bukkit.command.CommandSender sender, String[] args) {
         if (args.length < 2) {
             sender.sendMessage(Component.text(
                     "Uso: /em battleroyale money [get|set|add|remove|give|top] ...",
@@ -672,9 +678,61 @@ public class BattleRoyaleCommand {
         }
     }
 
+    public void handleReviveMateConsole(CommandSender sender, String[] args) {
+        handleReviveMate(sender, args);
+    }
+
+    private void handleReviveMate(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage(Component.text(
+                    "Uso: /em battleroyale revivemate <jugador>",
+                    NamedTextColor.YELLOW));
+            return;
+        }
+
+        Player reviver = Bukkit.getPlayerExact(args[1]);
+        if (reviver == null) {
+            sender.sendMessage(Component.text("✘ Jugador no encontrado.", NamedTextColor.RED));
+            return;
+        }
+
+        var teamOpt = plugin.getTeamManager().getTeamOf(reviver);
+        if (teamOpt.isEmpty()) {
+            reviver.sendMessage(Component.text("✘ No pertenecés a ningún equipo.", NamedTextColor.RED));
+            return;
+        }
+
+        Player target = teamOpt.get().getOnlinePlayers().stream()
+                .filter(p -> !p.getUniqueId().equals(reviver.getUniqueId()))
+                .filter(p -> {
+                    var brp = game.getBRPlayer(p);
+                    return brp != null && brp.isDead();
+                })
+                .findFirst()
+                .orElse(null);
+
+        if (target == null) {
+            reviver.sendMessage(Component.text(
+                    "✘ No tenés ningún compañero muerto para revivir.", NamedTextColor.RED));
+            return;
+        }
+
+        RespawnManager.ReviveResult result = game.getRespawnManager().revivePlayer(target, reviver);
+        switch (result) {
+            case OK -> reviver.sendMessage(Component.text("✔ " + target.getName() + " ha sido revivido.",
+                    NamedTextColor.GREEN));
+            case TARGET_OFFLINE       -> reviver.sendMessage(Component.text("✘ Jugador no online.", NamedTextColor.RED));
+            case TARGET_NOT_IN_GAME   -> reviver.sendMessage(Component.text("✘ El jugador no está en la partida.", NamedTextColor.RED));
+            case TARGET_NOT_DEAD      -> reviver.sendMessage(Component.text("✘ El jugador no está muerto.", NamedTextColor.RED));
+            case NO_RESPAWN_POINTS    -> reviver.sendMessage(Component.text("✘ No hay puntos de respawn configurados.", NamedTextColor.RED));
+            case DIFFERENT_TEAM       -> reviver.sendMessage(Component.text("✘ No son del mismo equipo.", NamedTextColor.RED));
+            case SAME_PLAYER          -> reviver.sendMessage(Component.text("✘ No podés revivirte a vos mismo.", NamedTextColor.RED));
+        }
+    }
+
     public List<String> tabComplete(String[] args) {
         if (args.length == 1)
-            return filter(List.of("start","stop","status","setlobby","setcenter","arena","drop","zone","loot","money","points","respawn","revive"), args[0]);
+            return filter(List.of("start","stop","status","setlobby","setcenter","arena","drop","zone","loot","money","points","respawn","revive","revivemate"), args[0]);
         if (args.length == 2 && args[0].equalsIgnoreCase("arena"))
             return filter(List.of("pos1","pos2","setymin","setymax","info"), args[1]);
         if (args.length == 2 && args[0].equalsIgnoreCase("drop"))
@@ -690,6 +748,12 @@ public class BattleRoyaleCommand {
         if (args.length == 2 && args[0].equalsIgnoreCase("respawn"))
             return filter(List.of("add","remove","list","clear"), args[1]);
         if (args.length == 2 && args[0].equalsIgnoreCase("revive")) {
+            return Bukkit.getOnlinePlayers().stream()
+                    .map(Player::getName)
+                    .filter(s -> s.toLowerCase().startsWith(args[1].toLowerCase()))
+                    .toList();
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("revivemate")) {
             return Bukkit.getOnlinePlayers().stream()
                     .map(Player::getName)
                     .filter(s -> s.toLowerCase().startsWith(args[1].toLowerCase()))
@@ -755,6 +819,7 @@ public class BattleRoyaleCommand {
         player.sendMessage(h("respawn clear",            "Borrar todos los puntos"));
         player.sendMessage(h("revive <p>",               "Revivir compañero (mismo equipo)"));
         player.sendMessage(h("revive <p> force",         "Revivir sin validación"));
+        player.sendMessage(h("revivemate <p>",           "Revive automáticamente al compañero muerto de <p>"));
     }
 
     private Component h(String sub, String desc) {
