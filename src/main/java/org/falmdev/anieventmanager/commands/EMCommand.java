@@ -33,8 +33,7 @@ public class EMCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Solo jugadores pueden usar este comando.");
-            return true;
+            return handleConsoleCommand(sender, args);
         }
         if (!player.isOp()) {
             player.sendMessage(Component.text("No tienes permisos para usar este comando.", NamedTextColor.RED));
@@ -62,6 +61,23 @@ public class EMCommand implements CommandExecutor, TabCompleter {
             default            -> player.sendMessage(Component.text("Subcomando desconocido. Usa ", NamedTextColor.RED)
                     .append(Component.text("/em help", NamedTextColor.YELLOW)));
         }
+        return true;
+    }
+
+    private boolean handleConsoleCommand(CommandSender sender, String[] args) {
+        if (args.length >= 2 && args[0].equalsIgnoreCase("battleroyale")) {
+            if (args[1].equalsIgnoreCase("money")) {
+                plugin.getBattleRoyaleCommand()
+                        .handleMoneyConsole(sender, Arrays.copyOfRange(args, 1, args.length));
+                return true;
+            }
+            if (args[1].equalsIgnoreCase("revivemate")) {
+                plugin.getBattleRoyaleCommand()
+                        .handleReviveMateConsole(sender, Arrays.copyOfRange(args, 1, args.length));
+                return true;
+            }
+        }
+        sender.sendMessage("Solo jugadores pueden usar este comando.");
         return true;
     }
 
@@ -138,13 +154,10 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         }
     }
 
-    // ── /em team ──────────────────────────────────────────────────────────────
-
     private void handleTeam(Player player, String[] args) {
         if (args.length == 0) { sendTeamHelp(player); return; }
         switch (args[0].toLowerCase()) {
 
-            // ── Subcomandos del LOBBY ────────────────────────────────────────
             case "admin" -> plugin.getTeamAdminGUI().openList(player);
 
             case "refresh" -> {
@@ -220,7 +233,6 @@ public class EMCommand implements CommandExecutor, TabCompleter {
                         : Component.text("✘ Esa lámpara no estaba registrada.", NamedTextColor.RED));
             }
 
-            // ── Subcomandos existentes ────────────────────────────────────────
             case "create" -> {
                 if (args.length < 3) { player.sendMessage(Component.text("Uso: /em team create <id> <nombre>", NamedTextColor.YELLOW)); return; }
                 String id = args[1]; String name = joinFrom(args, 2);
@@ -290,8 +302,6 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         }
     }
 
-    // ── /em score (sin cambios) ───────────────────────────────────────────────
-
     private void handleScore(Player player, String[] args) {
         if (args.length == 0) { sendScoreHelp(player); return; }
         switch (args[0].toLowerCase()) {
@@ -335,8 +345,6 @@ public class EMCommand implements CommandExecutor, TabCompleter {
             default -> sendScoreHelp(player);
         }
     }
-
-    // ── Tab completion ─────────────────────────────────────────────────────────
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
@@ -396,12 +404,12 @@ public class EMCommand implements CommandExecutor, TabCompleter {
                 return filter(List.of("30s", "1m", "2m", "5m", "10m", "15m", "30m", "1h"), args[2]);
         }
 
-         if (args[0].equalsIgnoreCase("cinematic")) {
-             if (args.length == 2) return filter(List.of(
-                     "create", "delete", "list", "record", "stop-record", "play", "stop", "gui"), args[1]);
+        if (args[0].equalsIgnoreCase("cinematic")) {
+            if (args.length == 2) return filter(List.of(
+                    "create", "delete", "list", "record", "stop-record", "play", "stop", "gui"), args[1]);
             if (args.length == 3 && List.of("delete", "record", "play").contains(args[1].toLowerCase()))
-                 return filter(new ArrayList<>(plugin.getCinematicManager().getIds()), args[2]);
-         }
+                return filter(new ArrayList<>(plugin.getCinematicManager().getIds()), args[2]);
+        }
 
         if (args[0].equalsIgnoreCase("pd"))
             return plugin.getParkourDuosCommand().tabComplete(Arrays.copyOfRange(args, 1, args.length));
@@ -410,8 +418,6 @@ public class EMCommand implements CommandExecutor, TabCompleter {
 
         return List.of();
     }
-
-    // ── Ayuda ─────────────────────────────────────────────────────────────────
 
     private void sendHelp(Player player) {
         player.sendMessage(Component.text("━━━ AniEventManager ━━━", NamedTextColor.GOLD));
@@ -611,9 +617,6 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(help("/em cinematic gui",                   "Abre el panel de administración"));
     }
 
-    // ── Utilidades ────────────────────────────────────────────────────────────
-
-    /** Raytrace: devuelve el bloque que el jugador está mirando, max 6 bloques. */
     private Block getTargetBlock(Player player) {
         return player.getTargetBlockExact(6);
     }
