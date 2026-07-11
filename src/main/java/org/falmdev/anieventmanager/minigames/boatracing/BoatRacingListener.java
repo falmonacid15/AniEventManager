@@ -19,7 +19,6 @@ import java.util.UUID;
 
 public class BoatRacingListener implements Listener {
 
-    // ms mínimos entre dos cruces del mismo jugador (evita doble detección)
     private static final long FINISH_COOLDOWN_MS = 3000;
 
     private final Anieventmanager   plugin;
@@ -27,7 +26,6 @@ public class BoatRacingListener implements Listener {
 
     private boolean frozen = false;
 
-    // Último cruce de meta por jugador
     private final Map<UUID, Long> lastFinishCross = new HashMap<>();
 
     private BukkitTask checkpointTask;
@@ -35,7 +33,6 @@ public class BoatRacingListener implements Listener {
     private BukkitTask qualyActionBarTask;
     private BukkitTask gridActionBarTask;
 
-    // Velocidad por jugador — posición anterior para calcular m/s
     private final Map<UUID, org.bukkit.Location> lastLocations = new HashMap<>();
 
     public BoatRacingListener(Anieventmanager plugin, BoatRacingMiniGame miniGame) {
@@ -49,8 +46,6 @@ public class BoatRacingListener implements Listener {
         this.frozen = frozen;
         if (!frozen) lastFinishCross.clear();
     }
-
-    // ── Tick de checkpoints ───────────────────────────────────────────────────
 
     public void startCheckpointTick() {
         List<BoatRacingConfig.CheckpointData> checkpoints = miniGame.getConfig().getCheckpoints();
@@ -82,12 +77,6 @@ public class BoatRacingListener implements Listener {
         lastFinishCross.clear();
     }
 
-    // ── ActionBar durante la espera en parrilla ────────────────────────────────
-
-    /**
-     * Muestra la posición de parrilla mientras esperan las luces.
-     * Ej: "🏎 Posición de parrilla: #3  |  Prepárate..."
-     */
     public void startGridActionBar() {
         stopGridActionBar();
         gridActionBarTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
@@ -108,12 +97,6 @@ public class BoatRacingListener implements Listener {
             gridActionBarTask.cancel();
     }
 
-    // ── ActionBar durante la qualy ────────────────────────────────────────────
-
-    /**
-     * Muestra el cronómetro de vuelta durante la qualy.
-     * Ej: "⏱ 1:23.456  |  ¡Cruza la meta!"
-     */
     public void startQualyActionBar() {
         stopQualyActionBar();
         qualyActionBarTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
@@ -127,17 +110,21 @@ public class BoatRacingListener implements Listener {
                             NamedTextColor.GREEN));
                     return;
                 }
-                if (!rd.isQualyStarted()) {
+                if (!rd.isQualyOutLapDone()) {
                     p.sendActionBar(Component.text(
-                            "🏎 Cruza la meta para iniciar el cronómetro",
+                            "🏎 Cruza la meta para iniciar tu vuelta de preparación",
+                            NamedTextColor.YELLOW));
+                } else if (!rd.isQualyStarted()) {
+                    p.sendActionBar(Component.text(
+                            "🏎 Vuelta de preparación — cruza la meta para activar el cronómetro",
                             NamedTextColor.YELLOW));
                 } else {
                     p.sendActionBar(Component.text(
-                            "⏱ " + rd.getCurrentLapTimeFormatted() + "  |  ¡Vuelve a la meta!",
+                            "⏱ " + rd.getCurrentQualyLapTimeFormatted() + "  |  ¡Vuelve a la meta!",
                             NamedTextColor.AQUA));
                 }
             });
-        }, 0L, 4L); // cada 4 ticks = 0.2s para que el timer sea fluido
+        }, 0L, 4L);
     }
 
     public void stopQualyActionBar() {
@@ -145,12 +132,6 @@ public class BoatRacingListener implements Listener {
             qualyActionBarTask.cancel();
     }
 
-    // ── ActionBar durante la carrera ──────────────────────────────────────────
-
-    /**
-     * Muestra posición, vuelta, tiempo de vuelta y velocidad durante la carrera.
-     * Ej: "#2  |  Vuelta 2/3  |  1:23.456  |  45.2 km/h"
-     */
     public void startRaceActionBar() {
         stopRaceActionBar();
         raceActionBarTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
@@ -194,7 +175,7 @@ public class BoatRacingListener implements Listener {
                                         speed > 20 ? NamedTextColor.GREEN : NamedTextColor.YELLOW))
                 );
             });
-        }, 0L, 4L); // cada 4 ticks para velocidad fluida
+        }, 0L, 4L);
     }
 
     public void stopRaceActionBar() {
@@ -203,23 +184,14 @@ public class BoatRacingListener implements Listener {
         lastLocations.clear();
     }
 
-    // ── Cálculo de velocidad ──────────────────────────────────────────────────
-
-    /**
-     * Calcula la velocidad del jugador en km/h basándose en la distancia
-     * recorrida desde la última vez que se llamó este método.
-     * 1 bloque de Minecraft ≈ 1 metro. 4 ticks = 0.2s → x5 = bloques/s → x3.6 = km/h
-     */
     private double getSpeedKmh(Player player) {
         org.bukkit.Location current = player.getLocation();
         org.bukkit.Location last    = lastLocations.put(player.getUniqueId(), current);
         if (last == null || !last.getWorld().equals(current.getWorld())) return 0;
-        double distBlocks = last.distance(current); // bloques en 4 ticks (0.2s)
-        double blocksPerSecond = distBlocks * 5;    // × 5 para pasar a bloques/s
-        return blocksPerSecond * 3.6;               // × 3.6 para km/h
+        double distBlocks = last.distance(current);
+        double blocksPerSecond = distBlocks * 5;
+        return blocksPerSecond * 3.6;
     }
-
-    // ── Movimiento del vehículo ───────────────────────────────────────────────
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onVehicleMove(VehicleMoveEvent event) {
@@ -229,7 +201,6 @@ public class BoatRacingListener implements Listener {
         if (!(passengers.get(0) instanceof Player player)) return;
         if (!miniGame.getRacers().containsKey(player.getUniqueId())) return;
 
-        // Congelar durante la animación de luces
         if (frozen) {
             event.getVehicle().teleport(event.getFrom());
             return;
@@ -243,7 +214,6 @@ public class BoatRacingListener implements Listener {
         if (track == null || !track.hasFinishLine()) return;
         if (!track.isCrossingFinish(event.getTo())) return;
 
-        // Cooldown anti doble detección
         UUID uuid = player.getUniqueId();
         long now  = System.currentTimeMillis();
         Long last = lastFinishCross.get(uuid);
@@ -256,8 +226,6 @@ public class BoatRacingListener implements Listener {
             miniGame.onRaceCrossedFinish(uuid);
         }
     }
-
-    // ── Evitar que los jugadores se bajen del bote ────────────────────────────
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onVehicleExit(VehicleExitEvent event) {

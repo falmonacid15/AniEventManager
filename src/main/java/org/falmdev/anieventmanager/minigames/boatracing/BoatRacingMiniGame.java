@@ -46,34 +46,22 @@ public class BoatRacingMiniGame implements MiniGame {
         plugin.getBoatRacingAdminGUI().open(player);
     }
 
-    // ── MiniGame interface ────────────────────────────────────────────────────
-
     @Override public String getId()          { return "boatracing"; }
     @Override public String getDisplayName() { return "Boat Racing"; }
     @Override public String getStateName()   { return state.name(); }
     @Override public boolean isIdle()        { return state == State.IDLE; }
 
-    /**
-     * Boat Racing tiene dos fases activas: QUALY y RACE.
-     * El manager considera ambas como "en curso".
-     */
     @Override
     public boolean isRunning() {
         return state == State.RACE || state == State.QUALY || state == State.PADDOCK;
     }
 
-    /**
-     * sendToLobby en Boat Racing equivale a sendToPaddock.
-     */
+
     @Override
     public boolean sendToLobby() {
         return sendToPaddock();
     }
 
-    /**
-     * start() en Boat Racing inicia la qualy directamente desde IDLE.
-     * Si ya está en PADDOCK, usa startQualy() manualmente desde el comando.
-     */
     @Override
     public boolean start() {
         if (state == State.IDLE) {
@@ -92,8 +80,6 @@ public class BoatRacingMiniGame implements MiniGame {
     public String validateConfig() {
         return config.validate();
     }
-
-    // ── Paddock ───────────────────────────────────────────────────────────────
 
     public boolean sendToPaddock() {
         Location paddock = config.getPaddockSpawn();
@@ -121,8 +107,6 @@ public class BoatRacingMiniGame implements MiniGame {
         return true;
     }
 
-    // ── Qualy ─────────────────────────────────────────────────────────────────
-
     public boolean startQualy() {
         if (state != State.PADDOCK && state != State.IDLE) return false;
         String error = config.validate();
@@ -136,7 +120,8 @@ public class BoatRacingMiniGame implements MiniGame {
         if (listener != null) listener.setFrozen(true);
 
         broadcastAll(Component.text("━━━ VUELTA DE CLASIFICACIÓN ━━━", NamedTextColor.GOLD));
-        broadcastAll(Component.text("Cruza la meta para comenzar tu vuelta cronometrada.",
+        broadcastAll(Component.text(
+                "Cruza la meta para iniciar tu vuelta de preparación. La vuelta siguiente será la cronometrada.",
                 NamedTextColor.YELLOW));
 
         Title preTitle = Title.title(
@@ -157,7 +142,7 @@ public class BoatRacingMiniGame implements MiniGame {
                     listener.setFrozen(false);
                     listener.startQualyActionBar();
                 }
-                broadcastAll(Component.text("🚦 ¡GO! — ¡Cruza la meta para iniciar tu cronómetro!",
+                broadcastAll(Component.text("🚦 ¡GO!",
                         NamedTextColor.GREEN));
                 startQualyTimer();
             }).start();
@@ -184,19 +169,30 @@ public class BoatRacingMiniGame implements MiniGame {
         RacerData rd = racers.get(uuid);
         if (rd == null) return;
 
-        if (!rd.isQualyStarted()) {
-            rd.startQualy();
-            Player p = Bukkit.getPlayer(uuid);
-            if (p != null) p.sendMessage(Component.text(
-                    "⏱ ¡Cronómetro iniciado! Da la vuelta completa.", NamedTextColor.AQUA));
-        } else if (!rd.isQualyFinished()) {
-            rd.finishQualy();
-            Player p = Bukkit.getPlayer(uuid);
-            if (p != null) p.sendMessage(Component.text(
-                    "✔ Qualy: " + rd.getQualyTimeFormatted(), NamedTextColor.GREEN));
+        Player p = Bukkit.getPlayer(uuid);
+        RacerData.QualyCrossResult result = rd.crossQualyFinish();
 
-            boolean allDone = racers.values().stream().allMatch(RacerData::isQualyFinished);
-            if (allDone) { if (qualyTimerTask != null) qualyTimerTask.cancel(); finishQualy(); }
+        switch (result) {
+            case OUT_LAP_STARTED -> {
+                if (p != null) p.sendMessage(Component.text(
+                        "🏎 Vuelta de preparación iniciada. Completa la vuelta y cruza de nuevo para activar el cronómetro.",
+                        NamedTextColor.YELLOW));
+            }
+            case TIMED_LAP_STARTED -> {
+                if (p != null) p.sendMessage(Component.text(
+                        "⏱ ¡Cronómetro iniciado! Da tu vuelta cronometrada.", NamedTextColor.AQUA));
+            }
+            case FINISHED -> {
+                if (p != null) {
+                    p.sendMessage(Component.text(
+                            "✔ Qualy: " + rd.getQualyTimeFormatted(), NamedTextColor.GREEN));
+                    sendFinishedQualyRacerToPaddock(p);
+                }
+
+                boolean allDone = racers.values().stream().allMatch(RacerData::isQualyFinished);
+                if (allDone) { if (qualyTimerTask != null) qualyTimerTask.cancel(); finishQualy(); }
+            }
+            case IGNORED -> {}
         }
     }
 
@@ -232,8 +228,6 @@ public class BoatRacingMiniGame implements MiniGame {
                 .map(Bukkit::getPlayer).filter(Objects::nonNull)
                 .forEach(p -> p.teleport(paddock));
     }
-
-    // ── Carrera ───────────────────────────────────────────────────────────────
 
     public boolean startRace() {
         if (state != State.PADDOCK) return false;
@@ -314,7 +308,7 @@ public class BoatRacingMiniGame implements MiniGame {
             if (raceFinishCount >= racers.size()) finishRace();
         } else {
             if (p != null) p.sendMessage(Component.text(
-                    "✔ Vuelta " + (rd.getCurrentLap() - 1) + "/" + config.getTotalLaps()
+                    "✔ Vuelta " + (rd.getCurrentLap()) + "/" + config.getTotalLaps()
                             + "  " + RacerData.formatTime(rd.getLastLapTimeMs()), NamedTextColor.AQUA));
         }
     }
@@ -323,10 +317,36 @@ public class BoatRacingMiniGame implements MiniGame {
         Location paddock = config.getPaddockSpawn();
         if (paddock == null) return;
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            RacerData rd = racers.get(p.getUniqueId());
+            if (rd != null && rd.getBoat() != null) {
+                Boat boat = rd.getBoat();
+                boats.remove(boat);
+                if (!boat.isDead()) boat.remove();
+                rd.setBoat(null);
+            }
             p.setGameMode(GameMode.SPECTATOR);
             p.teleport(paddock);
             p.sendMessage(Component.text(
                     "Serás espectador hasta que termine la carrera.", NamedTextColor.GRAY));
+        }, 60L);
+    }
+
+    private void sendFinishedQualyRacerToPaddock(Player p) {
+        Location paddock = config.getPaddockSpawn();
+        if (paddock == null) return;
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (state != State.QUALY) return;
+            RacerData rd = racers.get(p.getUniqueId());
+            if (rd != null && rd.getBoat() != null) {
+                Boat boat = rd.getBoat();
+                boats.remove(boat);
+                if (!boat.isDead()) boat.remove();
+                rd.setBoat(null);
+            }
+            p.setGameMode(GameMode.SPECTATOR);
+            p.teleport(paddock);
+            p.sendMessage(Component.text(
+                    "Serás espectador hasta que termine la qualy.", NamedTextColor.GRAY));
         }, 60L);
     }
 

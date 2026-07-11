@@ -24,6 +24,10 @@ public class RacerData {
     private long    qualyStartMs   = 0;
     private long    qualyTimeMs    = 0;   // 0 = no terminó (DNF)
     private int     qualyPosition  = 0;   // posición en parrilla
+    public enum QualyCrossResult { OUT_LAP_STARTED, TIMED_LAP_STARTED, FINISHED, IGNORED }
+    private boolean qualyOutLapDone = false;
+
+
 
     // ── Carrera ───────────────────────────────────────────────────────────────
     private int     currentLap     = 0;
@@ -44,17 +48,27 @@ public class RacerData {
 
     // ── Qualy ─────────────────────────────────────────────────────────────────
 
-    /** Primera vez que cruza la meta → empieza el cronómetro */
-    public void startQualy() {
-        qualyStarted = true;
-        qualyStartMs = System.currentTimeMillis();
-    }
-
-    /** Segunda vez que cruza la meta → fin de qualy */
-    public void finishQualy() {
-        if (!qualyStarted || qualyFinished) return;
+    public QualyCrossResult crossQualyFinish() {
+        if (qualyFinished) return QualyCrossResult.IGNORED;
+        if (!qualyOutLapDone) {
+            qualyOutLapDone = true;
+            return QualyCrossResult.OUT_LAP_STARTED;
+        }
+        if (!qualyStarted) {
+            qualyStarted = true;
+            qualyStartMs = System.currentTimeMillis();
+            return QualyCrossResult.TIMED_LAP_STARTED;
+        }
         qualyFinished = true;
         qualyTimeMs   = System.currentTimeMillis() - qualyStartMs;
+        return QualyCrossResult.FINISHED;
+    }
+
+    public boolean isQualyOutLapDone() { return qualyOutLapDone; }
+
+    public String getCurrentQualyLapTimeFormatted() {
+        if (!qualyStarted || qualyFinished) return "--:--.---";
+        return formatTime(System.currentTimeMillis() - qualyStartMs);
     }
 
     // ── Carrera ───────────────────────────────────────────────────────────────
