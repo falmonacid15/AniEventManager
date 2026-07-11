@@ -10,6 +10,7 @@ import org.falmdev.anieventmanager.Anieventmanager;
 import org.falmdev.anieventmanager.model.EventTeam;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -18,18 +19,22 @@ public class CheckpointManager {
     private final Anieventmanager     plugin;
     private final ParkourDuosMiniGame miniGame;
     private final ParkourDuosConfig   config;
+    private final ParkourCheckpointHologramManager hologramManager;
 
     private BukkitTask tickTask;
+    private final Map<String, ParkourCheckpoint> lastHologramCheckpoint = new HashMap<>();
 
     private static final Particle CHECKPOINT_PARTICLE = Particle.HAPPY_VILLAGER;
     private static final Particle FINISH_PARTICLE     = Particle.FIREWORK;
     private static final double   PARTICLE_RADIUS     = 0.8;
     private static final int      PARTICLE_POINTS     = 12;
+    private static final double   PARTICLE_COLUMN_HEIGHT = 1.0;
 
     public CheckpointManager(Anieventmanager plugin, ParkourDuosMiniGame miniGame) {
         this.plugin   = plugin;
         this.miniGame = miniGame;
         this.config   = miniGame.getConfig();
+        this.hologramManager = new ParkourCheckpointHologramManager(plugin);
     }
 
     public void start() {
@@ -38,6 +43,8 @@ public class CheckpointManager {
 
     public void stop() {
         if (tickTask != null && !tickTask.isCancelled()) tickTask.cancel();
+        hologramManager.hideAll();
+        lastHologramCheckpoint.clear();
     }
 
     private void tick() {
@@ -52,6 +59,16 @@ public class CheckpointManager {
             if (members.isEmpty()) continue;
 
             ParkourCheckpoint active = data.getActiveCheckpoint();
+
+            if (active != null) {
+                if (lastHologramCheckpoint.get(team.getId()) != active) {
+                    hologramManager.show(team.getId(), active.getCenter(),
+                            data.getCompletedCheckpoints() + 1, data.getTotalCheckpoints());
+                    lastHologramCheckpoint.put(team.getId(), active);
+                }
+            } else if (lastHologramCheckpoint.remove(team.getId()) != null) {
+                hologramManager.hide(team.getId());
+            }
 
             int inside = 0;
             if (active != null) {
@@ -113,7 +130,7 @@ public class CheckpointManager {
                 p.spawnParticle(CHECKPOINT_PARTICLE, particleLoc, 1, 0, 0, 0, 0);
             }
         }
-        for (double dy = 0; dy <= 2.0; dy += 0.5) {
+        for (double dy = 0; dy <= PARTICLE_COLUMN_HEIGHT; dy += 0.5) {
             Location top = center.clone().add(0, dy, 0);
             for (Player p : receivers) {
                 p.spawnParticle(CHECKPOINT_PARTICLE, top, 1, 0.2, 0, 0.2, 0);
