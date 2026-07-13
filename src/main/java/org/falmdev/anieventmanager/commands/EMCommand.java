@@ -17,10 +17,7 @@ import org.falmdev.anieventmanager.cinematics.model.Cinematic;
 import org.falmdev.anieventmanager.model.EventTeam;
 import org.falmdev.anieventmanager.utils.interval.IntervalManager;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class EMCommand implements CommandExecutor, TabCompleter {
 
@@ -406,9 +403,14 @@ public class EMCommand implements CommandExecutor, TabCompleter {
 
         if (args[0].equalsIgnoreCase("cinematic")) {
             if (args.length == 2) return filter(List.of(
-                    "create", "delete", "list", "record", "stop-record", "play", "stop", "gui"), args[1]);
+                    "create", "delete", "list", "record", "stop-record", "play", "stop", "gui", "spectator"), args[1]);
             if (args.length == 3 && List.of("delete", "record", "play").contains(args[1].toLowerCase()))
                 return filter(new ArrayList<>(plugin.getCinematicManager().getIds()), args[2]);
+            if (args.length == 3 && args[1].equalsIgnoreCase("spectator"))
+                return filter(List.of("add", "remove", "list"), args[2]);
+            if (args.length == 4 && args[1].equalsIgnoreCase("spectator")
+                    && List.of("add", "remove").contains(args[2].toLowerCase()))
+                return filter(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList(), args[3]);
         }
 
         if (args[0].equalsIgnoreCase("pd"))
@@ -601,7 +603,74 @@ public class EMCommand implements CommandExecutor, TabCompleter {
 
             case "gui" -> plugin.getCinematicAdminGUI().openList(player);
 
+            case "spectator" -> handleCinematicSpectator(player, Arrays.copyOfRange(args, 1, args.length));
+
             default -> sendCinematicHelp(player);
+        }
+    }
+
+    private void handleCinematicSpectator(Player player, String[] args) {
+        if (args.length == 0) {
+            player.sendMessage(Component.text(
+                    "Uso: /em cinematic spectator <add|remove|list> [jugador]", NamedTextColor.YELLOW));
+            return;
+        }
+
+        switch (args[0].toLowerCase()) {
+            case "add" -> {
+                if (args.length < 2) {
+                    player.sendMessage(Component.text("Uso: /em cinematic spectator add <jugador>", NamedTextColor.YELLOW));
+                    return;
+                }
+                Player target = Bukkit.getPlayerExact(args[1]);
+                if (target == null) {
+                    player.sendMessage(Component.text("El jugador '", NamedTextColor.RED)
+                            .append(Component.text(args[1], NamedTextColor.YELLOW))
+                            .append(Component.text("' no esta online.", NamedTextColor.RED)));
+                    return;
+                }
+                boolean ok = plugin.getCinematicManager().getSpectators().add(target);
+                player.sendMessage(ok
+                        ? Component.text("✔ ", NamedTextColor.GREEN)
+                          .append(Component.text(target.getName(), NamedTextColor.WHITE))
+                          .append(Component.text(" agregado como espectador de cinematicas.", NamedTextColor.GREEN))
+                        : Component.text(target.getName() + " ya era espectador.", NamedTextColor.YELLOW));
+            }
+            case "remove" -> {
+                if (args.length < 2) {
+                    player.sendMessage(Component.text("Uso: /em cinematic spectator remove <jugador>", NamedTextColor.YELLOW));
+                    return;
+                }
+                Player target = Bukkit.getPlayerExact(args[1]);
+                if (target == null) {
+                    player.sendMessage(Component.text("El jugador '", NamedTextColor.RED)
+                            .append(Component.text(args[1], NamedTextColor.YELLOW))
+                            .append(Component.text("' no esta online.", NamedTextColor.RED)));
+                    return;
+                }
+                boolean ok = plugin.getCinematicManager().getSpectators().remove(target);
+                player.sendMessage(ok
+                        ? Component.text("✔ ", NamedTextColor.GREEN)
+                          .append(Component.text(target.getName(), NamedTextColor.WHITE))
+                          .append(Component.text(" removido de espectadores.", NamedTextColor.GREEN))
+                        : Component.text(target.getName() + " no era espectador.", NamedTextColor.RED));
+            }
+            case "list" -> {
+                var ids = plugin.getCinematicManager().getSpectators().getAll();
+                if (ids.isEmpty()) {
+                    player.sendMessage(Component.text("No hay espectadores extra.", NamedTextColor.GRAY));
+                    return;
+                }
+                player.sendMessage(Component.text("━━━ Espectadores extra (" + ids.size() + ") ━━━", NamedTextColor.GOLD));
+                for (UUID id : ids) {
+                    Player p = Bukkit.getPlayer(id);
+                    String name = p != null ? p.getName() : id.toString();
+                    player.sendMessage(Component.text("  " + name,
+                            p != null && p.isOnline() ? NamedTextColor.WHITE : NamedTextColor.DARK_GRAY));
+                }
+            }
+            default -> player.sendMessage(Component.text(
+                    "Uso: /em cinematic spectator <add|remove|list> [jugador]", NamedTextColor.YELLOW));
         }
     }
 
@@ -615,6 +684,9 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(help("/em cinematic play <id>",             "Reproduce una cinematica (debug)"));
         player.sendMessage(help("/em cinematic stop",                  "Detiene la reproducción"));
         player.sendMessage(help("/em cinematic gui",                   "Abre el panel de administración"));
+        player.sendMessage(help("/em cinematic spectator add <jugador>",    "Agrega espectador extra"));
+        player.sendMessage(help("/em cinematic spectator remove <jugador>", "Quita espectador extra"));
+        player.sendMessage(help("/em cinematic spectator list",             "Lista espectadores extra"));
     }
 
     private Block getTargetBlock(Player player) {
