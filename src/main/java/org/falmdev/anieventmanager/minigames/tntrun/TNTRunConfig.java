@@ -191,12 +191,12 @@ public class TNTRunConfig {
         save();
     }
 
-    public int getDoubleJumpCooldown() {
-        return yaml.getInt("settings.double-jump-cooldown", 5);
+    public int getDoubleJumpMaxUses() {
+        return yaml.getInt("settings.double-jump-max-uses", 5);
     }
 
-    public void setDoubleJumpCooldown(int seconds) {
-        yaml.set("settings.double-jump-cooldown", Math.max(0, seconds));
+    public void setDoubleJumpMaxUses(int uses) {
+        yaml.set("settings.double-jump-max-uses", Math.max(0, uses));
         save();
     }
 

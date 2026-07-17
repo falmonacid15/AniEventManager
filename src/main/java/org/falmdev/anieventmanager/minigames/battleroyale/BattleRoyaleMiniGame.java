@@ -11,6 +11,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
 import org.falmdev.anieventmanager.managers.MiniGame;
+import org.falmdev.anieventmanager.minigames.battleroyale.drop.DropListener;
 import org.falmdev.anieventmanager.minigames.battleroyale.drop.DropSystem;
 import org.falmdev.anieventmanager.minigames.battleroyale.loot.LootManager;
 import org.falmdev.anieventmanager.minigames.battleroyale.loot.LootListener;
@@ -34,6 +35,7 @@ public class BattleRoyaleMiniGame implements MiniGame {
     private final Anieventmanager    plugin;
     private final BattleRoyaleConfig config;
     private final DropSystem         dropSystem;
+    private final DropListener       dropListener;
     private final ZoneManager        zoneManager;
     private final LootManager        lootManager;
     private final LootListener       lootListener;
@@ -54,6 +56,7 @@ public class BattleRoyaleMiniGame implements MiniGame {
         this.plugin      = plugin;
         this.config      = new BattleRoyaleConfig(plugin);
         this.dropSystem  = new DropSystem(plugin, config);
+        this.dropListener = new DropListener(this);
         this.zoneManager = new ZoneManager(plugin, this);
         this.lootManager = new LootManager(plugin, this);
         this.lootListener = new LootListener(plugin, this);
@@ -64,6 +67,7 @@ public class BattleRoyaleMiniGame implements MiniGame {
 
         org.bukkit.Bukkit.getPluginManager().registerEvents(lootListener, plugin);
         org.bukkit.Bukkit.getPluginManager().registerEvents(deathListener, plugin);
+        org.bukkit.Bukkit.getPluginManager().registerEvents(dropListener, plugin);
     }
 
     @Override public String  getId()          { return "battleroyale"; }
@@ -117,6 +121,7 @@ public class BattleRoyaleMiniGame implements MiniGame {
         dropSystem.stop();
         cancelCountdown();
         restoreAllPlayers();
+        deathListener.clearPendingRespawns();
         players.clear();
         teams.clear();
         eventTeamsById.clear();
@@ -229,8 +234,8 @@ public class BattleRoyaleMiniGame implements MiniGame {
 
         if (!finalOrder.isEmpty()) {
             String winnerId = finalOrder.get(0);
-            BRTeam winnerTeam = teams.get(winnerId);
-            String winnerName = winnerTeam != null ? winnerTeam.getId() : winnerId;
+            EventTeam winnerTeam = eventTeamsById.get(winnerId);
+            String winnerName = winnerTeam != null ? winnerTeam.getDisplayName() : winnerId;
             broadcast(Component.text("🏆 ¡El equipo " + winnerName + " ganó el Battle Royale!",
                     NamedTextColor.GOLD));
         } else {
@@ -359,6 +364,7 @@ public class BattleRoyaleMiniGame implements MiniGame {
     public State              getState()       { return state; }
     public BattleRoyaleConfig getConfig()      { return config; }
     public DropSystem         getDropSystem()  { return dropSystem; }
+    public DropListener       getDropListener() { return dropListener; }
     public ZoneManager        getZoneManager() { return zoneManager; }
     public LootManager        getLootManager() { return lootManager; }
     public CoinManager        getCoinManager() { return coinManager; }

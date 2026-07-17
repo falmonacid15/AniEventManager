@@ -57,18 +57,23 @@ public class TNTRunPlaceholders {
             return String.valueOf(eliminated);
         }
 
-        if (params.equals("tntrun_jump_cooldown")) {
+        if (params.equals("tntrun_jump_uses_max")) {
+            return String.valueOf(game.getConfig().getDoubleJumpMaxUses());
+        }
+
+        if (params.equals("tntrun_jump_uses")) {
             if (player == null) return "0";
             TNTRunListener listener = game.getGameListener();
             if (listener == null) return "0";
-            return String.valueOf(listener.getJumpCooldownPercent(player.getUniqueId()));
+            return String.valueOf(listener.getRemainingUses(player.getUniqueId()));
         }
 
         if (params.equals("tntrun_jump_bar")) {
-            if (player == null) return buildJumpBar(0);
+            int maxUses = game.getConfig().getDoubleJumpMaxUses();
+            if (player == null) return buildJumpBar(0, maxUses);
             TNTRunListener listener = game.getGameListener();
-            int pct = listener != null ? listener.getJumpCooldownPercent(player.getUniqueId()) : 0;
-            return buildJumpBar(pct);
+            int uses = listener != null ? listener.getRemainingUses(player.getUniqueId()) : 0;
+            return buildJumpBar(uses, maxUses);
         }
 
         if (player == null || !game.isRunning()) {
@@ -123,14 +128,13 @@ public class TNTRunPlaceholders {
         };
     }
 
-
-    private String buildJumpBar(int pct) {
+    private String buildJumpBar(int remaining, int max) {
         int total  = 10;
-        int filled = (int) Math.round((pct / 100.0) * total);
-        String filledColor = pct > 60 ? "§c" : pct > 30 ? "§e" : "§a";
+        int filled = max > 0 ? (int) Math.round((remaining / (double) max) * total) : 0;
+        String filledColor = remaining <= 0 ? "§c" : (max > 0 && remaining <= max / 3.0) ? "§e" : "§a";
         StringBuilder bar = new StringBuilder();
         for (int i = 0; i < total; i++) {
-            bar.append(i < filled ? filledColor + "█" : "§a█");
+            bar.append(i < filled ? filledColor + "█" : "§7█");
         }
         return bar.toString();
     }

@@ -140,8 +140,6 @@ public class BingoAdminGUI implements Listener {
         inv.setItem(CFG_SCORE_DEF, buildScoreItem(-1, cfg.getScoreForPlace(4),  "  ", NamedTextColor.DARK_GRAY));
     }
 
-    // ── Pestaña 1: Tareas ─────────────────────────────────────────────────────
-
     private void fillTasksTab(Inventory inv, Player player) {
         List<BingoTask> tasks = plugin.getBingoMiniGame().getConfig().loadTasks();
         int page = taskPages.getOrDefault(player.getUniqueId(), 0);
@@ -169,8 +167,6 @@ public class BingoAdminGUI implements Listener {
                 .emptyLine().lore(NamedTextColor.YELLOW, "Click para editar.")
                 .lore(NamedTextColor.RED, "Shift+Click para eliminar.").build();
     }
-
-    // ── Pestaña 2: Paredes ────────────────────────────────────────────────────
 
     private void fillWallsTab(Inventory inv, Player player) {
         List<BingoWall> walls = plugin.getBingoMiniGame().getConfig().loadWalls();
@@ -201,8 +197,6 @@ public class BingoAdminGUI implements Listener {
                 .lore(NamedTextColor.GRAY, "Shift+Click → Quitar barriers.")
                 .lore(NamedTextColor.RED, "Click derecho → Eliminar pared.").build();
     }
-
-    // ── Click listener ────────────────────────────────────────────────────────
 
     @EventHandler
     public void onClick(InventoryClickEvent event) {

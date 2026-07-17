@@ -152,7 +152,7 @@ public class TNTRunMiniGame implements MiniGame {
         if (!activePlayers.remove(player.getUniqueId())) return;
 
         if (gameListener != null) gameListener.clearDoubleJumpState(player);
-        removeNightVision(player);
+        applyNightVision(player);
         player.setFireTicks(0);
 
         player.setAllowFlight(true);
@@ -258,7 +258,7 @@ public class TNTRunMiniGame implements MiniGame {
             if (arena != null) arena.restore();
             returnToMainLobby();
             state = State.IDLE;
-        }, 30 * 20L); // 30 segundos fijos de end delay
+        }, 30 * 20L);
     }
 
     private void scheduleFireworkSalvo(EventTeam winner,
@@ -269,7 +269,7 @@ public class TNTRunMiniGame implements MiniGame {
             List<org.bukkit.entity.Player> members = winner.getOnlinePlayers();
             if (members.isEmpty()) return;
 
-            int count = 3 + (int) (Math.random() * 2); // 3 o 4
+            int count = 3 + (int) (Math.random() * 2);
             for (int i = 0; i < count; i++) {
 
                 org.bukkit.entity.Player target = members.get((int) (Math.random() * members.size()));
@@ -278,7 +278,7 @@ public class TNTRunMiniGame implements MiniGame {
                 }
             }
 
-            long nextDelay = (100L + (long) (Math.random() * 100L)); // 5-10s
+            long nextDelay = (100L + (long) (Math.random() * 100L));
             scheduleFireworkSalvo(winner, teamColor, taskHolder, nextDelay);
 
         }, delayTicks);

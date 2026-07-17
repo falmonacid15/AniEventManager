@@ -4,6 +4,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Location;
 import org.bukkit.Particle;
+import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
@@ -23,12 +24,21 @@ public class CheckpointManager {
 
     private BukkitTask tickTask;
     private final Map<String, ParkourCheckpoint> lastHologramCheckpoint = new HashMap<>();
+    private final Map<String, Integer> lastInsideCount = new HashMap<>();
 
     private static final Particle CHECKPOINT_PARTICLE = Particle.HAPPY_VILLAGER;
     private static final Particle FINISH_PARTICLE     = Particle.FIREWORK;
     private static final double   PARTICLE_RADIUS     = 0.8;
     private static final int      PARTICLE_POINTS     = 12;
     private static final double   PARTICLE_COLUMN_HEIGHT = 1.0;
+
+    private static final Sound PARTNER_AT_CHECKPOINT_SOUND = Sound.BLOCK_NOTE_BLOCK_BELL;
+    private static final float PARTNER_AT_CHECKPOINT_VOLUME = 0.5f;
+    private static final float PARTNER_AT_CHECKPOINT_PITCH = 1.2f;
+
+    private static final Sound CHECKPOINT_CAPTURED_SOUND = Sound.ENTITY_PLAYER_LEVELUP;
+    private static final float CHECKPOINT_CAPTURED_VOLUME = 0.7f;
+    private static final float CHECKPOINT_CAPTURED_PITCH = 1.0f;
 
     public CheckpointManager(Anieventmanager plugin, ParkourDuosMiniGame miniGame) {
         this.plugin   = plugin;
@@ -45,6 +55,7 @@ public class CheckpointManager {
         if (tickTask != null && !tickTask.isCancelled()) tickTask.cancel();
         hologramManager.hideAll();
         lastHologramCheckpoint.clear();
+        lastInsideCount.clear();
     }
 
     private void tick() {
@@ -65,9 +76,11 @@ public class CheckpointManager {
                     hologramManager.show(team.getId(), active.getCenter(),
                             data.getCompletedCheckpoints() + 1, data.getTotalCheckpoints());
                     lastHologramCheckpoint.put(team.getId(), active);
+                    lastInsideCount.put(team.getId(), 0);
                 }
             } else if (lastHologramCheckpoint.remove(team.getId()) != null) {
                 hologramManager.hide(team.getId());
+                lastInsideCount.remove(team.getId());
             }
 
             int inside = 0;
@@ -76,6 +89,12 @@ public class CheckpointManager {
                     if (active.isInside(p.getLocation())) inside++;
                 }
                 data.setPlayersInCurrentCheckpoint(inside);
+
+                int previousInside = lastInsideCount.getOrDefault(team.getId(), 0);
+                if (inside > previousInside && inside < 2 && members.size() > 1) {
+                    notifyPartnerAtCheckpoint(members, active);
+                }
+                lastInsideCount.put(team.getId(), inside);
             }
 
             if (active != null) {
@@ -92,6 +111,8 @@ public class CheckpointManager {
                 data.addInternalScore(config.getScorePerCheckpoint());
 
                 for (Player p : members) {
+                    p.playSound(p.getLocation(), CHECKPOINT_CAPTURED_SOUND,
+                            CHECKPOINT_CAPTURED_VOLUME, CHECKPOINT_CAPTURED_PITCH);
                     p.sendMessage(Component.text("✔ Checkpoint ", NamedTextColor.GREEN)
                             .append(Component.text(
                                     data.getCompletedCheckpoints() + "/" + data.getTotalCheckpoints(),
@@ -116,6 +137,15 @@ public class CheckpointManager {
                 if (inFinish >= 2) {
                     miniGame.onTeamFinished(team, data);
                 }
+            }
+        }
+    }
+
+    private void notifyPartnerAtCheckpoint(List<Player> members, ParkourCheckpoint checkpoint) {
+        for (Player p : members) {
+            if (!checkpoint.isInside(p.getLocation())) {
+                p.playSound(p.getLocation(), PARTNER_AT_CHECKPOINT_SOUND,
+                        PARTNER_AT_CHECKPOINT_VOLUME, PARTNER_AT_CHECKPOINT_PITCH);
             }
         }
     }

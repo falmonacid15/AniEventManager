@@ -3,9 +3,6 @@ package org.falmdev.anieventmanager.minigames.battleroyale.loot;
 import org.bukkit.Location;
 import org.bukkit.World;
 
-/**
- * Cofre registrado del mapa con su tier asignado.
- */
 public class LootChest {
 
     private final String worldName;
@@ -28,7 +25,6 @@ public class LootChest {
         return new Location(world, x, y, z);
     }
 
-    /** Centro del bloque para particles. */
     public Location centerLocation(World world) {
         return new Location(world, x + 0.5, y + 0.5, z + 0.5);
     }

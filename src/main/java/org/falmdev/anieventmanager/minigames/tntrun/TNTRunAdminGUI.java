@@ -45,15 +45,15 @@ public class TNTRunAdminGUI implements Listener {
     private static final int ARENA_GENERATE = 32;
     private static final int ARENA_CLEAR    = 33;
 
-    private static final int GAME_DELAY        = 21;
-    private static final int GAME_COUNTDOWN    = 22;
-    private static final int GAME_ENDDELAY     = 23;
-    private static final int GAME_JUMP         = 30;
-    private static final int GAME_JUMPCOOLDOWN = 32;
-    private static final int GAME_SCORE_1      = 39;
-    private static final int GAME_SCORE_2      = 40;
-    private static final int GAME_SCORE_3      = 41;
-    private static final int GAME_SCORE_DEF    = 42;
+    private static final int GAME_DELAY       = 21;
+    private static final int GAME_COUNTDOWN   = 22;
+    private static final int GAME_ENDDELAY    = 23;
+    private static final int GAME_JUMP        = 30;
+    private static final int GAME_JUMPMAXUSES = 32;
+    private static final int GAME_SCORE_1     = 39;
+    private static final int GAME_SCORE_2     = 40;
+    private static final int GAME_SCORE_3     = 41;
+    private static final int GAME_SCORE_DEF   = 42;
 
     private static final int NAV_MAGIC_STICK = 4;
     private static final int NAV_START       = 16;
@@ -65,7 +65,7 @@ public class TNTRunAdminGUI implements Listener {
 
     private enum InputType {
         ARENA_SIZE, ARENA_LAYERS, ARENA_GAP, ARENA_DOME,
-        GAME_DELAY, GAME_COUNTDOWN, GAME_ENDDELAY, GAME_JUMPCOOLDOWN,
+        GAME_DELAY, GAME_COUNTDOWN, GAME_ENDDELAY, GAME_JUMPMAXUSES,
         GAME_SCORE_1, GAME_SCORE_2, GAME_SCORE_3, GAME_SCORE_DEF
     }
     private record PendingInput(InputType type, String prompt) {}
@@ -218,9 +218,9 @@ public class TNTRunAdminGUI implements Listener {
                         .append(Component.text(jumpEnabled ? "ACTIVADO" : "DESACTIVADO",
                                 jumpEnabled ? NamedTextColor.GREEN : NamedTextColor.RED, TextDecoration.BOLD))))
                 .emptyLine().lore(NamedTextColor.YELLOW, "Click para alternar.").build());
-        inv.setItem(GAME_JUMPCOOLDOWN, buildNumericItem("Cooldown de Doble Salto", Material.CLOCK,
-                cfg.getDoubleJumpCooldown() == 0 ? "sin cooldown" : cfg.getDoubleJumpCooldown() + " segundos",
-                "Tiempo entre dobles saltos.", "Click para cambiar. (0 = sin cooldown)"));
+        inv.setItem(GAME_JUMPMAXUSES, buildNumericItem("Usos de Doble Salto", Material.FEATHER,
+                cfg.getDoubleJumpMaxUses() + " usos por jugador",
+                "Cantidad de dobles saltos disponibles por partida.", "Click para cambiar. (Mínimo: 0)"));
         inv.setItem(38, ItemBuilder.of(Material.GOLD_INGOT)
                 .name("Puntajes por Posición", NamedTextColor.GOLD, TextDecoration.BOLD).build());
         inv.setItem(GAME_SCORE_1,   buildScoreItem(1,  cfg.getScoreForPlace(1),  "🥇", NamedTextColor.GOLD));
@@ -320,15 +320,15 @@ public class TNTRunAdminGUI implements Listener {
 
     private void handleGameClick(Player player, int slot, TNTRunConfig cfg) {
         switch (slot) {
-            case GAME_DELAY        -> promptInput(player, InputType.GAME_DELAY,        "Delay en ticks (20 = 1s):");
-            case GAME_COUNTDOWN    -> promptInput(player, InputType.GAME_COUNTDOWN,    "Countdown en segundos:");
-            case GAME_ENDDELAY     -> promptInput(player, InputType.GAME_ENDDELAY,     "Delay de fin en segundos (mínimo 5):");
-            case GAME_JUMP         -> { cfg.setDoubleJumpEnabled(!cfg.isDoubleJumpEnabled()); ok(player, "Doble salto " + (cfg.isDoubleJumpEnabled() ? "activado" : "desactivado") + "."); render(player, 2); }
-            case GAME_JUMPCOOLDOWN -> promptInput(player, InputType.GAME_JUMPCOOLDOWN, "Cooldown en segundos (0 = sin cooldown):");
-            case GAME_SCORE_1      -> promptInput(player, InputType.GAME_SCORE_1,      "Puntos para el 1er lugar:");
-            case GAME_SCORE_2      -> promptInput(player, InputType.GAME_SCORE_2,      "Puntos para el 2do lugar:");
-            case GAME_SCORE_3      -> promptInput(player, InputType.GAME_SCORE_3,      "Puntos para el 3er lugar:");
-            case GAME_SCORE_DEF    -> promptInput(player, InputType.GAME_SCORE_DEF,    "Puntos por defecto:");
+            case GAME_DELAY       -> promptInput(player, InputType.GAME_DELAY,       "Delay en ticks (20 = 1s):");
+            case GAME_COUNTDOWN   -> promptInput(player, InputType.GAME_COUNTDOWN,   "Countdown en segundos:");
+            case GAME_ENDDELAY    -> promptInput(player, InputType.GAME_ENDDELAY,    "Delay de fin en segundos (mínimo 5):");
+            case GAME_JUMP        -> { cfg.setDoubleJumpEnabled(!cfg.isDoubleJumpEnabled()); ok(player, "Doble salto " + (cfg.isDoubleJumpEnabled() ? "activado" : "desactivado") + "."); render(player, 2); }
+            case GAME_JUMPMAXUSES -> promptInput(player, InputType.GAME_JUMPMAXUSES, "Cantidad de usos de doble salto por jugador:");
+            case GAME_SCORE_1     -> promptInput(player, InputType.GAME_SCORE_1,     "Puntos para el 1er lugar:");
+            case GAME_SCORE_2     -> promptInput(player, InputType.GAME_SCORE_2,     "Puntos para el 2do lugar:");
+            case GAME_SCORE_3     -> promptInput(player, InputType.GAME_SCORE_3,     "Puntos para el 3er lugar:");
+            case GAME_SCORE_DEF   -> promptInput(player, InputType.GAME_SCORE_DEF,   "Puntos por defecto:");
         }
     }
 
@@ -355,18 +355,18 @@ public class TNTRunAdminGUI implements Listener {
             TNTRunConfig cfg = plugin.getTNTRunMiniGame().getConfig();
             int val; try { val = Integer.parseInt(msg); } catch (NumberFormatException e) { err(player, "Número inválido."); render(player, activeTabs.getOrDefault(player.getUniqueId(), 0)); return; }
             switch (pending.type()) {
-                case ARENA_SIZE    -> { if (val < 10) err(player, "Mínimo 10."); else { cfg.setArenaSize(val);            ok(player, "Tamaño: " + val + "×" + val + "."); } }
-                case ARENA_LAYERS  -> { if (val < 1)  err(player, "Mínimo 1.");  else { cfg.setLayerCount(val);           ok(player, "Capas: " + val + "."); } }
-                case ARENA_GAP     -> { if (val < 1)  err(player, "Mínimo 1.");  else { cfg.setLayerGap(val);             ok(player, "Espacio: " + val + " bloques."); } }
-                case ARENA_DOME    -> { if (val < 5)  err(player, "Mínimo 5.");  else { cfg.setDomeHeight(val);           ok(player, "Cúpula: " + val + " bloques."); } }
-                case GAME_DELAY    -> { if (val < 1)  err(player, "Mínimo 1.");  else { cfg.setBlockRemoveDelay(val);     ok(player, "Delay: " + val + " ticks."); } }
-                case GAME_COUNTDOWN-> { if (val < 1)  err(player, "Mínimo 1.");  else { cfg.setCountdownSeconds(val);     ok(player, "Countdown: " + val + "s."); } }
-                case GAME_ENDDELAY -> { if (val < 5)  err(player, "Mínimo 5.");  else { cfg.setEndDelaySeconds(val);      ok(player, "Delay fin: " + val + "s."); } }
-                case GAME_JUMPCOOLDOWN -> { if (val < 0) err(player, "No negativo."); else { cfg.setDoubleJumpCooldown(val); ok(player, "Cooldown: " + (val == 0 ? "desactivado" : val + "s") + "."); } }
-                case GAME_SCORE_1   -> { cfg.setScoreForPlace(1, val); ok(player, "1er lugar: " + val + " pts."); }
-                case GAME_SCORE_2   -> { cfg.setScoreForPlace(2, val); ok(player, "2do lugar: " + val + " pts."); }
-                case GAME_SCORE_3   -> { cfg.setScoreForPlace(3, val); ok(player, "3er lugar: " + val + " pts."); }
-                case GAME_SCORE_DEF -> { cfg.setScoreForPlace(4, val); ok(player, "Defecto: " + val + " pts."); }
+                case ARENA_SIZE       -> { if (val < 10) err(player, "Mínimo 10."); else { cfg.setArenaSize(val);            ok(player, "Tamaño: " + val + "×" + val + "."); } }
+                case ARENA_LAYERS     -> { if (val < 1)  err(player, "Mínimo 1.");  else { cfg.setLayerCount(val);           ok(player, "Capas: " + val + "."); } }
+                case ARENA_GAP        -> { if (val < 1)  err(player, "Mínimo 1.");  else { cfg.setLayerGap(val);             ok(player, "Espacio: " + val + " bloques."); } }
+                case ARENA_DOME       -> { if (val < 5)  err(player, "Mínimo 5.");  else { cfg.setDomeHeight(val);           ok(player, "Cúpula: " + val + " bloques."); } }
+                case GAME_DELAY       -> { if (val < 1)  err(player, "Mínimo 1.");  else { cfg.setBlockRemoveDelay(val);     ok(player, "Delay: " + val + " ticks."); } }
+                case GAME_COUNTDOWN   -> { if (val < 1)  err(player, "Mínimo 1.");  else { cfg.setCountdownSeconds(val);     ok(player, "Countdown: " + val + "s."); } }
+                case GAME_ENDDELAY    -> { if (val < 5)  err(player, "Mínimo 5.");  else { cfg.setEndDelaySeconds(val);      ok(player, "Delay fin: " + val + "s."); } }
+                case GAME_JUMPMAXUSES -> { if (val < 0) err(player, "No negativo."); else { cfg.setDoubleJumpMaxUses(val); ok(player, "Usos de doble salto: " + val + "."); } }
+                case GAME_SCORE_1     -> { cfg.setScoreForPlace(1, val); ok(player, "1er lugar: " + val + " pts."); }
+                case GAME_SCORE_2     -> { cfg.setScoreForPlace(2, val); ok(player, "2do lugar: " + val + " pts."); }
+                case GAME_SCORE_3     -> { cfg.setScoreForPlace(3, val); ok(player, "3er lugar: " + val + " pts."); }
+                case GAME_SCORE_DEF   -> { cfg.setScoreForPlace(4, val); ok(player, "Defecto: " + val + " pts."); }
             }
             render(player, activeTabs.getOrDefault(player.getUniqueId(), 0));
         });

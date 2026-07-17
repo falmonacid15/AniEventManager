@@ -2,14 +2,19 @@ package org.falmdev.anieventmanager.minigames.bingo;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.title.Title;
 import org.bukkit.*;
 import org.bukkit.entity.Player;
+import org.bukkit.enchantments.Enchantment;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ArmorMeta;
+import org.bukkit.inventory.meta.EnchantmentStorageMeta;
 import org.bukkit.inventory.meta.trim.ArmorTrim;
 import org.bukkit.inventory.meta.trim.TrimMaterial;
 import org.bukkit.inventory.meta.trim.TrimPattern;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
 import org.falmdev.anieventmanager.managers.MiniGame;
@@ -24,11 +29,13 @@ public class BingoMiniGame implements MiniGame {
 
     private final Anieventmanager plugin;
     private final BingoConfig config;
+    private final NamespacedKey cardItemKey;
     private BingoListener gameListener;
 
     private State state = State.IDLE;
 
     private final Map<String, BingoCard> cards = new HashMap<>();
+    private final List<EventTeam> completedOrder = new ArrayList<>();
 
     private BukkitTask timerTask;
     private BukkitTask countdownTask;
@@ -38,9 +45,8 @@ public class BingoMiniGame implements MiniGame {
     public BingoMiniGame(Anieventmanager plugin) {
         this.plugin = plugin;
         this.config = new BingoConfig(plugin);
+        this.cardItemKey = new NamespacedKey(plugin, "bingo_card_item");
     }
-
-    // ── MiniGame interface ────────────────────────────────────────────────────
 
     @Override public String getId()          { return "bingo"; }
     @Override public String getDisplayName() { return "Bingo"; }
@@ -52,7 +58,6 @@ public class BingoMiniGame implements MiniGame {
         return state == State.RUNNING || state == State.COUNTDOWN;
     }
 
-    /** sendToLobby en Bingo equivale a sendToSpawn. */
     @Override
     public boolean sendToLobby() {
         return sendToSpawn();
@@ -67,8 +72,6 @@ public class BingoMiniGame implements MiniGame {
     public String validateConfig() {
         return config.validate();
     }
-
-    // ── Ciclo de vida ─────────────────────────────────────────────────────────
 
     public boolean sendToSpawn() {
         Location spawn = config.getSpawn();
@@ -95,6 +98,7 @@ public class BingoMiniGame implements MiniGame {
 
         finishing = false;
         cards.clear();
+        completedOrder.clear();
 
         Location spawn = config.getSpawn();
         if (spawn != null) {
@@ -142,10 +146,9 @@ public class BingoMiniGame implements MiniGame {
         }
         state = State.FINISHED;
         cards.clear();
+        completedOrder.clear();
         Bukkit.getScheduler().runTaskLater(plugin, () -> state = State.IDLE, 20L);
     }
-
-    // ── Intro + Countdown ─────────────────────────────────────────────────────
 
     private void showIntroAndCountdown() {
         Title intro = Title.title(
@@ -221,8 +224,6 @@ public class BingoMiniGame implements MiniGame {
         startTimer();
     }
 
-    // ── Timer ─────────────────────────────────────────────────────────────────
-
     private void startTimer() {
         timerTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             timeLeftSeconds--;
@@ -246,42 +247,22 @@ public class BingoMiniGame implements MiniGame {
 
     private void finishByTime() {
         if (finishing) return;
-
-        List<EventTeam> ranking = plugin.getTeamManager().getAllTeams().stream()
-                .filter(t -> cards.containsKey(t.getId()))
-                .sorted((a, b) -> {
-                    int pa = cards.get(a.getId()).getCompletionPercent();
-                    int pb = cards.get(b.getId()).getCompletionPercent();
-                    return Integer.compare(pb, pa);
-                })
-                .toList();
-
-        broadcastAll(Component.text("━━━ Resultado Final ━━━", NamedTextColor.GOLD));
-        for (int i = 0; i < ranking.size(); i++) {
-            EventTeam team = ranking.get(i);
-            int pct  = cards.get(team.getId()).getCompletionPercent();
-            int done = cards.get(team.getId()).getCompletedCount();
-            broadcastAll(Component.text("  " + (i + 1) + ". ", NamedTextColor.GRAY)
-                    .append(Component.text(team.getDisplayName(), team.getColor()))
-                    .append(Component.text(" — " + done + "/" + cards.get(team.getId()).getTotalTasks()
-                            + " (" + pct + "%)", NamedTextColor.YELLOW)));
-        }
-
-        finish(new ArrayList<>(ranking));
+        finishing = true;
+        finalizeGame();
     }
-
-    // ── Victoria ──────────────────────────────────────────────────────────────
 
     public void checkWinCondition(EventTeam team, BingoCard card) {
         if (finishing || state != State.RUNNING) return;
         if (!card.isComplete()) return;
+        if (completedOrder.stream().anyMatch(t -> t.getId().equals(team.getId()))) return;
 
-        finishing = true;
-        if (timerTask != null && !timerTask.isCancelled()) timerTask.cancel();
+        completedOrder.add(team);
+        int place = completedOrder.size();
 
         broadcastAll(Component.text("🎉 ¡", NamedTextColor.GOLD)
                 .append(Component.text(team.getDisplayName(), team.getColor()))
-                .append(Component.text(" completó el BINGO!", NamedTextColor.GOLD)));
+                .append(Component.text(" completó el BINGO! (" + place + "° equipo en terminar)",
+                        NamedTextColor.GOLD)));
 
         Title winTitle = Title.title(
                 Component.text("🎉 BINGO!", NamedTextColor.GOLD),
@@ -290,21 +271,55 @@ public class BingoMiniGame implements MiniGame {
         );
         Bukkit.getOnlinePlayers().forEach(p -> p.showTitle(winTitle));
 
-        List<EventTeam> ranking = new ArrayList<>();
-        ranking.add(team);
+        teleportTeamToSpawn(team);
+
+        int requiredToFinish = Math.min(3, plugin.getTeamManager().getAllTeams().size());
+        if (completedOrder.size() >= requiredToFinish) {
+            finishing = true;
+            if (timerTask != null && !timerTask.isCancelled()) timerTask.cancel();
+            Bukkit.getScheduler().runTaskLater(plugin, this::finalizeGame, 80L);
+        }
+    }
+
+    private void teleportTeamToSpawn(EventTeam team) {
+        Location spawn = config.getSpawn();
+        if (spawn == null) return;
+        for (var p : team.getOnlinePlayers()) {
+            p.teleport(spawn);
+            p.setGameMode(GameMode.ADVENTURE);
+        }
+    }
+
+    private void finalizeGame() {
+        List<EventTeam> ranking = buildRanking();
+
+        broadcastAll(Component.text("━━━ Resultado Final ━━━", NamedTextColor.GOLD));
+        for (int i = 0; i < ranking.size(); i++) {
+            EventTeam team = ranking.get(i);
+            BingoCard card = cards.getOrDefault(team.getId(), dummyCard(team));
+            int pct  = card.getCompletionPercent();
+            int done = card.getCompletedCount();
+            broadcastAll(Component.text("  " + (i + 1) + ". ", NamedTextColor.GRAY)
+                    .append(Component.text(team.getDisplayName(), team.getColor()))
+                    .append(Component.text(" — " + done + "/" + card.getTotalTasks()
+                            + " (" + pct + "%)", NamedTextColor.YELLOW)));
+        }
+
+        finish(ranking);
+    }
+
+    private List<EventTeam> buildRanking() {
+        List<EventTeam> ranking = new ArrayList<>(completedOrder);
         plugin.getTeamManager().getAllTeams().stream()
-                .filter(t -> !t.getId().equals(team.getId()))
+                .filter(t -> completedOrder.stream().noneMatch(c -> c.getId().equals(t.getId())))
                 .sorted((a, b) -> {
                     int pa = cards.getOrDefault(a.getId(), dummyCard(a)).getCompletionPercent();
                     int pb = cards.getOrDefault(b.getId(), dummyCard(b)).getCompletionPercent();
                     return Integer.compare(pb, pa);
                 })
                 .forEach(ranking::add);
-
-        Bukkit.getScheduler().runTaskLater(plugin, () -> finish(ranking), 80L);
+        return ranking;
     }
-
-    // ── Fin ───────────────────────────────────────────────────────────────────
 
     private void finish(List<EventTeam> ranking) {
         cancelTasks();
@@ -336,11 +351,10 @@ public class BingoMiniGame implements MiniGame {
         Bukkit.getScheduler().runTaskLater(plugin, () -> state = State.IDLE, 20L);
     }
 
-    // ── Utilidades ────────────────────────────────────────────────────────────
-
     public BingoCard getCard(EventTeam team) { return cards.get(team.getId()); }
     public State     getState()              { return state; }
     public BingoConfig getConfig()           { return config; }
+    public NamespacedKey getCardItemKey()    { return cardItemKey; }
     public int       getTimeLeftSeconds()    { return timeLeftSeconds; }
 
     public String getTimeLeftFormatted() {
@@ -470,6 +484,22 @@ public class BingoMiniGame implements MiniGame {
                 new ItemStack(Material.GOLDEN_CARROT, 64),
                 new ItemStack(Material.TORCH, 64)
         );
+
+        player.getInventory().setItem(8, buildCardItem());
+    }
+
+    private ItemStack buildCardItem() {
+        ItemStack book = new ItemStack(Material.ENCHANTED_BOOK);
+        EnchantmentStorageMeta meta = (EnchantmentStorageMeta) book.getItemMeta();
+        meta.displayName(Component.text("✦ Tarjeta de Bingo", NamedTextColor.GOLD)
+                .decoration(TextDecoration.ITALIC, false));
+        meta.lore(List.of(Component.text("Click derecho para ver tu progreso", NamedTextColor.GRAY)
+                .decoration(TextDecoration.ITALIC, false)));
+        meta.addStoredEnchant(Enchantment.LOYALTY, 1, true);
+        meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ENCHANTS);
+        meta.getPersistentDataContainer().set(cardItemKey, PersistentDataType.BOOLEAN, true);
+        book.setItemMeta(meta);
+        return book;
     }
 
     public void openAdminGUI(Player player) {

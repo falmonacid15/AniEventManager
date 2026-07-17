@@ -136,7 +136,7 @@ public class RespawnManager {
                         world.spawnParticle(Particle.FLASH, loc, 1);
                         launchCelebrationFireworks(world, loc);
 
-                        target.sendMessage(Component.text("✔ Has sido revivido. ¡Volvé a la lucha!",
+                        target.sendMessage(Component.text("✔ Has sido revivido. ¡Vuelve a la lucha!",
                                 NamedTextColor.GREEN));
                     }
                 }

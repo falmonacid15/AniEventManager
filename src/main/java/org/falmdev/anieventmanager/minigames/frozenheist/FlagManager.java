@@ -7,6 +7,7 @@ import org.bukkit.DyeColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Item;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
@@ -18,37 +19,30 @@ import java.util.Map;
 
 public class FlagManager {
 
-    // MODIFICAR AQUI para cambiar el tiempo de auto-retorno de banderas
-    public static final long FLAG_TIMEOUT_MS = 12000; // 12 segundos en el suelo
+    public static final long FLAG_TIMEOUT_MS = 12000;
 
     public enum FlagState { IN_BASE, CARRIED, DROPPED }
 
     private final Anieventmanager plugin;
-    private final Map<String, TeamHeistData> teamData; // teamId → data
+    private final Map<String, TeamHeistData> teamData;
 
-    // Estado actual de cada bandera
     private final Map<String, FlagState>  flagStates   = new HashMap<>();
-    // Quién lleva cada bandera
     private final Map<String, java.util.UUID> flagCarrier  = new HashMap<>();
-    // Item entity cuando está DROPPED
     private final Map<String, Item>       flagItems    = new HashMap<>();
-    // Task de auto-retorno
     private final Map<String, BukkitTask> returnTasks  = new HashMap<>();
 
     private final Map<String, org.bukkit.entity.ArmorStand> flagStands = new HashMap<>();
 
-    // Task del círculo de partículas en la base (por equipo)
     private final Map<String, BukkitTask> baseParticleTasks  = new HashMap<>();
-    // Task de partículas subiendo al item dropeado (por equipo)
     private final Map<String, BukkitTask> dropParticleTasks  = new HashMap<>();
+
+    private final Map<java.util.UUID, String> glowingCarriers = new HashMap<>();
 
 
     public FlagManager(Anieventmanager plugin, Map<String, TeamHeistData> teamData) {
         this.plugin   = plugin;
         this.teamData = teamData;
     }
-
-    // ── Inicialización ────────────────────────────────────────────────────────
 
     public void initAll() {
         for (String teamId : teamData.keySet()) {
@@ -68,7 +62,6 @@ public class FlagManager {
         org.falmdev.anieventmanager.model.EventTeam team = data.getTeam();
         net.kyori.adventure.text.format.NamedTextColor textColor = team.getColor();
 
-        // Convertir NamedTextColor a RGB para las partículas de redstone
         float r, g, b;
         if (textColor == NamedTextColor.RED)          { r=1f;    g=0f;    b=0f;    }
         else if (textColor == NamedTextColor.BLUE)    { r=0f;    g=0f;    b=1f;    }
@@ -80,22 +73,19 @@ public class FlagManager {
         else                                          { r=1f;    g=1f;    b=1f;    }
 
         Location center = data.getFlagStand().clone();
-        // Y + 0.1 para que las partículas queden justo sobre el suelo
         center.setY(center.getY() + 0.1);
 
         final float fr = r, fg = g, fb = b;
-        final int POINTS = 24;   // puntos del círculo
+        final int POINTS = 24;
         final double RADIUS = 1.8;
         final double STEP = (2 * Math.PI) / POINTS;
 
-        // Offset rotatorio para animar el círculo girando lentamente
         final double[] angleOffset = {0};
 
         BukkitTask task = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            // Si la bandera ya no está en la base, no dibujar el círculo
             if (flagStates.getOrDefault(teamId, FlagState.IN_BASE) != FlagState.IN_BASE) return;
 
-            angleOffset[0] += 0.08; // velocidad de rotación
+            angleOffset[0] += 0.08;
 
             for (int i = 0; i < POINTS; i++) {
                 double angle = STEP * i + angleOffset[0];
@@ -106,18 +96,18 @@ public class FlagManager {
                 center.getWorld().spawnParticle(
                         org.bukkit.Particle.DUST,
                         particleLoc,
-                        1,       // count
-                        0, 0, 0, // offset
-                        0,       // speed (ignorado para DUST)
+                        1,
+                        0, 0, 0,
+                        0,
                         new org.bukkit.Particle.DustOptions(
                                 org.bukkit.Color.fromRGB(
                                         (int)(fr * 255),
                                         (int)(fg * 255),
                                         (int)(fb * 255)),
-                                1.2f) // tamaño de la partícula
+                                1.2f)
                 );
             }
-        }, 0L, 2L); // cada 2 ticks = 10 veces por segundo, fluido sin ser costoso
+        }, 0L, 2L);
 
         baseParticleTasks.put(teamId, task);
     }
@@ -147,40 +137,53 @@ public class FlagManager {
             else                                               { r=1f;    g=1f;    b=1f;   }
         }
 
-        final float fr = r, fg = g, fb = b;
+        final org.bukkit.Color color = org.bukkit.Color.fromRGB(
+                (int) (r * 255), (int) (g * 255), (int) (b * 255));
+
+        final int RINGS = 3;
+        final int POINTS_PER_RING = 8;
+        final double BASE_RADIUS = 1.1;
+        final double RING_HEIGHT_STEP = 0.55;
+
+        final double[] angleOffset = {0};
 
         BukkitTask task = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             Item item = flagItems.get(teamId);
-            // Cancelar si el item ya no existe
             if (item == null || item.isDead()) {
                 stopDropParticles(teamId);
                 return;
             }
 
-            Location loc = item.getLocation().clone().add(0, 0.2, 0);
+            Location base = item.getLocation();
+            angleOffset[0] += 0.12;
 
-            // Partículas subiendo — emitimos en distintas alturas para efecto columna
-            for (int i = 0; i < 3; i++) {
-                Location pLoc = loc.clone().add(
-                        (Math.random() - 0.5) * 0.3,  // pequeño spread en X
-                        i * 0.25,                       // escalonadas en altura
-                        (Math.random() - 0.5) * 0.3   // pequeño spread en Z
-                );
-                loc.getWorld().spawnParticle(
-                        org.bukkit.Particle.DUST,
-                        pLoc,
-                        1,
-                        0, 0, 0,
-                        0,
-                        new org.bukkit.Particle.DustOptions(
-                                org.bukkit.Color.fromRGB(
-                                        (int)(fr * 255),
-                                        (int)(fg * 255),
-                                        (int)(fb * 255)),
-                                1.5f) // un poco más grandes para que se vean entre el caos
-                );
+            for (int ring = 0; ring < RINGS; ring++) {
+                double radius = BASE_RADIUS - (ring * 0.2);
+                double height = 0.2 + (ring * RING_HEIGHT_STEP);
+                double ringOffset = angleOffset[0] + (ring * 0.5);
+
+                for (int i = 0; i < POINTS_PER_RING; i++) {
+                    double angle = (2 * Math.PI / POINTS_PER_RING) * i + ringOffset;
+                    double x = base.getX() + radius * Math.cos(angle);
+                    double z = base.getZ() + radius * Math.sin(angle);
+                    Location particleLoc = new Location(base.getWorld(), x, base.getY() + height, z);
+
+                    base.getWorld().spawnParticle(
+                            org.bukkit.Particle.DUST,
+                            particleLoc,
+                            1, 0, 0, 0, 0,
+                            new org.bukkit.Particle.DustOptions(color, 3.2f)
+                    );
+                }
             }
-        }, 0L, 3L); // cada 3 ticks — balance entre visibilidad y rendimiento
+
+            base.getWorld().spawnParticle(
+                    org.bukkit.Particle.DUST,
+                    base.clone().add(0, RINGS * RING_HEIGHT_STEP + 0.4, 0),
+                    1, 0, 0, 0, 0,
+                    new org.bukkit.Particle.DustOptions(color, 4.0f)
+            );
+        }, 0L, 3L);
 
         dropParticleTasks.put(teamId, task);
     }
@@ -191,7 +194,6 @@ public class FlagManager {
     }
 
     private void spawnFlagStand(String teamId) {
-        // Remover el anterior si existía
         removeFlagStand(teamId);
 
         TeamHeistData data = teamData.get(teamId);
@@ -211,7 +213,6 @@ public class FlagManager {
             stand.setCollidable(false);
             stand.setSmall(false);
             stand.getEquipment().setHelmet(buildFlagItem(teamId, data.getTeam()));
-            // Guardar referencia en PersistentData para identificarlo si hace falta
             stand.getPersistentDataContainer().set(
                     key,
                     org.bukkit.persistence.PersistentDataType.STRING,
@@ -220,8 +221,6 @@ public class FlagManager {
             flagStands.put(teamId, stand);
         });
 
-        // Guardamos la referencia buscando el stand recién spawneado
-        // (el consumer se ejecuta antes de que spawn() retorne, así que buscamos en el chunk)
         loc.getWorld().getNearbyEntities(loc, 1, 1, 1).stream()
                 .filter(e -> e instanceof org.bukkit.entity.ArmorStand)
                 .filter(e -> e.getPersistentDataContainer().has(
@@ -241,15 +240,6 @@ public class FlagManager {
         if (stand != null && !stand.isDead()) stand.remove();
     }
 
-    // ── Pickup ────────────────────────────────────────────────────────────────
-
-    /**
-     * Intenta que un jugador tome una bandera.
-     * Devuelve true si la tomó.
-     * Lógica:
-     *  - Si es bandera enemiga → ROBAR (portador recibe slowness)
-     *  - Si es bandera propia  → RECUPERAR (portador recibe speed boost)
-     */
     public boolean tryPickup(java.util.UUID playerUUID, String ownerTeamId,
                              String playerTeamId, PlayerState ps) {
         FlagState state = flagStates.get(ownerTeamId);
@@ -265,7 +255,10 @@ public class FlagManager {
         removeFlagStand(ownerTeamId);
 
         Item item = flagItems.remove(ownerTeamId);
-        if (item != null && !item.isDead()) item.remove();
+        if (item != null && !item.isDead()) {
+            clearItemGlow(ownerTeamId, item);
+            item.remove();
+        }
 
         flagStates.put(ownerTeamId, FlagState.CARRIED);
         flagCarrier.put(ownerTeamId, playerUUID);
@@ -273,18 +266,10 @@ public class FlagManager {
         return true;
     }
 
-    // ── Drop ──────────────────────────────────────────────────────────────────
-
-    /**
-     * Suelta la bandera al suelo en la ubicación dada.
-     * Programa el auto-retorno.
-     */
     public void dropFlag(String ownerTeamId, Location dropLoc) {
         flagStates.put(ownerTeamId, FlagState.DROPPED);
         flagCarrier.remove(ownerTeamId);
 
-        // ── FIX 2: Desplazar el drop ~2 bloques en dirección aleatoria para
-        //           que el jugador congelado no la vuelva a recoger al instante.
         Location spawnLoc = dropLoc.clone();
         double angle = Math.random() * 3 * Math.PI;
         spawnLoc.add(Math.cos(angle) * 3.0, 0.3, Math.sin(angle) * 3.0);
@@ -292,39 +277,38 @@ public class FlagManager {
         TeamHeistData data = teamData.get(ownerTeamId);
         Item item = spawnLoc.getWorld().dropItem(spawnLoc,
                 buildFlagItem(ownerTeamId, data != null ? data.getTeam() : null));
-        item.setPickupDelay(40); // 2s de delay (era 1s, damos margen extra)
+        item.setPickupDelay(40);
 
         item.setGravity(true);
-        item.setVelocity(new org.bukkit.util.Vector(0, 0, 0)); // sin impulso extra
+        item.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
         flagItems.put(ownerTeamId, item);
 
+        applyItemGlow(item, ownerTeamId);
         startDropParticles(ownerTeamId);
 
         BukkitTask task = Bukkit.getScheduler().runTaskLater(plugin, () -> {
             returnToBase(ownerTeamId);
-            broadcastAll(Component.text("🚩 La bandera de ", NamedTextColor.YELLOW)
-                    .append(Component.text(
-                            data != null ? data.getTeam().getDisplayName() : ownerTeamId,
-                            data != null ? data.getTeam().getColor() : NamedTextColor.WHITE))
-                    .append(Component.text(" volvió a su base.", NamedTextColor.YELLOW)));
+            if (data != null) {
+                Component msg = Component.text("🚩 Tu bandera volvió a la base.", NamedTextColor.YELLOW);
+                data.getTeam().getOnlinePlayers().forEach(p -> p.sendMessage(msg));
+            }
         }, (FLAG_TIMEOUT_MS / 50));
         returnTasks.put(ownerTeamId, task);
     }
 
-    // ── Return to base ────────────────────────────────────────────────────────
-
-    /** Devuelve la bandera a su base (limpia item, cancela tasks) */
     public void returnToBase(String ownerTeamId) {
         cancelReturnTask(ownerTeamId);
         stopDropParticles(ownerTeamId);
         Item item = flagItems.remove(ownerTeamId);
-        if (item != null && !item.isDead()) item.remove();
+        if (item != null && !item.isDead()) {
+            clearItemGlow(ownerTeamId, item);
+            item.remove();
+        }
         flagCarrier.remove(ownerTeamId);
         flagStates.put(ownerTeamId, FlagState.IN_BASE);
         spawnFlagStand(ownerTeamId);
     }
 
-    /** Devuelve todas las banderas a sus bases (al terminar la partida) */
     public void returnAll() {
         for (String teamId : teamData.keySet()) {
             stopBaseParticles(teamId);
@@ -333,8 +317,6 @@ public class FlagManager {
             removeFlagStand(teamId);
         }
     }
-
-    // ── Consultas ─────────────────────────────────────────────────────────────
 
     public FlagState getState(String ownerTeamId) {
         return flagStates.getOrDefault(ownerTeamId, FlagState.IN_BASE);
@@ -348,10 +330,6 @@ public class FlagManager {
         return flagCarrier.get(ownerTeamId);
     }
 
-    /**
-     * Devuelve el teamId de la bandera más cercana al jugador dentro del radio dado.
-     * Busca entre banderas IN_BASE y DROPPED.
-     */
     public String getNearbyFlag(Location loc, double radius) {
         double radiusSq = radius * radius;
         for (Map.Entry<String, TeamHeistData> entry : teamData.entrySet()) {
@@ -378,10 +356,56 @@ public class FlagManager {
         return null;
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    public void applyCarrierGlow(Player player, String flagTeamId) {
+        clearCarrierGlow(player);
+
+        org.bukkit.scoreboard.Scoreboard scoreboard = Bukkit.getScoreboardManager().getMainScoreboard();
+        org.bukkit.scoreboard.Team team = getOrCreateGlowTeam(scoreboard, flagTeamId);
+        team.addEntry(player.getName());
+        player.setGlowing(true);
+        glowingCarriers.put(player.getUniqueId(), flagTeamId);
+    }
+
+    public void clearCarrierGlow(Player player) {
+        String previousTeamId = glowingCarriers.remove(player.getUniqueId());
+        player.setGlowing(false);
+        if (previousTeamId == null) return;
+
+        org.bukkit.scoreboard.Scoreboard scoreboard = Bukkit.getScoreboardManager().getMainScoreboard();
+        org.bukkit.scoreboard.Team team = scoreboard.getTeam(glowTeamName(previousTeamId));
+        if (team != null) team.removeEntry(player.getName());
+    }
+
+    private void applyItemGlow(Item item, String flagTeamId) {
+        org.bukkit.scoreboard.Scoreboard scoreboard = Bukkit.getScoreboardManager().getMainScoreboard();
+        org.bukkit.scoreboard.Team team = getOrCreateGlowTeam(scoreboard, flagTeamId);
+        team.addEntry(item.getUniqueId().toString());
+        item.setGlowing(true);
+    }
+
+    private void clearItemGlow(String flagTeamId, Item item) {
+        if (item == null) return;
+        org.bukkit.scoreboard.Scoreboard scoreboard = Bukkit.getScoreboardManager().getMainScoreboard();
+        org.bukkit.scoreboard.Team team = scoreboard.getTeam(glowTeamName(flagTeamId));
+        if (team != null) team.removeEntry(item.getUniqueId().toString());
+    }
+
+    private org.bukkit.scoreboard.Team getOrCreateGlowTeam(org.bukkit.scoreboard.Scoreboard scoreboard, String flagTeamId) {
+        String name = glowTeamName(flagTeamId);
+        org.bukkit.scoreboard.Team team = scoreboard.getTeam(name);
+        if (team == null) {
+            team = scoreboard.registerNewTeam(name);
+        }
+        TeamHeistData data = teamData.get(flagTeamId);
+        if (data != null) team.color(data.getTeam().getColor());
+        return team;
+    }
+
+    private String glowTeamName(String flagTeamId) {
+        return "fh_glow_" + flagTeamId;
+    }
 
     private ItemStack buildFlagItem(String ownerTeamId, org.falmdev.anieventmanager.model.EventTeam team) {
-        // Elegir el material de banner según el color del equipo
         DyeColor dyeColor = team != null
                 ? TeamColorUtil.toDyeColor(team.getColor())
                 : DyeColor.WHITE;
@@ -403,6 +427,7 @@ public class FlagManager {
                 org.bukkit.persistence.PersistentDataType.STRING,
                 ownerTeamId
         );
+        meta.setEnchantmentGlintOverride(true);
         item.setItemMeta(meta);
         return item;
     }
@@ -429,9 +454,5 @@ public class FlagManager {
     private void cancelReturnTask(String teamId) {
         BukkitTask task = returnTasks.remove(teamId);
         if (task != null && !task.isCancelled()) task.cancel();
-    }
-
-    private void broadcastAll(Component msg) {
-        Bukkit.getOnlinePlayers().forEach(p -> p.sendMessage(msg));
     }
 }

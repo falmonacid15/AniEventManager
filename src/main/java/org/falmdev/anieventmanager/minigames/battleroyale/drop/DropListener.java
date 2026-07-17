@@ -11,14 +11,6 @@ import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.falmdev.anieventmanager.minigames.battleroyale.BattleRoyaleMiniGame;
 import org.falmdev.anieventmanager.minigames.battleroyale.model.BRPlayer;
 
-/**
- * Listener específico del módulo de drop.
- *
- * Maneja:
- *  - Shift para saltar del dragón
- *  - Cancelar daño del dragón a los pasajeros
- *  - Cancelar caída durante el paracaídas
- */
 public class DropListener implements Listener {
 
     private final BattleRoyaleMiniGame game;
@@ -27,9 +19,6 @@ public class DropListener implements Listener {
         this.game = game;
     }
 
-    /**
-     * Shift mientras está montado en el dragón → saltar.
-     */
     @EventHandler(priority = EventPriority.NORMAL)
     public void onSneak(PlayerToggleSneakEvent event) {
         if (!event.isSneaking()) return;
@@ -44,9 +33,6 @@ public class DropListener implements Listener {
         }
     }
 
-    /**
-     * Cancelar todo daño mientras el jugador está en el dragón o planeando.
-     */
     @EventHandler(priority = EventPriority.HIGH)
     public void onDamage(EntityDamageEvent event) {
         if (!(event.getEntity() instanceof Player player)) return;
@@ -55,22 +41,17 @@ public class DropListener implements Listener {
         BRPlayer brp = game.getBRPlayer(player);
         if (brp == null) return;
 
-        // Sin daño mientras está en el dragón o planeando
         if (brp.isOnDragon() || brp.isParachuting()) {
             event.setCancelled(true);
         }
     }
 
-    /**
-     * Cancelar daño causado por el dragón a cualquier jugador del juego.
-     */
     @EventHandler(priority = EventPriority.HIGH)
     public void onDragonDamage(EntityDamageByEntityEvent event) {
         if (!(event.getDamager() instanceof EnderDragon)) return;
         if (!(event.getEntity() instanceof Player player)) return;
         if (!game.isRunning()) return;
 
-        // Si el jugador está en nuestro juego, cancelar el daño
         if (game.getBRPlayer(player) != null) {
             event.setCancelled(true);
         }

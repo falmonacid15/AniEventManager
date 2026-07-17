@@ -1,5 +1,6 @@
 package org.falmdev.anieventmanager.minigames.frozenheist;
 
+import com.destroystokyo.paper.event.player.PlayerJumpEvent;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -9,6 +10,10 @@ import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
@@ -19,7 +24,7 @@ import org.falmdev.anieventmanager.utils.TeamColorUtil;
 import java.time.Duration;
 import java.util.*;
 
-public class FrozenHeistMiniGame implements MiniGame {
+public class FrozenHeistMiniGame implements MiniGame, Listener {
 
     public enum State { IDLE, COUNTDOWN, RUNNING, FINISHED }
 
@@ -101,6 +106,8 @@ public class FrozenHeistMiniGame implements MiniGame {
             }
         }
 
+        plugin.getServer().getPluginManager().registerEvents(this, plugin);
+
         beginCountdown();
         return true;
     }
@@ -169,13 +176,26 @@ public class FrozenHeistMiniGame implements MiniGame {
     private void applyMovementLock(Player p) {
         p.addPotionEffect(new org.bukkit.potion.PotionEffect(
                 org.bukkit.potion.PotionEffectType.SLOWNESS, Integer.MAX_VALUE, 250, false, false, false));
-        p.addPotionEffect(new org.bukkit.potion.PotionEffect(
-                org.bukkit.potion.PotionEffectType.JUMP_BOOST, Integer.MAX_VALUE, 128, false, false, false));
     }
 
     private void removeMovementLock(Player p) {
         p.removePotionEffect(org.bukkit.potion.PotionEffectType.SLOWNESS);
-        p.removePotionEffect(org.bukkit.potion.PotionEffectType.JUMP_BOOST);
+    }
+
+    @EventHandler
+    public void onPlayerJump(PlayerJumpEvent event) {
+        Player player = event.getPlayer();
+        if (!isActivePlayer(player)) return;
+
+        if (state == State.COUNTDOWN) {
+            event.setCancelled(true);
+            return;
+        }
+
+        PlayerState ps = playerStates.get(player.getUniqueId());
+        if (ps != null && ps.isFrozen()) {
+            event.setCancelled(true);
+        }
     }
 
     private void actuallyStartGame() {
@@ -216,35 +236,96 @@ public class FrozenHeistMiniGame implements MiniGame {
         scoreboardTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             if (state != State.RUNNING) return;
 
-            String time = String.format("%02d:%02d", timeLeftSeconds / 60, timeLeftSeconds % 60);
-
             playerStates.forEach((uuid, ps) -> {
                 Player p = Bukkit.getPlayer(uuid);
                 if (p == null) return;
 
-                Component bar;
-                if (ps.isFrozen()) {
-                    bar = ps.isBeingRescued()
-                            ? Component.text("❄ Siendo rescatado... " + ps.getFrozenSecondsLeft() + "s", NamedTextColor.AQUA)
-                            : Component.text("❄ Congelado — " + ps.getFrozenSecondsLeft() + "s  |  Espera a tu compañero", NamedTextColor.AQUA);
-                } else if (ps.isRescuing()) {
-                    bar = Component.text("⏳ Rescatando... mantén el click", NamedTextColor.YELLOW);
-                } else if (ps.isCarryingFlag()) {
-                    String flagTeamId   = ps.getCarryingFlagOf();
-                    String playerTeamId = plugin.getTeamManager().getTeamOf(p).map(t -> t.getId()).orElse("");
-                    boolean isOwn       = flagTeamId.equals(playerTeamId);
-                    TeamHeistData flagData = teamData.get(flagTeamId);
-                    String flagTeamName = flagData != null ? flagData.getTeam().getDisplayName() : flagTeamId;
-                    bar = isOwn
-                            ? Component.text("🚩 Llevas tu bandera — ¡llévala a tu base!", NamedTextColor.GREEN)
-                            : Component.text("🚩 Llevas la bandera de " + flagTeamName + " — ¡entrégala!", NamedTextColor.GOLD);
-                } else {
-                    bar = Component.text("⏱ " + time, NamedTextColor.YELLOW);
-                }
-
-                p.sendActionBar(bar);
+                Component bar = buildActionBarFor(p, ps);
+                if (bar != null) p.sendActionBar(bar);
             });
         }, 0L, 20L);
+    }
+
+    private Component buildActionBarFor(Player p, PlayerState ps) {
+        if (ps.isFrozen()) {
+            return buildFrozenStatusBar(ps);
+        }
+
+        if (ps.isRescuing()) {
+            return null;
+        }
+
+        if (ps.isCarryingFlag()) {
+            String flagTeamId   = ps.getCarryingFlagOf();
+            String playerTeamId = plugin.getTeamManager().getTeamOf(p).map(EventTeam::getId).orElse("");
+            boolean isOwn       = flagTeamId.equals(playerTeamId);
+            TeamHeistData flagData = teamData.get(flagTeamId);
+            String flagTeamName = flagData != null ? flagData.getTeam().getDisplayName() : flagTeamId;
+            return isOwn
+                    ? Component.text("🚩 Llevas tu bandera — ¡llévala a tu base!", NamedTextColor.GREEN)
+                    : Component.text("🚩 Llevas la bandera de " + flagTeamName + " — ¡entrégala!", NamedTextColor.GOLD);
+        }
+
+        PlayerState frozenTeammate = findFrozenTeammate(p);
+        if (frozenTeammate != null) {
+            return Component.text("❄ Tu compañero está congelado ", NamedTextColor.AQUA)
+                    .append(buildProgressBar(frozenTeammate.getFrozenSecondsLeft(),
+                            (int) (PlayerState.FREEZE_DURATION_MS / 1000)));
+        }
+
+        return null;
+    }
+
+    public Component buildFrozenStatusBar(PlayerState ps) {
+        int left = ps.getFrozenSecondsLeft();
+        int total = (int) (PlayerState.FREEZE_DURATION_MS / 1000);
+        Component bar = Component.text("❄ Congelado ", NamedTextColor.AQUA)
+                .append(buildProgressBar(left, total));
+        return ps.isBeingRescued()
+                ? bar.append(Component.text("  Rescatando...", NamedTextColor.GREEN))
+                : bar.append(Component.text("  Espera a tu compañero", NamedTextColor.GRAY));
+    }
+
+    private Component buildProgressBar(int secondsLeft, int totalSeconds) {
+        int totalSegments = 10;
+        double ratio = totalSeconds <= 0 ? 0 : Math.max(0, Math.min(1.0, secondsLeft / (double) totalSeconds));
+        int filled = (int) Math.round(ratio * totalSegments);
+
+        Component bar = Component.empty();
+        for (int i = 0; i < totalSegments; i++) {
+            bar = bar.append(Component.text(i < filled ? "■" : "□",
+                    i < filled ? NamedTextColor.AQUA : NamedTextColor.DARK_GRAY));
+        }
+        return Component.text("[", NamedTextColor.GRAY)
+                .append(bar)
+                .append(Component.text("] " + Math.max(secondsLeft, 0) + "s", NamedTextColor.GRAY));
+    }
+
+    public Component buildRescueProgressBar(double ratio) {
+        int totalSegments = 10;
+        int filled = (int) Math.round(Math.max(0, Math.min(1.0, ratio)) * totalSegments);
+
+        Component bar = Component.empty();
+        for (int i = 0; i < totalSegments; i++) {
+            bar = bar.append(Component.text(i < filled ? "■" : "□",
+                    i < filled ? NamedTextColor.GREEN : NamedTextColor.DARK_GRAY));
+        }
+        return Component.text("⏳ Descongelando ", NamedTextColor.YELLOW)
+                .append(Component.text("[", NamedTextColor.GRAY))
+                .append(bar)
+                .append(Component.text("]", NamedTextColor.GRAY));
+    }
+
+    private PlayerState findFrozenTeammate(Player p) {
+        return plugin.getTeamManager().getTeamOf(p)
+                .map(team -> team.getOnlinePlayers().stream()
+                        .filter(member -> !member.getUniqueId().equals(p.getUniqueId()))
+                        .map(member -> playerStates.get(member.getUniqueId()))
+                        .filter(Objects::nonNull)
+                        .filter(PlayerState::isFrozen)
+                        .findFirst()
+                        .orElse(null))
+                .orElse(null);
     }
 
     private void finish(boolean cancelled) {
@@ -256,6 +337,7 @@ public class FrozenHeistMiniGame implements MiniGame {
             listener.cleanup();
             org.bukkit.event.HandlerList.unregisterAll(listener);
         }
+        org.bukkit.event.HandlerList.unregisterAll(this);
         if (flagManager != null) flagManager.returnAll();
 
         state = State.FINISHED;
@@ -358,15 +440,14 @@ public class FrozenHeistMiniGame implements MiniGame {
         PlayerState ps = playerStates.get(player.getUniqueId());
         if (ps == null || ps.isFrozen()) return;
 
+        boolean droppedFlag = false;
         if (ps.isCarryingFlag()) {
             String flagTeamId = ps.getCarryingFlagOf();
             flagManager.dropFlag(flagTeamId, player.getLocation());
             ps.clearFlag();
             removeSlownessEffect(player);
             clearFlagHelmet(player);
-            broadcastAll(Component.text("🚩 ", NamedTextColor.YELLOW)
-                    .append(Component.text(player.getName(), NamedTextColor.WHITE))
-                    .append(Component.text(" soltó la bandera al quedar congelado.", NamedTextColor.YELLOW)));
+            droppedFlag = true;
         }
 
         BukkitTask task = Bukkit.getScheduler().runTaskLater(plugin, () -> {
@@ -382,10 +463,12 @@ public class FrozenHeistMiniGame implements MiniGame {
         applyFreezeEffects(player);
 
         player.sendMessage(Component.text("❄ ¡Quedaste congelado por "
-                + (PlayerState.FREEZE_DURATION_MS / 1000) + " segundos!", NamedTextColor.AQUA));
-        broadcastNearby(player, Component.text("❄ ", NamedTextColor.AQUA)
+                + (PlayerState.FREEZE_DURATION_MS / 1000) + " segundos!"
+                + (droppedFlag ? " Soltaste la bandera que llevabas." : ""), NamedTextColor.AQUA));
+
+        notifyTeammates(player, Component.text("❄ Tu compañero ", NamedTextColor.AQUA)
                 .append(Component.text(player.getName(), NamedTextColor.WHITE))
-                .append(Component.text(" quedó congelado.", NamedTextColor.AQUA)));
+                .append(Component.text(" fue congelado" + (droppedFlag ? " y soltó la bandera." : "."), NamedTextColor.AQUA)));
     }
 
     public void unfreezePlayer(Player player, Player rescuer) {
@@ -403,27 +486,28 @@ public class FrozenHeistMiniGame implements MiniGame {
                 .append(Component.text(".", NamedTextColor.GREEN)));
     }
 
-    public void addPoints(String teamId, int points, String reason) {
+    public void addPoints(String teamId, int points) {
         TeamHeistData data = teamData.get(teamId);
         if (data == null) return;
         data.addPoints(points);
-        broadcastAll(Component.text("+" + points + " pts → ", NamedTextColor.GOLD)
-                .append(Component.text(data.getTeam().getDisplayName(), data.getTeam().getColor()))
-                .append(Component.text("  (" + reason + ")", NamedTextColor.GRAY)));
+    }
+
+    private void notifyTeammates(Player player, Component msg) {
+        plugin.getTeamManager().getTeamOf(player).ifPresent(team ->
+                team.getOnlinePlayers().stream()
+                        .filter(p -> !p.getUniqueId().equals(player.getUniqueId()))
+                        .forEach(p -> p.sendMessage(msg)));
     }
 
     private void applyFreezeEffects(Player p) {
         p.addPotionEffect(new org.bukkit.potion.PotionEffect(
                 org.bukkit.potion.PotionEffectType.SLOWNESS, Integer.MAX_VALUE, 255, false, false, false));
-        p.addPotionEffect(new org.bukkit.potion.PotionEffect(
-                org.bukkit.potion.PotionEffectType.JUMP_BOOST, Integer.MAX_VALUE, 128, false, false, false));
         p.setFreezeTicks((int)(PlayerState.FREEZE_DURATION_MS / 50));
         p.getInventory().setHelmet(new ItemStack(Material.ICE));
     }
 
     private void restoreMovement(Player p) {
         p.removePotionEffect(org.bukkit.potion.PotionEffectType.SLOWNESS);
-        p.removePotionEffect(org.bukkit.potion.PotionEffectType.JUMP_BOOST);
         p.setFreezeTicks(0);
         p.getInventory().setHelmet(null);
 
@@ -445,7 +529,8 @@ public class FrozenHeistMiniGame implements MiniGame {
 
     private void equipPlayer(Player p) {
         p.getInventory().clear();
-        p.getInventory().setItem(0, new ItemStack(org.bukkit.Material.SNOWBALL, 16));
+        p.getInventory().setItem(0, new ItemStack(Material.SNOWBALL, 16));
+        p.getInventory().setItem(1, buildRescueItem());
         p.setGameMode(GameMode.SURVIVAL);
 
         plugin.getTeamManager().getTeamOf(p).ifPresent(team -> {
@@ -457,14 +542,32 @@ public class FrozenHeistMiniGame implements MiniGame {
         });
     }
 
+    public ItemStack buildRescueItem() {
+        ItemStack item = new ItemStack(Material.BLAZE_POWDER, 1);
+        org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();
+        meta.displayName(Component.text("✦ Descongelar", NamedTextColor.AQUA)
+                .decoration(TextDecoration.ITALIC, false));
+        meta.lore(List.of(Component.text("Click derecho sobre tu compañero congelado", NamedTextColor.GRAY)
+                .decoration(TextDecoration.ITALIC, false)));
+        meta.getPersistentDataContainer().set(
+                new org.bukkit.NamespacedKey(Anieventmanager.getInstance(), "fh_rescue_item"),
+                org.bukkit.persistence.PersistentDataType.BYTE,
+                (byte) 1
+        );
+        item.setItemMeta(meta);
+        return item;
+    }
+
     public void equipFlagHelmet(Player p, String flagTeamId) {
         TeamHeistData data = teamData.get(flagTeamId);
         if (data == null) return;
         p.getInventory().setHelmet(flagManager.buildPublicFlagItem(flagTeamId, data.getTeam()));
+        flagManager.applyCarrierGlow(p, flagTeamId);
     }
 
     public void clearFlagHelmet(Player p) {
         p.getInventory().setHelmet(null);
+        flagManager.clearCarrierGlow(p);
     }
 
     private ItemStack buildLeatherArmor(org.bukkit.Material material, org.bukkit.Color color) {
@@ -502,13 +605,6 @@ public class FrozenHeistMiniGame implements MiniGame {
 
     private void broadcastAll(Component msg) {
         Bukkit.getOnlinePlayers().forEach(p -> p.sendMessage(msg));
-    }
-
-    private void broadcastNearby(Player center, Component msg) {
-        Bukkit.getOnlinePlayers().stream()
-                .filter(p -> p.getWorld().equals(center.getWorld())
-                        && p.getLocation().distanceSquared(center.getLocation()) <= 400)
-                .forEach(p -> p.sendMessage(msg));
     }
 
     public State getState()                         { return state; }
