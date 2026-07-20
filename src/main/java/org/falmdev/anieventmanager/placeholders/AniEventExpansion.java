@@ -6,8 +6,6 @@ import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.falmdev.anieventmanager.Anieventmanager;
 import org.falmdev.anieventmanager.minigames.bingo.BingoCard;
-import org.falmdev.anieventmanager.minigames.boatracing.BoatRacingMiniGame;
-import org.falmdev.anieventmanager.minigames.boatracing.RacerData;
 import org.falmdev.anieventmanager.minigames.frozenheist.FlagManager;
 import org.falmdev.anieventmanager.minigames.frozenheist.TeamHeistData;
 import org.falmdev.anieventmanager.minigames.parkourduos.HotbarAbility;
@@ -22,60 +20,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-/**
- * Placeholders disponibles:
- *
- * ── Equipo del jugador ────────────────────────────────────────────
- *   %anievent_has_team%
- *   %anievent_team_name%
- *   %anievent_team_id%
- *   %anievent_team_color%
- *   %anievent_team_members%
- *   %anievent_team_size%
- *   %anievent_team_isfull%
- *   %anievent_team_score%
- *   %anievent_team_rank%
- *
- * ── Ranking general (top N) ──────────────────────────────────────
- *   %anievent_top_1_name%  _score%  _color%  _members%  ... top_8
- *
- * ── TNT Run ───────────────────────────────────────────────────────
- *   %anievent_tntrun_running%
- *   %anievent_tntrun_state%
- *   %anievent_tntrun_players%
- *   %anievent_tntrun_teams%
- *   %anievent_tntrun_elapsed%
- *   %anievent_tntrun_alive_1% ... alive_8
- *   %anievent_tntrun_iseliminated%
- *
- *   — Piso del jugador —
- *   %anievent_tntrun_floor%             Piso actual del jugador (1 = más alto)
- *   %anievent_tntrun_floor_total%       Total de pisos de la arena
- *   %anievent_tntrun_floor_players%     Número de jugadores en el mismo piso
- *   %anievent_tntrun_floor_playernames% Nombres de jugadores en el mismo piso (coma)
- *   %anievent_tntrun_floor_blocks%      Bloques SAND restantes en el piso actual
- *   %anievent_tntrun_floor_blocks_total% Total original de bloques en el piso
- *   %anievent_tntrun_floor_blocks_percent% Porcentaje de bloques restantes (0-100)
- *
- *   — Doble salto (para below-name) —
- *   %anievent_tntrun_jump_cooldown%     Porcentaje de cooldown restante (0=listo, 100=recién usado)
- *   %anievent_tntrun_jump_bar%          Barra de carga del cooldown (10 chars, legacy color)
- *
- * ── Bingo ─────────────────────────────────────────────────────────
- *   %anievent_bingo_running%
- *   %anievent_bingo_time%
- *   %anievent_bingo_timepercent%
- *   %anievent_bingo_percent%
- *   %anievent_bingo_progressbar%
- *   %anievent_bingo_done%
- *   %anievent_bingo_total%
- *
- * ── Frozen Heist ──────────────────────────────────────────────────
- *   (sin cambios)
- *
- * ── Boat Racing ───────────────────────────────────────────────────
- *   (sin cambios)
- */
 public class AniEventExpansion extends PlaceholderExpansion {
 
     private final Anieventmanager plugin;
@@ -96,7 +40,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
         if (params.startsWith("bingo_"))     return resolveBingo(offlinePlayer, params);
         if (params.startsWith("tntrun_"))    return resolveTNTRun(offlinePlayer, params);
         if (params.startsWith("fh_"))        return resolveFrozenHeist(offlinePlayer, params);
-        if (params.startsWith("br_"))        return resolveBoatRacing(offlinePlayer, params);
         if (params.startsWith("battleroyale_")) return plugin.getBattleRoyalePlaceholders()
                 .resolve(offlinePlayer, params.substring("battleroyale_".length()));
         if (params.startsWith("pvpfinal_")) return plugin.getPvpFinalPlaceholders()
@@ -175,28 +118,9 @@ public class AniEventExpansion extends PlaceholderExpansion {
         return plugin.getTNTRunPlaceholders().resolve(offlinePlayer, params);
     }
 
-    // ── Barra de cooldown de doble salto (para below-name) ───────────────────
-    //   pct = 0   → todo verde  (listo)
-    //   pct = 100 → todo rojo   (recién usado)
-
-    private String buildJumpBar(int pct) {
-        int total  = 10;
-        // "consumido" = porcentaje ya usado del cooldown
-        int filled = (int) Math.round((pct / 100.0) * total);
-        String filledColor = pct > 60 ? "§c" : pct > 30 ? "§e" : "§a";
-        StringBuilder bar = new StringBuilder();
-        for (int i = 0; i < total; i++) {
-            bar.append(i < filled ? filledColor + "█" : "§a█");
-        }
-        return bar.toString();
-    }
-
-    // ── Parkour Duos ──────────────────────────────────────────────────────────
 
     private String resolveParkourDuos(OfflinePlayer offlinePlayer, String params) {
         var pd = plugin.getParkourDuosMiniGame();
-
-        // ── Estado global ─────────────────────────────────────────────────────
 
         if (params.equals("pd_running")) return String.valueOf(pd.isRunning());
 
@@ -226,10 +150,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
             int pct = (int) Math.round((pd.getTimeLeftSeconds() / (double) total) * 100);
             return String.valueOf(Math.max(0, Math.min(100, pct)));
         }
-
-        // ── Ranking de equipos por checkpoints ────────────────────────────────
-        // %anievent_pd_top_1_name%  pd_top_1_cps%  pd_top_1_color%  pd_top_1_finished%
-        // hasta pd_top_8
 
         if (params.startsWith("pd_top_")) {
             String[] parts = params.split("_");
@@ -263,8 +183,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
             };
         }
 
-        // ── Placeholders que requieren jugador online ─────────────────────────
-
         Player player = offlinePlayer.getPlayer();
 
         if (player == null || plugin.getTeamManager().getTeamOf(player).isEmpty()) {
@@ -286,8 +204,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
 
         Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeamOf(player);
         var data = pd.getDataFor(teamOpt.get());
-
-        // ── Progreso del equipo ───────────────────────────────────────────────
 
         if (params.equals("pd_checkpoint") && data != null)
             return String.valueOf(data.getCompletedCheckpoints() + 1);
@@ -320,17 +236,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
 
         if (params.equals("pd_score") && data != null)
             return String.valueOf(data.getInternalScore());
-
-        // ── Cooldowns de habilidades ──────────────────────────────────────────
-        // pd_cd_return          → segundos restantes de RETURN_CHECKPOINT
-        // pd_cd_jump            → segundos restantes de JUMP_BOOST
-        // pd_cd_tp              → segundos restantes de TELEPORT_TO_TEAMMATE
-        // pd_cd_return_pct      → porcentaje restante (100 recién usado → 0 listo)
-        // pd_cd_jump_pct        → ídem para JUMP_BOOST
-        // pd_cd_tp_pct          → ídem para TELEPORT
-        // pd_cd_return_ready    → "true" si no está en cooldown
-        // pd_cd_jump_ready      → ídem
-        // pd_cd_tp_ready        → ídem
 
         if (!pd.isRunning() || pd.getAbilityManager() == null) {
             return switch (params) {
@@ -366,8 +271,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
             default -> null;
         };
     }
-
-    // ── Bingo ─────────────────────────────────────────────────────────────────
 
     private String resolveBingo(OfflinePlayer offlinePlayer, String params) {
         var bingo = plugin.getBingoMiniGame();
@@ -419,12 +322,8 @@ public class AniEventExpansion extends PlaceholderExpansion {
         };
     }
 
-    // ── Frozen Heist ──────────────────────────────────────────────────────────
-
     private String resolveFrozenHeist(OfflinePlayer offlinePlayer, String params) {
         var fh = plugin.getFrozenHeistMiniGame();
-
-        // ── Estado global ────────────────────────────────────────────────────
 
         if (params.equals("fh_running")) return String.valueOf(fh.isRunning());
 
@@ -445,8 +344,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
             return String.valueOf(Math.max(0, Math.min(100, pct)));
         }
 
-        // ── Ranking top N ────────────────────────────────────────────────────
-
         if (params.startsWith("fh_top_")) {
             String[] parts = params.split("_");
             if (parts.length != 4) return "-";
@@ -465,8 +362,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
             };
         }
 
-        // ── Placeholders que requieren jugador online ─────────────────────────
-
         Player player = offlinePlayer.getPlayer();
 
         if (player == null) return switch (params) {
@@ -483,8 +378,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
 
         return switch (params) {
 
-            // ── Puntos y ranking del equipo ───────────────────────────────────
-
             case "fh_score" -> {
                 if (!fh.isRunning() || teamOpt.isEmpty()) yield "0";
                 var data = fh.getTeamData().get(teamOpt.get().getId());
@@ -500,8 +393,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
                     if (ranked.get(i).getTeam().getId().equals(myId)) yield "#" + (i + 1);
                 yield "-";
             }
-
-            // ── Estado de la bandera del equipo del jugador ───────────────────
 
             case "fh_flag_state" -> {
                 if (!fh.isRunning() || teamOpt.isEmpty()) yield "-";
@@ -520,8 +411,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
                 Player carrier = Bukkit.getPlayer(carrierUUID);
                 yield carrier != null ? carrier.getName() : "-";
             }
-
-            // ── Estado del jugador ─────────────────────────────────────────────
 
             case "fh_carrying" -> {
                 if (!fh.isRunning()) yield "false";
@@ -549,8 +438,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
                 yield ps != null ? String.valueOf(ps.getFrozenSecondsLeft()) : "0";
             }
 
-            // ── Miembros en la base del equipo del jugador ────────────────────
-
             case "fh_base_has_members" -> {
                 if (!fh.isRunning() || teamOpt.isEmpty()) yield "false";
                 var data = fh.getTeamData().get(teamOpt.get().getId());
@@ -573,138 +460,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
             default -> null;
         };
     }
-
-    // ── Boat Racing ───────────────────────────────────────────────────────────
-
-    private String resolveBoatRacing(OfflinePlayer offlinePlayer, String params) {
-        BoatRacingMiniGame br = plugin.getBoatRacingMiniGame();
-        Player player = offlinePlayer.getPlayer();
-
-        if (params.equals("br_running")) return String.valueOf(br.isRunning());
-
-        if (params.equals("br_state")) return switch (br.getState()) {
-            case IDLE     -> "En espera";
-            case PADDOCK  -> "Paddock";
-            case QUALY    -> "Clasificación";
-            case RACE     -> "Carrera";
-            case FINISHED -> "Finalizado";
-        };
-
-        if (params.equals("br_totallaps")) return String.valueOf(br.getConfig().getTotalLaps());
-
-        if (params.startsWith("br_top_")) {
-            String[] parts = params.split("_");
-            if (parts.length != 4) return "-";
-            int pos; try { pos = Integer.parseInt(parts[2]); } catch (NumberFormatException e) { return "-"; }
-            if (pos < 1 || pos > 8) return "-";
-            if (!br.isRunning()) return "-";
-
-            List<UUID> positions = br.getRealTimePositions();
-            if (pos > positions.size()) return "-";
-
-            UUID uuid = positions.get(pos - 1);
-            RacerData rd = br.getRacers().get(uuid);
-            if (rd == null) return "-";
-
-            return switch (parts[3]) {
-                case "name"    -> rd.getPlayerName();
-                case "lap"     -> rd.getCurrentLap() > 0
-                        ? rd.getCurrentLap() + "/" + br.getConfig().getTotalLaps()
-                        : "-";
-                case "laptime" -> br.getState() == BoatRacingMiniGame.State.RACE
-                        ? rd.getCurrentLapTimeFormatted()
-                        : rd.getQualyTimeFormatted();
-                case "bestlap" -> rd.getBestLapFormatted();
-                default        -> "-";
-            };
-        }
-
-        if (player == null) return switch (params) {
-            case "br_lap", "br_laps", "br_position", "br_position_num",
-                 "br_gridpos", "br_racepos"           -> "-";
-            case "br_laptime", "br_bestlap", "br_lastlap",
-                 "br_qualytime", "br_gap", "br_interval" -> "--:--.---";
-            case "br_finished"                         -> "false";
-            default                                    -> null;
-        };
-
-        RacerData rd = br.getRacerData(player);
-
-        return switch (params) {
-            case "br_lap" -> {
-                if (rd == null || rd.getCurrentLap() == 0) yield "-";
-                yield String.valueOf(rd.getCurrentLap());
-            }
-            case "br_laps" -> {
-                if (rd == null || rd.getCurrentLap() == 0) yield "-";
-                yield "Vuelta " + rd.getCurrentLap() + "/" + br.getConfig().getTotalLaps();
-            }
-            case "br_laptime" -> {
-                if (rd == null || !br.isRunning()) yield "--:--.---";
-                yield rd.getCurrentLapTimeFormatted();
-            }
-            case "br_bestlap" -> {
-                if (rd == null) yield "--:--.---";
-                yield rd.getBestLapFormatted();
-            }
-            case "br_lastlap" -> {
-                if (rd == null || rd.getLastLapTimeMs() == 0) yield "--:--.---";
-                yield RacerData.formatTime(rd.getLastLapTimeMs());
-            }
-            case "br_position" -> {
-                if (rd == null || !br.isRunning()) yield "-";
-                yield "#" + br.getRealTimePosition(player.getUniqueId());
-            }
-            case "br_position_num" -> {
-                if (rd == null || !br.isRunning()) yield "-";
-                yield String.valueOf(br.getRealTimePosition(player.getUniqueId()));
-            }
-            case "br_qualytime" -> {
-                if (rd == null) yield "--:--.---";
-                yield rd.getQualyTimeFormatted();
-            }
-            case "br_gridpos" -> {
-                if (rd == null || rd.getQualyPosition() == 0) yield "-";
-                yield "#" + rd.getQualyPosition();
-            }
-            case "br_finished" -> {
-                if (rd == null) yield "false";
-                yield String.valueOf(rd.isRaceFinished());
-            }
-            case "br_racepos" -> {
-                if (rd == null || !rd.isRaceFinished()) yield "-";
-                yield "#" + rd.getRacePosition();
-            }
-            case "br_gap" -> {
-                if (rd == null || !br.isRunning()) yield "-";
-                List<UUID> positions = br.getRealTimePositions();
-                int myPos = positions.indexOf(player.getUniqueId());
-                if (myPos <= 0) yield "—";
-                UUID aheadUUID = positions.get(myPos - 1);
-                RacerData ahead = br.getRacers().get(aheadUUID);
-                if (ahead == null) yield "-";
-                long myTime    = System.currentTimeMillis() - rd.getBestLapTimeMs();
-                long aheadTime = System.currentTimeMillis() - ahead.getBestLapTimeMs();
-                long diff = Math.abs(myTime - aheadTime);
-                yield "+" + String.format("%.3f", diff / 1000.0) + "s";
-            }
-            case "br_interval" -> {
-                if (rd == null || !br.isRunning()) yield "-";
-                List<UUID> positions = br.getRealTimePositions();
-                if (positions.isEmpty()) yield "-";
-                UUID leaderUUID = positions.get(0);
-                if (leaderUUID.equals(player.getUniqueId())) yield "—";
-                RacerData leader = br.getRacers().get(leaderUUID);
-                if (leader == null || leader.getBestLapTimeMs() == 0
-                        || rd.getBestLapTimeMs() == 0) yield "-";
-                long diff = Math.abs(rd.getBestLapTimeMs() - leader.getBestLapTimeMs());
-                yield "+" + String.format("%.3f", diff / 1000.0) + "s";
-            }
-            default -> null;
-        };
-    }
-
-    // ── Equipo por ID ─────────────────────────────────────────────────────────
 
     private String resolveTeamById(String params) {
         String withoutPrefix = params.substring("teamid_".length());
@@ -730,9 +485,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
         Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeam(finalTeamId);
 
         return switch (field) {
-
-            // ── Datos básicos del equipo ──────────────────────────────────────
-            // Accesibles con o sin prefijo fh_ para compatibilidad con hologramas
             case "name",    "fh_name"    -> teamOpt.map(EventTeam::getDisplayName).orElse("-");
             case "color",   "fh_color"   -> teamOpt.map(t -> namedColorToLegacy(t.getColor().toString())).orElse("&f");
             case "members", "fh_members" -> teamOpt.map(t -> {
@@ -746,7 +498,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
                 return rank == -1 ? "-" : "#" + rank;
             }).orElse("-");
 
-            // ── Frozen Heist ──────────────────────────────────────────────────
             case "fh_score" -> {
                 var fh = plugin.getFrozenHeistMiniGame();
                 if (!fh.isRunning()) yield "0";
@@ -801,8 +552,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
         };
     }
 
-    // ── Ranking general ───────────────────────────────────────────────────────
-
     private String resolveTop(String params) {
         String[] parts = params.split("_");
         if (parts.length != 3) return null;
@@ -824,8 +573,6 @@ public class AniEventExpansion extends PlaceholderExpansion {
             default -> null;
         };
     }
-
-    // ── Utilidades ────────────────────────────────────────────────────────────
 
     private String namedColorToLegacy(String colorName) {
         return switch (colorName) {

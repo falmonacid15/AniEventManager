@@ -43,7 +43,6 @@ public class EMCommand implements CommandExecutor, TabCompleter {
             case "score"       -> handleScore(player, Arrays.copyOfRange(args, 1, args.length));
             case "tntrun"      -> plugin.getTNTRunCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
             case "bingo"       -> plugin.getBingoCommand().handleAdmin(player, Arrays.copyOfRange(args, 1, args.length));
-            case "boatracing"  -> plugin.getBoatRacingCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
             case "frozenheist" -> plugin.getFrozenHeistCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
             case "pd"          -> plugin.getParkourDuosCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
             case "battleroyale" -> plugin.getBattleRoyaleCommand()
@@ -380,9 +379,6 @@ public class EMCommand implements CommandExecutor, TabCompleter {
 
         if (args[0].equalsIgnoreCase("bingo"))
             return plugin.getBingoCommand().tabComplete(Arrays.copyOfRange(args, 1, args.length));
-
-        if (args[0].equalsIgnoreCase("boatracing"))
-            return plugin.getBoatRacingCommand().tabComplete(Arrays.copyOfRange(args, 1, args.length));
 
         if (args[0].equalsIgnoreCase("frozenheist"))
             return plugin.getFrozenHeistCommand().tabComplete(Arrays.copyOfRange(args, 1, args.length));

@@ -24,7 +24,6 @@ import org.falmdev.anieventmanager.minigames.battleroyale.BattleRoyaleMiniGame;
 import org.falmdev.anieventmanager.minigames.battleroyale.BattleRoyalePlaceholders;
 import org.falmdev.anieventmanager.minigames.battleroyale.drop.DropListener;
 import org.falmdev.anieventmanager.minigames.bingo.*;
-import org.falmdev.anieventmanager.minigames.boatracing.*;
 import org.falmdev.anieventmanager.minigames.frozenheist.FrozenHeistAdminGUI;
 import org.falmdev.anieventmanager.minigames.frozenheist.FrozenHeistCommand;
 import org.falmdev.anieventmanager.minigames.frozenheist.FrozenHeistMagicStick;
@@ -72,11 +71,6 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
     private BingoWallManager bingoWallManager;
     private BingoCommand     bingoCommand;
     private BingoEditGUI     bingoEditGUI;
-
-    private BoatRacingMiniGame   boatRacingMiniGame;
-    private BoatRacingCommand    boatRacingCommand;
-    private BoatRacingAdminGUI   boatRacingAdminGUI;
-    private BoatRacingMagicStick boatRacingMagicStick;
 
     private FrozenHeistMiniGame   frozenHeistMiniGame;
     private FrozenHeistCommand    frozenHeistCommand;
@@ -163,15 +157,6 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
         miniGameManager.register(bingoMiniGame);
         logLoaded(log, "Bingo");
 
-        this.boatRacingMiniGame = new BoatRacingMiniGame(this);
-        this.boatRacingCommand  = new BoatRacingCommand(this, boatRacingMiniGame);
-        BoatRacingListener boatRacingListener = new BoatRacingListener(this, boatRacingMiniGame);
-        this.boatRacingMiniGame.registerListener(boatRacingListener);
-        this.boatRacingAdminGUI   = new BoatRacingAdminGUI(this);
-        this.boatRacingMagicStick = new BoatRacingMagicStick(this);
-        miniGameManager.register(boatRacingMiniGame);
-        logLoaded(log, "Boat Racing");
-
         this.frozenHeistMiniGame  = new FrozenHeistMiniGame(this);
         this.frozenHeistCommand   = new FrozenHeistCommand(this, frozenHeistMiniGame);
         this.frozenHeistAdminGUI  = new FrozenHeistAdminGUI(this);
@@ -224,8 +209,6 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
             logLoaded(log, "/bingo");
         }
 
-        // /em battleroyale → manejado por EMCommand
-
         logDone(log, "Comandos");
 
         // ── Listeners ─────────────────────────────────────────────────────────
@@ -234,9 +217,6 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
         Bukkit.getPluginManager().registerEvents(new BingoGUI(this),               this);
         Bukkit.getPluginManager().registerEvents(bingoEditGUI,                     this);
         Bukkit.getPluginManager().registerEvents(bingoWallManager,                 this);
-        Bukkit.getPluginManager().registerEvents(boatRacingListener,               this);
-        Bukkit.getPluginManager().registerEvents(boatRacingAdminGUI,               this);
-        Bukkit.getPluginManager().registerEvents(boatRacingMagicStick,             this);
         Bukkit.getPluginManager().registerEvents(teamSelectionGUI,                 this);
         Bukkit.getPluginManager().registerEvents(teamAdminGUI,                     this);
         Bukkit.getPluginManager().registerEvents(playerSelectorGUI,                this);
@@ -365,10 +345,6 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
     public BingoCommand              getBingoCommand()         { return bingoCommand; }
     public BingoEditGUI              getBingoEditGUI()         { return bingoEditGUI; }
     public BingoWallManager          getBingoWallManager()     { return bingoWallManager; }
-    public BoatRacingMiniGame        getBoatRacingMiniGame()   { return boatRacingMiniGame; }
-    public BoatRacingCommand         getBoatRacingCommand()    { return boatRacingCommand; }
-    public BoatRacingAdminGUI        getBoatRacingAdminGUI()   { return boatRacingAdminGUI; }
-    public BoatRacingMagicStick      getBoatRacingMagicStick() { return boatRacingMagicStick; }
     public FrozenHeistMiniGame       getFrozenHeistMiniGame()  { return frozenHeistMiniGame; }
     public FrozenHeistCommand        getFrozenHeistCommand()   { return frozenHeistCommand; }
     public FrozenHeistAdminGUI       getFrozenHeistAdminGUI()  { return frozenHeistAdminGUI; }
@@ -390,6 +366,3 @@ public final class Anieventmanager extends JavaPlugin implements Listener {
     public BingoMagicStick           getBingoMagicStick()      { return bingoMagicStick; }
     public IntervalManager getIntervalManager() { return intervalManager; }
 }
-
-// ── Getter adicional para BattleRoyaleCommand (agregar a los getters) ─────────
-// YA ESTÁ incluido en el archivo generado arriba — solo verificar
