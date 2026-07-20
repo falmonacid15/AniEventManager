@@ -17,10 +17,7 @@ import org.falmdev.anieventmanager.cinematics.model.Cinematic;
 import org.falmdev.anieventmanager.model.EventTeam;
 import org.falmdev.anieventmanager.utils.interval.IntervalManager;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class EMCommand implements CommandExecutor, TabCompleter {
 
@@ -33,8 +30,7 @@ public class EMCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Solo jugadores pueden usar este comando.");
-            return true;
+            return handleConsoleCommand(sender, args);
         }
         if (!player.isOp()) {
             player.sendMessage(Component.text("No tienes permisos para usar este comando.", NamedTextColor.RED));
@@ -47,7 +43,6 @@ public class EMCommand implements CommandExecutor, TabCompleter {
             case "score"       -> handleScore(player, Arrays.copyOfRange(args, 1, args.length));
             case "tntrun"      -> plugin.getTNTRunCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
             case "bingo"       -> plugin.getBingoCommand().handleAdmin(player, Arrays.copyOfRange(args, 1, args.length));
-            case "boatracing"  -> plugin.getBoatRacingCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
             case "frozenheist" -> plugin.getFrozenHeistCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
             case "pd"          -> plugin.getParkourDuosCommand().handle(player, Arrays.copyOfRange(args, 1, args.length));
             case "battleroyale" -> plugin.getBattleRoyaleCommand()
@@ -62,6 +57,23 @@ public class EMCommand implements CommandExecutor, TabCompleter {
             default            -> player.sendMessage(Component.text("Subcomando desconocido. Usa ", NamedTextColor.RED)
                     .append(Component.text("/em help", NamedTextColor.YELLOW)));
         }
+        return true;
+    }
+
+    private boolean handleConsoleCommand(CommandSender sender, String[] args) {
+        if (args.length >= 2 && args[0].equalsIgnoreCase("battleroyale")) {
+            if (args[1].equalsIgnoreCase("money")) {
+                plugin.getBattleRoyaleCommand()
+                        .handleMoneyConsole(sender, Arrays.copyOfRange(args, 1, args.length));
+                return true;
+            }
+            if (args[1].equalsIgnoreCase("revivemate")) {
+                plugin.getBattleRoyaleCommand()
+                        .handleReviveMateConsole(sender, Arrays.copyOfRange(args, 1, args.length));
+                return true;
+            }
+        }
+        sender.sendMessage("Solo jugadores pueden usar este comando.");
         return true;
     }
 
@@ -138,13 +150,10 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         }
     }
 
-    // ── /em team ──────────────────────────────────────────────────────────────
-
     private void handleTeam(Player player, String[] args) {
         if (args.length == 0) { sendTeamHelp(player); return; }
         switch (args[0].toLowerCase()) {
 
-            // ── Subcomandos del LOBBY ────────────────────────────────────────
             case "admin" -> plugin.getTeamAdminGUI().openList(player);
 
             case "refresh" -> {
@@ -220,7 +229,6 @@ public class EMCommand implements CommandExecutor, TabCompleter {
                         : Component.text("✘ Esa lámpara no estaba registrada.", NamedTextColor.RED));
             }
 
-            // ── Subcomandos existentes ────────────────────────────────────────
             case "create" -> {
                 if (args.length < 3) { player.sendMessage(Component.text("Uso: /em team create <id> <nombre>", NamedTextColor.YELLOW)); return; }
                 String id = args[1]; String name = joinFrom(args, 2);
@@ -290,8 +298,6 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         }
     }
 
-    // ── /em score (sin cambios) ───────────────────────────────────────────────
-
     private void handleScore(Player player, String[] args) {
         if (args.length == 0) { sendScoreHelp(player); return; }
         switch (args[0].toLowerCase()) {
@@ -336,8 +342,6 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         }
     }
 
-    // ── Tab completion ─────────────────────────────────────────────────────────
-
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (!(sender instanceof Player player) || !player.isOp()) return List.of();
@@ -376,9 +380,6 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         if (args[0].equalsIgnoreCase("bingo"))
             return plugin.getBingoCommand().tabComplete(Arrays.copyOfRange(args, 1, args.length));
 
-        if (args[0].equalsIgnoreCase("boatracing"))
-            return plugin.getBoatRacingCommand().tabComplete(Arrays.copyOfRange(args, 1, args.length));
-
         if (args[0].equalsIgnoreCase("frozenheist"))
             return plugin.getFrozenHeistCommand().tabComplete(Arrays.copyOfRange(args, 1, args.length));
 
@@ -396,12 +397,17 @@ public class EMCommand implements CommandExecutor, TabCompleter {
                 return filter(List.of("30s", "1m", "2m", "5m", "10m", "15m", "30m", "1h"), args[2]);
         }
 
-         if (args[0].equalsIgnoreCase("cinematic")) {
-             if (args.length == 2) return filter(List.of(
-                     "create", "delete", "list", "record", "stop-record", "play", "stop", "gui"), args[1]);
+        if (args[0].equalsIgnoreCase("cinematic")) {
+            if (args.length == 2) return filter(List.of(
+                    "create", "delete", "list", "record", "stop-record", "play", "stop", "gui", "spectator"), args[1]);
             if (args.length == 3 && List.of("delete", "record", "play").contains(args[1].toLowerCase()))
-                 return filter(new ArrayList<>(plugin.getCinematicManager().getIds()), args[2]);
-         }
+                return filter(new ArrayList<>(plugin.getCinematicManager().getIds()), args[2]);
+            if (args.length == 3 && args[1].equalsIgnoreCase("spectator"))
+                return filter(List.of("add", "remove", "list"), args[2]);
+            if (args.length == 4 && args[1].equalsIgnoreCase("spectator")
+                    && List.of("add", "remove").contains(args[2].toLowerCase()))
+                return filter(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList(), args[3]);
+        }
 
         if (args[0].equalsIgnoreCase("pd"))
             return plugin.getParkourDuosCommand().tabComplete(Arrays.copyOfRange(args, 1, args.length));
@@ -410,8 +416,6 @@ public class EMCommand implements CommandExecutor, TabCompleter {
 
         return List.of();
     }
-
-    // ── Ayuda ─────────────────────────────────────────────────────────────────
 
     private void sendHelp(Player player) {
         player.sendMessage(Component.text("━━━ AniEventManager ━━━", NamedTextColor.GOLD));
@@ -595,7 +599,74 @@ public class EMCommand implements CommandExecutor, TabCompleter {
 
             case "gui" -> plugin.getCinematicAdminGUI().openList(player);
 
+            case "spectator" -> handleCinematicSpectator(player, Arrays.copyOfRange(args, 1, args.length));
+
             default -> sendCinematicHelp(player);
+        }
+    }
+
+    private void handleCinematicSpectator(Player player, String[] args) {
+        if (args.length == 0) {
+            player.sendMessage(Component.text(
+                    "Uso: /em cinematic spectator <add|remove|list> [jugador]", NamedTextColor.YELLOW));
+            return;
+        }
+
+        switch (args[0].toLowerCase()) {
+            case "add" -> {
+                if (args.length < 2) {
+                    player.sendMessage(Component.text("Uso: /em cinematic spectator add <jugador>", NamedTextColor.YELLOW));
+                    return;
+                }
+                Player target = Bukkit.getPlayerExact(args[1]);
+                if (target == null) {
+                    player.sendMessage(Component.text("El jugador '", NamedTextColor.RED)
+                            .append(Component.text(args[1], NamedTextColor.YELLOW))
+                            .append(Component.text("' no esta online.", NamedTextColor.RED)));
+                    return;
+                }
+                boolean ok = plugin.getCinematicManager().getSpectators().add(target);
+                player.sendMessage(ok
+                        ? Component.text("✔ ", NamedTextColor.GREEN)
+                          .append(Component.text(target.getName(), NamedTextColor.WHITE))
+                          .append(Component.text(" agregado como espectador de cinematicas.", NamedTextColor.GREEN))
+                        : Component.text(target.getName() + " ya era espectador.", NamedTextColor.YELLOW));
+            }
+            case "remove" -> {
+                if (args.length < 2) {
+                    player.sendMessage(Component.text("Uso: /em cinematic spectator remove <jugador>", NamedTextColor.YELLOW));
+                    return;
+                }
+                Player target = Bukkit.getPlayerExact(args[1]);
+                if (target == null) {
+                    player.sendMessage(Component.text("El jugador '", NamedTextColor.RED)
+                            .append(Component.text(args[1], NamedTextColor.YELLOW))
+                            .append(Component.text("' no esta online.", NamedTextColor.RED)));
+                    return;
+                }
+                boolean ok = plugin.getCinematicManager().getSpectators().remove(target);
+                player.sendMessage(ok
+                        ? Component.text("✔ ", NamedTextColor.GREEN)
+                          .append(Component.text(target.getName(), NamedTextColor.WHITE))
+                          .append(Component.text(" removido de espectadores.", NamedTextColor.GREEN))
+                        : Component.text(target.getName() + " no era espectador.", NamedTextColor.RED));
+            }
+            case "list" -> {
+                var ids = plugin.getCinematicManager().getSpectators().getAll();
+                if (ids.isEmpty()) {
+                    player.sendMessage(Component.text("No hay espectadores extra.", NamedTextColor.GRAY));
+                    return;
+                }
+                player.sendMessage(Component.text("━━━ Espectadores extra (" + ids.size() + ") ━━━", NamedTextColor.GOLD));
+                for (UUID id : ids) {
+                    Player p = Bukkit.getPlayer(id);
+                    String name = p != null ? p.getName() : id.toString();
+                    player.sendMessage(Component.text("  " + name,
+                            p != null && p.isOnline() ? NamedTextColor.WHITE : NamedTextColor.DARK_GRAY));
+                }
+            }
+            default -> player.sendMessage(Component.text(
+                    "Uso: /em cinematic spectator <add|remove|list> [jugador]", NamedTextColor.YELLOW));
         }
     }
 
@@ -609,11 +680,11 @@ public class EMCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(help("/em cinematic play <id>",             "Reproduce una cinematica (debug)"));
         player.sendMessage(help("/em cinematic stop",                  "Detiene la reproducción"));
         player.sendMessage(help("/em cinematic gui",                   "Abre el panel de administración"));
+        player.sendMessage(help("/em cinematic spectator add <jugador>",    "Agrega espectador extra"));
+        player.sendMessage(help("/em cinematic spectator remove <jugador>", "Quita espectador extra"));
+        player.sendMessage(help("/em cinematic spectator list",             "Lista espectadores extra"));
     }
 
-    // ── Utilidades ────────────────────────────────────────────────────────────
-
-    /** Raytrace: devuelve el bloque que el jugador está mirando, max 6 bloques. */
     private Block getTargetBlock(Player player) {
         return player.getTargetBlockExact(6);
     }

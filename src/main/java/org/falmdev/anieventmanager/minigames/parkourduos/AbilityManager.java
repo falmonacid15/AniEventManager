@@ -145,7 +145,9 @@ public class AbilityManager {
 
         for (Player p : team.getOnlinePlayers()) {
             stopConfirmTicker(p.getUniqueId());
-            applyCooldown(p, ability);
+            if (ability != HotbarAbility.RETURN_CHECKPOINT) {
+                applyCooldown(p, ability);
+            }
         }
 
         switch (ability) {

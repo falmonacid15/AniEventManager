@@ -26,7 +26,6 @@ public class EventManagerGUI implements Listener {
     private static final int SLOT_BINGO       = 30;
     private static final int SLOT_FROZENHEIST = 31;
     private static final int SLOT_PARKOURDUOS = 32;
-    private static final int SLOT_BOATRACING  = 33;
 
     private static final String SKULL_TEAMS =
             "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNzYxODQ2MTBjNTBjMmVmYjcyODViYzJkMjBmMzk0MzY0ZTgzNjdiYjMxNDg0MWMyMzhhNmE1MjFhMWVlMTJiZiJ9fX0=";
@@ -50,37 +49,27 @@ public class EventManagerGUI implements Listener {
         this.plugin = plugin;
     }
 
-    // ── Abrir ─────────────────────────────────────────────────────────────────
-
     public void open(Player player) {
         Inventory inv = Bukkit.createInventory(null, 54,
                 Component.text(TITLE, NamedTextColor.GOLD));
 
         GuiUtil.fillSlots(inv, GuiUtil.emptyPane(), 0,1,9,7,8,17,36,45,46,52,53,44);
 
-
-        // ── Gestión general ───────────────────────────────────────────────────
         inv.setItem(SLOT_TEAMS,      buildTeamsItem());
         inv.setItem(SLOT_SCORES,     buildScoresItem());
         inv.setItem(SLOT_CINEMATICS, buildCinematicsItem());
 
-        // ── Minijuegos ────────────────────────────────────────────────────────
         inv.setItem(SLOT_TNTRUN,      buildMiniGameItem("TNT Run", SKULL_TNTRUN, plugin.getTNTRunMiniGame()));
         inv.setItem(SLOT_BINGO,       buildMiniGameItem("Bingo", SKULL_BINGO, plugin.getBingoMiniGame()));
         inv.setItem(SLOT_FROZENHEIST, buildMiniGameItem("Frozen Heist",  SKULL_FROZENHEIST, plugin.getFrozenHeistMiniGame()));
         inv.setItem(SLOT_PARKOURDUOS, buildMiniGameItem("Parkour Duos", SKULL_PARKOURDUOS, plugin.getParkourDuosMiniGame()));
-        inv.setItem(SLOT_BOATRACING,  buildMiniGameItem("Boat Racing", SKULL_BOATRACING, plugin.getBoatRacingMiniGame()));
 
-        // ── Navegación: pantalla raíz → sin back ni home ──────────────────────
         GuiUtil.fillNavigationNone(inv);
 
         player.openInventory(inv);
     }
 
-    // ── Scores ────────────────────────────────────────────────────────────────
-
     private void openScores(Player player) {
-        // Siempre 54 slots para que la navegación sea consistente
         Inventory inv = Bukkit.createInventory(null, 54,
                 Component.text(TITLE_SCORES, NamedTextColor.GOLD));
         GuiUtil.fillAll(inv);
@@ -89,7 +78,7 @@ public class EventManagerGUI implements Listener {
         int slot = 10;
         int pos  = 1;
         for (var entry : lb) {
-            if (slot >= 44) break; // dejar fila 5 para navegación
+            if (slot >= 44) break;
             var teamOpt = plugin.getTeamManager().getTeam(entry.getKey());
             String name     = teamOpt.map(t -> t.getDisplayName()).orElse(entry.getKey());
             NamedTextColor color = teamOpt.map(t -> t.getColor()).orElse(NamedTextColor.WHITE);
@@ -109,7 +98,7 @@ public class EventManagerGUI implements Listener {
                     .build());
 
             slot++;
-            if (slot % 9 == 8) slot += 2; // saltar bordes laterales
+            if (slot % 9 == 8) slot += 2;
             pos++;
         }
 
@@ -118,15 +107,10 @@ public class EventManagerGUI implements Listener {
                     .name("Sin puntajes registrados", NamedTextColor.GRAY).build());
         }
 
-        // Scores es sub-vista del hub → solo botón Volver (48), sin Home (no tiene sentido
-        // poner Inicio cuando ya estás a un click del hub)
         GuiUtil.fillNavigation(inv, true, false);
-        // Slot 48 = ← Volver al hub (lo pone fillNavigation automáticamente)
 
         player.openInventory(inv);
     }
-
-    // ── Items ─────────────────────────────────────────────────────────────────
 
     private ItemStack buildTeamsItem() {
         int teamCount    = plugin.getTeamManager().getTeamCount();
@@ -206,21 +190,17 @@ public class EventManagerGUI implements Listener {
                 .build();
     }
 
-    // ── Click listener ────────────────────────────────────────────────────────
-
     @EventHandler
     public void onClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
 
         String title = GuiUtil.getTitle(event.getView());
 
-        // Solo cancelar si el título corresponde a un GUI nuestro
         if (!title.equals(TITLE) && !title.equals(TITLE_SCORES)) return;
 
         event.setCancelled(true);
         if (!player.isOp()) return;
 
-        // ── Hub principal ─────────────────────────────────────────────────────
         if (title.equals(TITLE)) {
             switch (event.getRawSlot()) {
                 case SLOT_TEAMS       -> plugin.getTeamAdminGUI().openList(player);
@@ -230,14 +210,11 @@ public class EventManagerGUI implements Listener {
                 case SLOT_BINGO       -> plugin.getBingoMiniGame().openAdminGUI(player);
                 case SLOT_FROZENHEIST -> plugin.getFrozenHeistMiniGame().openAdminGUI(player);
                 case SLOT_PARKOURDUOS -> plugin.getParkourDuosMiniGame().openAdminGUI(player);
-                case SLOT_BOATRACING  -> plugin.getBoatRacingMiniGame().openAdminGUI(player);
             }
             return;
         }
 
-        // ── Vista de Scores ───────────────────────────────────────────────────
         if (title.equals(TITLE_SCORES)) {
-            // Slot 48 = ← Volver al hub
             if (event.getRawSlot() == GuiUtil.NAV_BACK) open(player);
         }
     }

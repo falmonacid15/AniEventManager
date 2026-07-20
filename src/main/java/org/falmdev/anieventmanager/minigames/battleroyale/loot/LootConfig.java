@@ -11,11 +11,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.*;
 
-/**
- * Carga y guarda:
- *  - battleroyale-loot.yml   → tablas de loot por tier
- *  - battleroyale-chests.yml → coordenadas escaneadas con su tier
- */
 public class LootConfig {
 
     private final Anieventmanager plugin;
@@ -28,7 +23,6 @@ public class LootConfig {
 
     private final Map<String, LootTier> tiers = new LinkedHashMap<>();
 
-    // Lista de fases (1-indexed) que disparan refill
     private List<Integer> refillOnShrinkPhases = new ArrayList<>();
     private boolean refillOnGameStart = true;
 
@@ -74,16 +68,14 @@ public class LootConfig {
     public void reload() { load(); }
 
     private void writeLootDefaults() {
-        // refill
         lootYaml.set("refill.on-game-start", true);
         lootYaml.set("refill.on-phase-shrink", List.of(1, 2, 3));
 
-        // COMMON
         lootYaml.set("tiers.COMMON.weight", 60);
         lootYaml.set("tiers.COMMON.color",  "WHITE");
         lootYaml.set("tiers.COMMON.min-items", 2);
         lootYaml.set("tiers.COMMON.max-items", 4);
-        lootYaml.set("tiers.COMMON.coins-chance", 100);   // % de chance de dar monedas
+        lootYaml.set("tiers.COMMON.coins-chance", 100);
         lootYaml.set("tiers.COMMON.coins-min",    5);
         lootYaml.set("tiers.COMMON.coins-max",   15);
         List<Map<String, Object>> commonItems = new ArrayList<>();
@@ -96,7 +88,6 @@ public class LootConfig {
         commonItems.add(itemMap("APPLE",          2, 30));
         lootYaml.set("tiers.COMMON.items", commonItems);
 
-        // RARE
         lootYaml.set("tiers.RARE.weight", 30);
         lootYaml.set("tiers.RARE.color",  "AQUA");
         lootYaml.set("tiers.RARE.min-items", 3);
@@ -116,7 +107,6 @@ public class LootConfig {
         rareItems.add(itemMap("COOKED_BEEF",     5, 25));
         lootYaml.set("tiers.RARE.items", rareItems);
 
-        // LEGENDARY
         lootYaml.set("tiers.LEGENDARY.weight", 10);
         lootYaml.set("tiers.LEGENDARY.color",  "GOLD");
         lootYaml.set("tiers.LEGENDARY.min-items", 4);
@@ -145,8 +135,6 @@ public class LootConfig {
         m.put("weight",   weight);
         return m;
     }
-
-    // ── Parseo ────────────────────────────────────────────────────────────────
 
     public record TierCoinReward(int chance, int min, int max) {}
 
@@ -214,15 +202,11 @@ public class LootConfig {
         }
     }
 
-    // ── API tiers ─────────────────────────────────────────────────────────────
-
     public Collection<LootTier> getTiers()         { return tiers.values(); }
     public LootTier             getTier(String id) { return tiers.get(id); }
 
     public List<Integer> getRefillOnShrinkPhases() { return refillOnShrinkPhases; }
     public boolean       isRefillOnGameStart()     { return refillOnGameStart; }
-
-    // ── Cofres ────────────────────────────────────────────────────────────────
 
     public List<LootChest> loadChests() {
         List<LootChest> list = new ArrayList<>();
@@ -261,8 +245,6 @@ public class LootConfig {
         try { chestsYaml.save(chestsFile); }
         catch (IOException e) { plugin.getLogger().severe("[BR-Loot] No se pudo limpiar chests.yml"); }
     }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private int toInt(Object o, int def) {
         if (o instanceof Number n) return n.intValue();

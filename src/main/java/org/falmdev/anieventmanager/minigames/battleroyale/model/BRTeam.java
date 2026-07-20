@@ -4,9 +4,6 @@ import org.falmdev.anieventmanager.model.EventTeam;
 
 import java.util.List;
 
-/**
- * Wrapper de EventTeam con estado específico del Battle Royale.
- */
 public class BRTeam {
 
     private final EventTeam team;
@@ -27,10 +24,6 @@ public class BRTeam {
     public int       getPlacement()     { return placement; }
     public void      setPlacement(int p){ this.placement = p; }
 
-    /**
-     * El equipo está vivo si tiene al menos un jugador en estado ALIVE,
-     * PARACHUTING u ON_DRAGON.
-     */
     public boolean isAlive(List<BRPlayer> players) {
         return players.stream()
                 .filter(p -> team.getMembers().contains(p.getUuid()))

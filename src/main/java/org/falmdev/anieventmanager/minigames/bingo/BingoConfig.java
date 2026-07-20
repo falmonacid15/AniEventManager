@@ -29,8 +29,6 @@ public class BingoConfig {
         yaml = YamlConfiguration.loadConfiguration(file);
     }
 
-    // ── Carga y guardado ──────────────────────────────────────────────────────
-
     public void load() {
         File dir = new File(plugin.getDataFolder(), "minigames");
         dir.mkdirs();
@@ -63,8 +61,6 @@ public class BingoConfig {
         yaml.set("settings.score-default", 1);
     }
 
-    // ── Spawn ─────────────────────────────────────────────────────────────────
-
     public Location getSpawn() {
         if (!yaml.isConfigurationSection("spawn")) return null;
         String worldName = yaml.getString("spawn.world", "");
@@ -88,12 +84,8 @@ public class BingoConfig {
         save();
     }
 
-    // ── Countdown ─────────────────────────────────────────────────────────────
-
     public int getCountdownSeconds() { return yaml.getInt("settings.countdown-seconds", 5); }
     public void setCountdownSeconds(int seconds) { yaml.set("settings.countdown-seconds", seconds); save(); }
-
-    // ── Settings ──────────────────────────────────────────────────────────────
 
     public int getDurationMinutes() { return yaml.getInt("settings.duration-minutes", 30); }
     public void setDurationMinutes(int minutes) { yaml.set("settings.duration-minutes", minutes); save(); }
@@ -117,8 +109,6 @@ public class BingoConfig {
         yaml.set(key, score);
         save();
     }
-
-    // ── Tareas ────────────────────────────────────────────────────────────────
 
     public List<BingoTask> loadTasks() {
         List<BingoTask> list = new ArrayList<>();
@@ -169,16 +159,17 @@ public class BingoConfig {
                     }
                 }
 
-                // Descripción (soporta \n como salto de línea real)
                 String desc = yaml.getString(path + ".description", null);
                 if (desc != null) task.setDescription(desc);
 
-                // Icono personalizado
                 String iconStr = yaml.getString(path + ".icon", null);
                 if (iconStr != null) {
                     try { task.setIcon(Material.valueOf(iconStr.toUpperCase())); }
                     catch (IllegalArgumentException ignored) {}
                 }
+
+                String iconTexture = yaml.getString(path + ".icon-texture", null);
+                if (iconTexture != null) task.setIconTexture(iconTexture);
 
                 list.add(task);
 
@@ -223,6 +214,7 @@ public class BingoConfig {
         }
 
         yaml.set(path + ".icon", task.hasCustomIcon() ? task.getIcon().name() : null);
+        yaml.set(path + ".icon-texture", task.hasIconTexture() ? task.getIconTexture() : null);
         yaml.set(path + ".description", task.hasDescription() ? task.getDescription() : null);
         save();
     }
@@ -239,8 +231,6 @@ public class BingoConfig {
     public boolean hasTask(String id) {
         return yaml.isConfigurationSection("tasks." + id);
     }
-
-    // ── Paredes ───────────────────────────────────────────────────────────────
 
     public List<BingoWall> loadWalls() {
         List<BingoWall> list = new ArrayList<>();
@@ -274,8 +264,6 @@ public class BingoConfig {
         var section = yaml.getConfigurationSection("walls");
         return section == null ? 0 : section.getKeys(false).size();
     }
-
-    // ── Validación ────────────────────────────────────────────────────────────
 
     public String validate() {
         if (getTaskCount() == 0)

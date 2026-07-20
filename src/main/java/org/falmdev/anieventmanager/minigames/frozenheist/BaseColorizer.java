@@ -58,24 +58,14 @@ public class BaseColorizer {
         }
     }
 
-    // ── Reemplazos ────────────────────────────────────────────────────────────
-
-    /** Reemplazo simple: solo cambia el tipo, sin orientación ni datos extra. */
     private static void replaceSimple(Block block, Material target) {
         block.setType(target, false);
     }
 
-    /**
-     * Reemplazo para paneles de cristal (Directional con conexiones N/S/E/W/UP/DOWN).
-     * Bukkit calcula las conexiones al hacer setType, así que alcanza con no pasar physic=false
-     * en la llamada final para que actualice los vecinos.
-     */
     private static void replaceWithDirectional(Block block, Material target) {
-        // Conservar el BlockData viejo para copiar propiedades si el nuevo tipo también las tiene
         BlockData oldData = block.getBlockData();
         block.setType(target, false);
 
-        // Para GlassPane: copiar las conexiones del panel viejo si el nuevo tipo las soporta
         BlockData newData = block.getBlockData();
         if (oldData instanceof org.bukkit.block.data.type.GlassPane oldPane
                 && newData instanceof org.bukkit.block.data.type.GlassPane newPane) {
@@ -90,13 +80,7 @@ public class BaseColorizer {
         }
     }
 
-    /**
-     * Reemplaza un WallBanner conservando:
-     *  - La dirección (facing) hacia la que mira
-     *  - Los patrones del banner
-     */
     private static void replaceWallBanner(Block block, DyeColor dye) {
-        // 1. Leer facing y patrones ANTES de cambiar el tipo
         BlockData oldData = block.getBlockData();
         org.bukkit.block.BlockFace facing = null;
         if (oldData instanceof Directional dir) {
@@ -109,10 +93,8 @@ public class BaseColorizer {
             patterns = List.copyOf(banner.getPatterns());
         }
 
-        // 2. Cambiar al nuevo material
         block.setType(getColoredWallBanner(dye), false);
 
-        // 3. Restaurar facing
         if (facing != null) {
             BlockData newData = block.getBlockData();
             if (newData instanceof Directional dir) {
@@ -121,7 +103,6 @@ public class BaseColorizer {
             }
         }
 
-        // 4. Restaurar patrones
         if (!patterns.isEmpty()) {
             BlockState newState = block.getState();
             if (newState instanceof org.bukkit.block.Banner newBanner) {
@@ -131,13 +112,7 @@ public class BaseColorizer {
         }
     }
 
-    /**
-     * Reemplaza un StandingBanner conservando:
-     *  - La rotación (BlockFace de 16 direcciones)
-     *  - Los patrones
-     */
     private static void replaceStandingBanner(Block block, DyeColor dye) {
-        // 1. Leer rotación y patrones
         BlockData oldData = block.getBlockData();
         org.bukkit.block.BlockFace rotation = null;
         if (oldData instanceof Rotatable rot) {
@@ -150,10 +125,8 @@ public class BaseColorizer {
             patterns = List.copyOf(banner.getPatterns());
         }
 
-        // 2. Cambiar tipo
         block.setType(getColoredBanner(dye), false);
 
-        // 3. Restaurar rotación
         if (rotation != null) {
             BlockData newData = block.getBlockData();
             if (newData instanceof Rotatable rot) {
@@ -162,7 +135,6 @@ public class BaseColorizer {
             }
         }
 
-        // 4. Restaurar patrones
         if (!patterns.isEmpty()) {
             BlockState newState = block.getState();
             if (newState instanceof org.bukkit.block.Banner newBanner) {
@@ -171,8 +143,6 @@ public class BaseColorizer {
             }
         }
     }
-
-    // ── Clasificador ──────────────────────────────────────────────────────────
 
     private enum Category {
         GLASS, STAINED_GLASS,
@@ -183,11 +153,9 @@ public class BaseColorizer {
 
     private static Category getCategory(Material mat) {
         return switch (mat) {
-            // Cristal sin teñir
             case GLASS              -> Category.GLASS;
             case GLASS_PANE         -> Category.GLASS_PANE;
 
-            // Cristal teñido — bloque
             case WHITE_STAINED_GLASS, ORANGE_STAINED_GLASS, MAGENTA_STAINED_GLASS,
                  LIGHT_BLUE_STAINED_GLASS, YELLOW_STAINED_GLASS, LIME_STAINED_GLASS,
                  PINK_STAINED_GLASS, GRAY_STAINED_GLASS, LIGHT_GRAY_STAINED_GLASS,
@@ -195,7 +163,6 @@ public class BaseColorizer {
                  BROWN_STAINED_GLASS, GREEN_STAINED_GLASS, RED_STAINED_GLASS,
                  BLACK_STAINED_GLASS -> Category.STAINED_GLASS;
 
-            // Cristal teñido — panel
             case WHITE_STAINED_GLASS_PANE, ORANGE_STAINED_GLASS_PANE, MAGENTA_STAINED_GLASS_PANE,
                  LIGHT_BLUE_STAINED_GLASS_PANE, YELLOW_STAINED_GLASS_PANE, LIME_STAINED_GLASS_PANE,
                  PINK_STAINED_GLASS_PANE, GRAY_STAINED_GLASS_PANE, LIGHT_GRAY_STAINED_GLASS_PANE,
@@ -203,7 +170,6 @@ public class BaseColorizer {
                  BROWN_STAINED_GLASS_PANE, GREEN_STAINED_GLASS_PANE, RED_STAINED_GLASS_PANE,
                  BLACK_STAINED_GLASS_PANE -> Category.STAINED_GLASS_PANE;
 
-            // Terracota sin teñir + teñida
             case TERRACOTTA,
                  WHITE_TERRACOTTA, ORANGE_TERRACOTTA, MAGENTA_TERRACOTTA,
                  LIGHT_BLUE_TERRACOTTA, YELLOW_TERRACOTTA, LIME_TERRACOTTA,
@@ -212,7 +178,6 @@ public class BaseColorizer {
                  BROWN_TERRACOTTA, GREEN_TERRACOTTA, RED_TERRACOTTA,
                  BLACK_TERRACOTTA -> Category.TERRACOTTA;
 
-            // Banners de pared (todos los colores)
             case WHITE_WALL_BANNER, ORANGE_WALL_BANNER, MAGENTA_WALL_BANNER,
                  LIGHT_BLUE_WALL_BANNER, YELLOW_WALL_BANNER, LIME_WALL_BANNER,
                  PINK_WALL_BANNER, GRAY_WALL_BANNER, LIGHT_GRAY_WALL_BANNER,
@@ -220,7 +185,6 @@ public class BaseColorizer {
                  BROWN_WALL_BANNER, GREEN_WALL_BANNER, RED_WALL_BANNER,
                  BLACK_WALL_BANNER -> Category.WALL_BANNER;
 
-            // Banners de piso (todos los colores)
             case WHITE_BANNER, ORANGE_BANNER, MAGENTA_BANNER,
                  LIGHT_BLUE_BANNER, YELLOW_BANNER, LIME_BANNER,
                  PINK_BANNER, GRAY_BANNER, LIGHT_GRAY_BANNER,
@@ -231,8 +195,6 @@ public class BaseColorizer {
             default -> null;
         };
     }
-
-    // ── Tablas DyeColor → Material ────────────────────────────────────────────
 
     private static Material getColoredGlass(DyeColor dye) {
         return switch (dye) {

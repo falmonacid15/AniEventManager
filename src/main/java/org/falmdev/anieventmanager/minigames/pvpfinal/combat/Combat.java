@@ -13,7 +13,7 @@ public class Combat {
     private final CombatMode    mode;
     private final List<UUID>    participants;
     private final Set<UUID>     alive;
-    private final Map<UUID, String> teamByPlayer;  // UUID → teamId (null si FFA puro)
+    private final Map<UUID, String> teamByPlayer;
     private final PvpKit        kit;
     private final boolean       friendlyFire;
     private final long          startTime;
@@ -52,15 +52,20 @@ public class Combat {
         for (UUID uuid : alive) {
             String teamId = teamByPlayer.get(uuid);
             if (teamId != null) teams.add(teamId);
-            else teams.add(uuid.toString());  // FFA → cada uno es su "equipo"
+            else teams.add(uuid.toString());
         }
         return teams.size();
     }
 
+    private boolean groupsByTeam() {
+        return mode == CombatMode.TEAM_VS_TEAM || mode == CombatMode.ALL_TEAMS;
+    }
+
     public List<List<UUID>> getSidesOrdered() {
         Map<String, List<UUID>> grouped = new LinkedHashMap<>();
+        boolean byTeam = groupsByTeam();
         for (UUID uuid : participants) {
-            String key = teamByPlayer.getOrDefault(uuid, uuid.toString());
+            String key = byTeam ? teamByPlayer.getOrDefault(uuid, uuid.toString()) : uuid.toString();
             grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(uuid);
         }
         return new ArrayList<>(grouped.values());

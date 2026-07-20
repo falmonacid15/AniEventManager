@@ -23,22 +23,19 @@ public class BingoTask {
     private String structureKey = "";
 
     private Material icon = null;
+    private String iconTexture = null;
     private String description = "";
 
-    // Para OBTAIN_ITEM, CRAFT_ITEM, EQUIP_ITEM, FISH_ITEM, TRADE_ITEM
     private Material material = Material.STONE;
     private int amount = 1;
 
-    // Para KILL_MOB
     private EntityType mobType = EntityType.ZOMBIE;
     private int mobCount = 1;
 
-    // Para REACH_LOCATION
     private String locationWorld = "";
     private double locationX, locationY, locationZ;
     private double locationRadius = 5.0;
 
-    // Progreso actual
     private int progress = 0;
     private boolean completed = false;
 
@@ -47,8 +44,6 @@ public class BingoTask {
         this.type        = type;
         this.displayName = displayName;
     }
-
-    // ── Progreso ──────────────────────────────────────────────────────────────
 
     public boolean increment(int amount) {
         if (completed) return false;
@@ -82,8 +77,6 @@ public class BingoTask {
         return Math.min(100, (progress * 100) / required);
     }
 
-    // ── Getters / Setters ─────────────────────────────────────────────────────
-
     public String      getId()           { return id; }
     public Type        getType()         { return type; }
     public String      getDisplayName()  { return displayName; }
@@ -92,6 +85,12 @@ public class BingoTask {
     public Material    getIcon()           { return icon; }
     public void        setIcon(Material m) { this.icon = m; }
     public boolean     hasCustomIcon()     { return icon != null; }
+
+    public String  getIconTexture()          { return iconTexture; }
+    public void    setIconTexture(String tex) {
+        this.iconTexture = (tex != null && !tex.isEmpty()) ? tex : null;
+    }
+    public boolean hasIconTexture()          { return iconTexture != null; }
 
     public String  getDescription()            { return description; }
     public void    setDescription(String desc) { this.description = desc != null ? desc : ""; }

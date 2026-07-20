@@ -210,7 +210,7 @@ public class ParkourDuosMiniGame implements MiniGame {
             for (Player p : members) {
                 p.setGameMode(GameMode.ADVENTURE);
                 p.getInventory().clear();
-                abilityManager.giveAbilities(p);  // dar items de habilidad
+                abilityManager.giveAbilities(p);
             }
         }
 
@@ -289,6 +289,8 @@ public class ParkourDuosMiniGame implements MiniGame {
         int score = config.getScoreForPlace(finishCounter);
         data.addInternalScore(score);
 
+        chainManager.removeTeam(team);
+
         for (Player p : team.getOnlinePlayers()) {
             p.setGameMode(GameMode.SPECTATOR);
             abilityManager.cleanup(p);
@@ -317,7 +319,6 @@ public class ParkourDuosMiniGame implements MiniGame {
             broadcastAll(Component.text(
                     TEAMS_TO_TRIGGER_END + " equipos completaron el recorrido. ¡Fin de la partida!",
                     NamedTextColor.GOLD));
-            // Pequeño delay para que se vea el título de fin
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (!finishing) finishByTime();
             }, 60L);

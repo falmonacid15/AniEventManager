@@ -18,26 +18,6 @@ import org.falmdev.anieventmanager.utils.gui.ItemBuilder;
 
 import java.util.UUID;
 
-/**
- * Grabador de cinematicas con timer continuo, velocidades de vuelo
- * seleccionables desde el hotbar y suavizado de cámara al grabar.
- *
- * Layout del hotbar durante la grabación:
- *   Slot 0: Tijeras (izq=Pausar, der=Terminar)
- *   Slot 1: Velocidad 1 — Muy lenta  (flySpeed 0.02, suavizado alto)
- *   Slot 2: Velocidad 2 — Lenta      (flySpeed 0.05, suavizado medio)
- *   Slot 3: Velocidad 3 — Media      (flySpeed 0.10, suavizado bajo)
- *   Slot 4: Velocidad 4 — Rápida     (flySpeed 0.20, suavizado mínimo)
- *   Slot 5: Velocidad 5 — Muy rápida (flySpeed 0.40, sin suavizado)
- *
- * Suavizado:
- *   Cada tick se hace un lerp entre el último frame grabado y la posición actual.
- *   alpha = 1.0 → posición exacta (sin suavizado)
- *   alpha = 0.7 → suavizado fuerte (recomendado para velocidades bajas)
- *
- * La velocidad activa se detecta automáticamente por el slot seleccionado:
- * si el admin tiene el slot 2 seleccionado, se aplica la velocidad 2.
- */
 public class CinematicRecorder {
 
     public static final String SHEARS_NAME = "✦ Shears de Grabación";

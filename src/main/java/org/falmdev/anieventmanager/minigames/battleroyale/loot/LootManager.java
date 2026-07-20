@@ -15,21 +15,12 @@ import org.falmdev.anieventmanager.minigames.battleroyale.BattleRoyaleMiniGame;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
-/**
- * LootManager — escaneo de cofres, refill, partículas de tier.
- *
- * Detecta cualquier bloque tipo Container dentro del área pos1/pos2:
- * CHEST, TRAPPED_CHEST, BARREL, ENDER_CHEST, SHULKER_BOX, etc.
- *
- * Particles giratorias alrededor de cada cofre con el color del tier.
- * Render solo para jugadores dentro de un radio (performance).
- */
 public class LootManager {
 
-    private static final double PARTICLE_RADIUS    = 0.8;    // distancia del cofre
-    private static final double PARTICLE_VIEW_DIST = 32.0;   // máx render dist
-    private static final int    PARTICLE_INTERVAL  = 5;      // ticks entre frames
-    private static final int    PARTICLES_PER_RING = 8;      // puntos del círculo
+    private static final double PARTICLE_RADIUS    = 0.8;
+    private static final double PARTICLE_VIEW_DIST = 32.0;
+    private static final int    PARTICLE_INTERVAL  = 5;
+    private static final int    PARTICLES_PER_RING = 8;
     private static final double ROTATION_PER_TICK  = Math.PI / 30.0;
 
     private final Anieventmanager      plugin;
@@ -38,7 +29,7 @@ public class LootManager {
     private final LootConfig           lootConfig;
 
     private final List<LootChest> chests = new ArrayList<>();
-    private LootListener listener = null;  // se setea desde BattleRoyaleMiniGame
+    private LootListener listener = null;
     private BukkitTask particleTask = null;
     private double particleAngle    = 0;
 
@@ -47,7 +38,6 @@ public class LootManager {
         this.brConfig   = game.getConfig();
         this.game       = game;
         this.lootConfig = new LootConfig(plugin);
-        // Cargar cofres ya guardados al inicio
         this.chests.addAll(lootConfig.loadChests());
         plugin.getLogger().info("[BR-Loot] Cargados " + chests.size() + " cofres registrados.");
     }
@@ -57,9 +47,6 @@ public class LootManager {
     public List<LootChest> getChests()     { return Collections.unmodifiableList(chests); }
     public int getChestCount()             { return chests.size(); }
 
-    /**
-     * Cuenta cofres por tier.
-     */
     public Map<String, Integer> getTierDistribution() {
         Map<String, Integer> dist = new LinkedHashMap<>();
         for (LootChest c : chests) {
@@ -68,13 +55,6 @@ public class LootManager {
         return dist;
     }
 
-    // ── Escaneo ───────────────────────────────────────────────────────────────
-
-    /**
-     * Escanea el área pos1/pos2 buscando bloques tipo Container.
-     * Asigna un tier random a cada uno según los pesos configurados.
-     * Guarda en yml.
-     */
     public ScanResult scan() {
         Location p1 = brConfig.getArenaPos1();
         Location p2 = brConfig.getArenaPos2();
@@ -113,7 +93,6 @@ public class LootManager {
             }
         }
 
-        // Reemplazar lista actual
         chests.clear();
         chests.addAll(found);
         lootConfig.saveChests(chests);
@@ -127,7 +106,7 @@ public class LootManager {
 
     private boolean isLootableContainer(Block block) {
         Material mat = block.getType();
-        if (mat != Material.CHEST) {
+        if (mat != Material.CHEST && mat != Material.TRAPPED_CHEST) {
             return false;
         }
 
@@ -154,13 +133,7 @@ public class LootManager {
         plugin.getLogger().info("[BR-Loot] Registro de cofres limpiado.");
     }
 
-    // ── Refill ────────────────────────────────────────────────────────────────
-
-    /**
-     * Vacía todos los cofres y los rellena con loot random según su tier.
-     */
     public RefillResult refill() {
-        // Reset del set de "ya abiertos" — los cofres pueden volver a dar monedas
         if (listener != null) listener.clearOpenedChests();
 
         int filled = 0, skipped = 0;
@@ -183,9 +156,6 @@ public class LootManager {
         return new RefillResult(filled, skipped);
     }
 
-    /**
-     * Vacía todos los cofres sin rellenar.
-     */
     public int emptyAll() {
         int emptied = 0;
         for (LootChest c : chests) {
@@ -216,7 +186,6 @@ public class LootManager {
 
             ItemStack item = new ItemStack(entry.material(), entry.amount());
 
-            // Slot aleatorio sin repetir
             int slot;
             int tries = 0;
             do {
@@ -240,8 +209,6 @@ public class LootManager {
         }
         return tier.items().get(0);
     }
-
-    // ── Particles ─────────────────────────────────────────────────────────────
 
     public void startParticles() {
         if (particleTask != null) return;
@@ -273,7 +240,6 @@ public class LootManager {
 
             Location center = chest.centerLocation(world);
 
-            // Solo render si hay jugadores cerca
             boolean anyClose = false;
             for (Player p : world.getPlayers()) {
                 if (p.getLocation().distanceSquared(center) < PARTICLE_VIEW_DIST * PARTICLE_VIEW_DIST) {
@@ -283,21 +249,18 @@ public class LootManager {
             }
             if (!anyClose) continue;
 
-            // Anillo giratorio a nivel del suelo (aura del cofre)
             for (int i = 0; i < PARTICLES_PER_RING; i++) {
                 double angle = particleAngle + (i * 2 * Math.PI / PARTICLES_PER_RING);
                 double dx = Math.cos(angle) * PARTICLE_RADIUS;
                 double dz = Math.sin(angle) * PARTICLE_RADIUS;
                 world.spawnParticle(Particle.DUST,
                         center.getX() + dx,
-                        center.getY() - 0.5,       // al nivel del suelo
+                        center.getY() - 0.5,
                         center.getZ() + dz,
                         1, 0, 0, 0, 0, dust);
             }
         }
     }
-
-    // ── Records de resultados ─────────────────────────────────────────────────
 
     public record ScanResult(boolean ok, String message, int chestsFound, Map<String, Integer> distribution) {}
     public record RefillResult(int filled, int skipped) {}

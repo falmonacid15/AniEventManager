@@ -26,9 +26,8 @@ public class FrozenHeistListener implements Listener {
     private final FrozenHeistMiniGame miniGame;
     private final Map<UUID, Long> lastFlagWarnMs = new HashMap<>();
 
-    // Jugadores con rescate en progreso: rescuer UUID → task
     private final Map<UUID, BukkitTask> rescueTasks = new HashMap<>();
-    // Tick de reposición de bolas de nieve
+    private final Map<UUID, BukkitTask> rescueProgressTasks = new HashMap<>();
     private BukkitTask snowballReplenishTask;
 
     public FrozenHeistListener(Anieventmanager plugin, FrozenHeistMiniGame miniGame) {
@@ -36,8 +35,6 @@ public class FrozenHeistListener implements Listener {
         this.miniGame = miniGame;
         startSnowballReplenish();
     }
-
-    // ── Bolas de nieve — disparo y cooldown ───────────────────────────────────
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onProjectileLaunch(ProjectileLaunchEvent event) {
@@ -48,13 +45,11 @@ public class FrozenHeistListener implements Listener {
         PlayerState ps = miniGame.getPlayerState(player.getUniqueId());
         if (ps == null) return;
 
-        // Cancelar si está congelado
         if (ps.isFrozen()) {
             event.setCancelled(true);
             return;
         }
 
-        // Cooldown entre disparos
         if (!ps.canShoot()) {
             event.setCancelled(true);
             return;
@@ -62,8 +57,6 @@ public class FrozenHeistListener implements Listener {
 
         ps.recordShot();
     }
-
-    // ── Impacto de bola de nieve ───────────────────────────────────────────────
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onSnowballHit(ProjectileHitEvent event) {
@@ -73,28 +66,22 @@ public class FrozenHeistListener implements Listener {
         if (!(event.getHitEntity() instanceof Player victim)) return;
         if (!miniGame.isActivePlayer(victim)) return;
 
-        // No puede golpearse a sí mismo
         if (shooter.getUniqueId().equals(victim.getUniqueId())) return;
 
         PlayerState victimPs = miniGame.getPlayerState(victim.getUniqueId());
         if (victimPs == null || victimPs.isFrozen()) return;
 
-        // Verificar si el shooter es del mismo equipo (friendly fire off)
         Optional<EventTeam> shooterTeam = plugin.getTeamManager().getTeamOf(shooter);
         Optional<EventTeam> victimTeam  = plugin.getTeamManager().getTeamOf(victim);
         if (shooterTeam.isPresent() && victimTeam.isPresent()
                 && shooterTeam.get().getId().equals(victimTeam.get().getId())) return;
 
-        // Verificar si la víctima está en su base (zona segura)
         if (isInSafeBase(victim)) return;
 
-        // Verificar si el shooter está dentro de una base segura (no puede disparar desde dentro)
         if (isInSafeBase(shooter)) return;
 
-        // Registrar hit
         boolean shouldFreeze = victimPs.addHit();
 
-        // Feedback visual del hit
         victim.sendActionBar(Component.text(
                 "❄ " + victimPs.getHits() + "/" + PlayerState.HITS_TO_FREEZE + " hits",
                 NamedTextColor.AQUA));
@@ -104,8 +91,6 @@ public class FrozenHeistListener implements Listener {
         }
     }
 
-    // ── Movimiento — congelados no pueden moverse ─────────────────────────────
-
     @EventHandler(priority = EventPriority.HIGH)
     public void onPlayerMove(PlayerMoveEvent event) {
         Player player = event.getPlayer();
@@ -114,7 +99,6 @@ public class FrozenHeistListener implements Listener {
         PlayerState ps = miniGame.getPlayerState(player.getUniqueId());
         if (ps == null || !ps.isFrozen()) return;
 
-        // Permitir rotar la cámara pero no desplazarse
         Location from = event.getFrom();
         Location to   = event.getTo();
         if (to == null) return;
@@ -125,14 +109,8 @@ public class FrozenHeistListener implements Listener {
             event.setTo(from.clone().setDirection(to.getDirection()));
         }
 
-        // Mostrar tiempo restante en actionbar
-        player.sendActionBar(Component.text(
-                "❄ Congelado — " + ps.getFrozenSecondsLeft() + "s  |  "
-                        + (ps.isBeingRescued() ? "¡Rescatando..." : "Espera a tu compañero"),
-                NamedTextColor.AQUA));
+        player.sendActionBar(miniGame.buildFrozenStatusBar(ps));
     }
-
-    // ── Rescate — click derecho sobre compañero congelado ─────────────────────
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onPlayerInteract(PlayerInteractEntityEvent event) {
@@ -148,30 +126,32 @@ public class FrozenHeistListener implements Listener {
         if (rescuerPs.isFrozen()) return;
         if (!targetPs.isFrozen()) return;
 
-        // Verificar que son del mismo equipo
         Optional<EventTeam> rescuerTeam = plugin.getTeamManager().getTeamOf(rescuer);
         Optional<EventTeam> targetTeam  = plugin.getTeamManager().getTeamOf(target);
         if (rescuerTeam.isEmpty() || targetTeam.isEmpty()
                 || !rescuerTeam.get().getId().equals(targetTeam.get().getId())) return;
 
-        // No puede rescatar si lleva una bandera
+        if (rescuer.getInventory().getItemInMainHand().getType() != Material.BLAZE_POWDER) {
+            rescuer.sendMessage(Component.text(
+                    "Necesitas Polvo de Blaze para descongelar.", NamedTextColor.RED));
+            return;
+        }
+
         if (rescuerPs.isCarryingFlag()) {
             rescuer.sendMessage(Component.text(
                     "No puedes rescatar mientras llevas una bandera.", NamedTextColor.RED));
             return;
         }
 
-        // Si ya está rescatando, ignorar
         if (rescuerPs.isRescuing()) return;
 
-        // Iniciar progreso de rescate (1 segundo de click mantenido)
         targetPs.setBeingRescuedBy(rescuer.getUniqueId());
         rescuer.sendMessage(Component.text("Rescatando... mantén el click.", NamedTextColor.YELLOW));
 
         BukkitTask task = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-            // Verificar que ambos siguen válidos
             PlayerState rps = miniGame.getPlayerState(rescuer.getUniqueId());
             PlayerState tps = miniGame.getPlayerState(target.getUniqueId());
+            stopRescueProgress(rescuer);
             if (rps == null || tps == null || !tps.isFrozen()) return;
 
             miniGame.unfreezePlayer(target, rescuer);
@@ -181,11 +161,30 @@ public class FrozenHeistListener implements Listener {
 
         rescuerPs.startRescuing(target.getUniqueId(), task);
         rescueTasks.put(rescuer.getUniqueId(), task);
+        startRescueProgress(rescuer);
 
         event.setCancelled(true);
     }
 
-    // ── Cancelar rescate si el rescatador se aleja o deja de hacer click ──────
+    private void startRescueProgress(Player rescuer) {
+        stopRescueProgress(rescuer);
+        BukkitTask task = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
+            PlayerState rps = miniGame.getPlayerState(rescuer.getUniqueId());
+            if (rps == null || !rps.isRescuing()) {
+                stopRescueProgress(rescuer);
+                return;
+            }
+            double ratio = (System.currentTimeMillis() - rps.getRescueStartMs())
+                    / (double) PlayerState.RESCUE_TIME_MS;
+            rescuer.sendActionBar(miniGame.buildRescueProgressBar(ratio));
+        }, 0L, 2L);
+        rescueProgressTasks.put(rescuer.getUniqueId(), task);
+    }
+
+    private void stopRescueProgress(Player rescuer) {
+        BukkitTask task = rescueProgressTasks.remove(rescuer.getUniqueId());
+        if (task != null && !task.isCancelled()) task.cancel();
+    }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerMoveRescueCancel(PlayerMoveEvent event) {
@@ -193,7 +192,6 @@ public class FrozenHeistListener implements Listener {
         PlayerState ps = miniGame.getPlayerState(rescuer.getUniqueId());
         if (ps == null || !ps.isRescuing()) return;
 
-        // Si se mueve, cancelar rescate
         Location from = event.getFrom();
         Location to   = event.getTo();
         if (to == null) return;
@@ -207,6 +205,7 @@ public class FrozenHeistListener implements Listener {
         UUID targetUUID = ps.getRescuingTarget();
         ps.cancelRescue();
         rescueTasks.remove(rescuer.getUniqueId());
+        stopRescueProgress(rescuer);
 
         if (targetUUID != null) {
             PlayerState targetPs = miniGame.getPlayerState(targetUUID);
@@ -214,8 +213,6 @@ public class FrozenHeistListener implements Listener {
         }
         rescuer.sendMessage(Component.text("Rescate cancelado.", NamedTextColor.RED));
     }
-
-    // ── Banderas — recoger ────────────────────────────────────────────────────
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onPlayerMove2(PlayerMoveEvent event) {
@@ -235,8 +232,6 @@ public class FrozenHeistListener implements Listener {
         String playerTeamId = playerTeamOpt.get().getId();
         boolean isOwnFlag = nearbyFlagTeam.equals(playerTeamId);
 
-        // FIX: solo mostrar el warning si la bandera cercana es enemiga
-        // (la propia en IN_BASE no es recogible de todas formas)
         if (ps.isCarryingFlag()) {
             if (!isOwnFlag) {
                 long now = System.currentTimeMillis();
@@ -272,27 +267,24 @@ public class FrozenHeistListener implements Listener {
 
         TeamHeistData flagOwnerData = miniGame.getTeamData().get(flagTeamId);
         if (flagOwnerData != null) {
-            flagOwnerData.getTeam().getOnlinePlayers().forEach(p ->
-                    p.sendActionBar(Component.text(
-                            "⚠ ¡" + player.getName() + " robó tu bandera!",
-                            NamedTextColor.RED)));
+            Component ownerMsg = Component.text("⚠ ¡", NamedTextColor.RED)
+                    .append(Component.text(player.getName(), NamedTextColor.WHITE))
+                    .append(Component.text(" robó tu bandera!", NamedTextColor.RED));
+            flagOwnerData.getTeam().getOnlinePlayers().forEach(p -> p.sendMessage(ownerMsg));
         }
 
         TeamHeistData playerData = miniGame.getTeamData().get(playerTeamId);
-        Bukkit.getOnlinePlayers().forEach(p -> p.sendMessage(
-                Component.text("🚩 ", NamedTextColor.RED)
-                        .append(Component.text(player.getName(), NamedTextColor.WHITE))
-                        .append(Component.text(" (", NamedTextColor.GRAY))
-                        .append(Component.text(playerData != null
-                                        ? playerData.getTeam().getDisplayName() : playerTeamId,
-                                playerData != null ? playerData.getTeam().getColor() : NamedTextColor.WHITE))
-                        .append(Component.text(") robó la bandera de ", NamedTextColor.RED))
-                        .append(Component.text(flagTeamName, NamedTextColor.YELLOW))
-                        .append(Component.text("!", NamedTextColor.RED))));
+        if (playerData != null) {
+            Component teamMsg = Component.text("🚩 Tu compañero ", NamedTextColor.GOLD)
+                    .append(Component.text(player.getName(), NamedTextColor.WHITE))
+                    .append(Component.text(" robó la bandera de " + flagTeamName + "!", NamedTextColor.GOLD));
+            playerData.getTeam().getOnlinePlayers().stream()
+                    .filter(p -> !p.getUniqueId().equals(player.getUniqueId()))
+                    .forEach(p -> p.sendMessage(teamMsg));
+        }
     }
 
     private void handleOwnFlagPickup(Player player, String teamId, TeamHeistData data) {
-        // Speed boost temporal al recuperar bandera propia
         player.addPotionEffect(new org.bukkit.potion.PotionEffect(
                 org.bukkit.potion.PotionEffectType.SPEED, 80, 1, false, false, false));
 
@@ -300,18 +292,7 @@ public class FrozenHeistListener implements Listener {
 
         player.sendMessage(Component.text(
                 "✦ Llevas tu bandera de vuelta a la base.", NamedTextColor.GREEN));
-
-        Bukkit.getOnlinePlayers().forEach(p -> p.sendMessage(
-                Component.text("🚩 ", NamedTextColor.GREEN)
-                        .append(Component.text(player.getName(), NamedTextColor.WHITE))
-                        .append(Component.text(" recuperó la bandera de ", NamedTextColor.GREEN))
-                        .append(Component.text(data != null
-                                        ? data.getTeam().getDisplayName() : teamId,
-                                data != null ? data.getTeam().getColor() : NamedTextColor.WHITE))
-                        .append(Component.text(".", NamedTextColor.GREEN))));
     }
-
-    // ── Zona de captura — entregar bandera ────────────────────────────────────
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerMoveCapture(PlayerMoveEvent event) {
@@ -329,11 +310,8 @@ public class FrozenHeistListener implements Listener {
         TeamHeistData playerData = miniGame.getTeamData().get(playerTeamId);
         if (playerData == null) return;
 
-        // ¿Está en la zona de captura de su equipo?
         if (!playerData.isInsideCaptureZone(player.getLocation())) return;
 
-        // ¿Es una bandera enemiga? → captura (+5 pts)
-        // ¿Es su propia bandera? → recuperación (+2 pts)
         boolean isOwnFlag = flagTeamId.equals(playerTeamId);
 
         ps.clearFlag();
@@ -342,11 +320,22 @@ public class FrozenHeistListener implements Listener {
         miniGame.getFlagManager().returnToBase(flagTeamId);
 
         if (isOwnFlag) {
-            miniGame.addPoints(playerTeamId, TeamHeistData.POINTS_RECOVER, "bandera recuperada");
-        } else {
-            miniGame.addPoints(playerTeamId, TeamHeistData.POINTS_CAPTURE, "bandera capturada");
+            miniGame.addPoints(playerTeamId, TeamHeistData.POINTS_RECOVER);
 
-            // Título de captura
+            Component recoverMsg = Component.text("✦ ¡Recuperaste tu bandera! (+"
+                    + TeamHeistData.POINTS_RECOVER + " pts)", NamedTextColor.GREEN);
+            playerData.getTeam().getOnlinePlayers().forEach(p -> p.sendMessage(recoverMsg));
+        } else {
+            miniGame.addPoints(playerTeamId, TeamHeistData.POINTS_CAPTURE);
+
+            TeamHeistData flagOwnerData = miniGame.getTeamData().get(flagTeamId);
+            String flagTeamName = flagOwnerData != null
+                    ? flagOwnerData.getTeam().getDisplayName() : flagTeamId;
+
+            Component captureMsg = Component.text("🚩 ¡Capturaste la bandera de " + flagTeamName
+                    + "! (+" + TeamHeistData.POINTS_CAPTURE + " pts)", NamedTextColor.GOLD);
+            playerData.getTeam().getOnlinePlayers().forEach(p -> p.sendMessage(captureMsg));
+
             Title captureTitle = Title.title(
                     Component.text("🚩 +" + TeamHeistData.POINTS_CAPTURE, NamedTextColor.GOLD),
                     Component.text("¡Bandera capturada!", NamedTextColor.GREEN),
@@ -360,17 +349,13 @@ public class FrozenHeistListener implements Listener {
         }
     }
 
-    // ── Daño directo — cancelar en zonas seguras y entre compañeros ───────────
-
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onDamage(EntityDamageByEntityEvent event) {
         if (!(event.getEntity() instanceof Player victim)) return;
         if (!miniGame.isActivePlayer(victim)) return;
 
-        event.setCancelled(true); // Todo daño de bolas de nieve se maneja por ProjectileHitEvent
+        event.setCancelled(true);
     }
-
-    // ── Muerte — respawn instantáneo ─────────────────────────────────────────
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onDeath(org.bukkit.event.entity.PlayerDeathEvent event) {
@@ -400,8 +385,6 @@ public class FrozenHeistListener implements Listener {
         });
     }
 
-    // ── Reponer bolas de nieve ────────────────────────────────────────────────
-
     private void startSnowballReplenish() {
         snowballReplenishTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
             if (!miniGame.isRunning()) return;
@@ -409,18 +392,21 @@ public class FrozenHeistListener implements Listener {
                     data.getTeam().getOnlinePlayers().forEach(p -> {
                         PlayerState ps = miniGame.getPlayerState(p.getUniqueId());
                         if (ps == null || ps.isFrozen()) return;
+
                         ItemStack slot0 = p.getInventory().getItem(0);
-                        if (slot0 == null || slot0.getType() != org.bukkit.Material.SNOWBALL
+                        if (slot0 == null || slot0.getType() != Material.SNOWBALL
                                 || slot0.getAmount() < 16) {
-                            p.getInventory().setItem(0,
-                                    new ItemStack(org.bukkit.Material.SNOWBALL, 16));
+                            p.getInventory().setItem(0, new ItemStack(Material.SNOWBALL, 16));
+                        }
+
+                        ItemStack slot1 = p.getInventory().getItem(1);
+                        if (slot1 == null || slot1.getType() != Material.BLAZE_POWDER) {
+                            p.getInventory().setItem(1, miniGame.buildRescueItem());
                         }
                     })
             );
-        }, 0L, 20L); // cada segundo
+        }, 0L, 20L);
     }
-
-    // ── Bloquear interacciones cuando está congelado ──────────────────────────
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onInteract(PlayerInteractEvent event) {
@@ -434,7 +420,6 @@ public class FrozenHeistListener implements Listener {
     public void onItemPickup(org.bukkit.event.entity.EntityPickupItemEvent event) {
         if (!(event.getEntity() instanceof Player player)) return;
 
-        // Verificar si el item tiene la clave de bandera en su PersistentData
         org.bukkit.inventory.meta.ItemMeta meta = event.getItem().getItemStack().getItemMeta();
         if (meta == null) return;
 
@@ -445,15 +430,25 @@ public class FrozenHeistListener implements Listener {
 
         if (!isFlagItem) return;
 
-        // Siempre cancelar — tu lógica en onPlayerMove2 controla el pickup
         event.setCancelled(true);
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onRescueItemDrop(PlayerDropItemEvent event) {
+        Player player = event.getPlayer();
+        if (!miniGame.isActivePlayer(player)) return;
 
-    /**
-     * Devuelve true si el jugador está dentro de alguna base segura.
-     */
+        org.bukkit.inventory.meta.ItemMeta meta = event.getItemDrop().getItemStack().getItemMeta();
+        if (meta == null) return;
+
+        boolean isRescueItem = meta.getPersistentDataContainer().has(
+                new org.bukkit.NamespacedKey(
+                        org.falmdev.anieventmanager.Anieventmanager.getInstance(), "fh_rescue_item"),
+                org.bukkit.persistence.PersistentDataType.BYTE);
+
+        if (isRescueItem) event.setCancelled(true);
+    }
+
     private boolean isInSafeBase(Player player) {
         for (TeamHeistData data : miniGame.getTeamData().values()) {
             if (data.isInsideBase(player.getLocation())) return true;
@@ -466,6 +461,8 @@ public class FrozenHeistListener implements Listener {
             snowballReplenishTask.cancel();
         rescueTasks.values().forEach(t -> { if (!t.isCancelled()) t.cancel(); });
         rescueTasks.clear();
+        rescueProgressTasks.values().forEach(t -> { if (!t.isCancelled()) t.cancel(); });
+        rescueProgressTasks.clear();
         lastFlagWarnMs.clear();
     }
 }

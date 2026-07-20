@@ -39,7 +39,7 @@ public class PvpFinalHologramManager {
             data.setPersistent(false);
             data.setVisibility(Visibility.ALL);
             data.setVisibilityDistance(100);
-            data.setScale(new Vector3f(2.0f, 2.0f, 2.0f));
+            data.setScale(new Vector3f(3.0f, 3.0f, 3.0f));
             data.setShadowRadius(0.0f);
             data.setShadowStrength(1.0f);
             data.setTextShadow(true);

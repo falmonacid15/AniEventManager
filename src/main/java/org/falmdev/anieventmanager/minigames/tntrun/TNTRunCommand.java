@@ -169,15 +169,13 @@ public class TNTRunCommand {
                 }
             }
 
-            case "setjumpcooldown" -> {
-                if (args.length < 2) { err(player, "Uso: /em tntrun setjumpcooldown <segundos>  (0 = sin cooldown)"); return; }
+            case "setjumpuses" -> {
+                if (args.length < 2) { err(player, "Uso: /em tntrun setjumpuses <cantidad>"); return; }
                 try {
-                    int secs = Integer.parseInt(args[1]);
-                    if (secs < 0) { err(player, "El cooldown no puede ser negativo."); return; }
-                    miniGame.getConfig().setDoubleJumpCooldown(secs);
-                    ok(player, secs == 0
-                            ? "Cooldown de doble salto desactivado."
-                            : "Cooldown de doble salto seteado a " + secs + " segundos.");
+                    int uses = Integer.parseInt(args[1]);
+                    if (uses < 0) { err(player, "La cantidad de usos no puede ser negativa."); return; }
+                    miniGame.getConfig().setDoubleJumpMaxUses(uses);
+                    ok(player, "Usos de doble salto seteados a " + uses + " por jugador.");
                 } catch (NumberFormatException e) { err(player, "'" + args[1] + "' no es un número válido."); }
             }
 
@@ -232,7 +230,7 @@ public class TNTRunCommand {
                     "addspawn", "clearspawns",
                     "setsize", "setshape", "setlayers", "setlayergap", "setdomeheight",
                     "generate", "clear",
-                    "setdelay", "setscore", "setjump", "setjumpcooldown", "setenddelay",
+                    "setdelay", "setscore", "setjump", "setjumpuses", "setenddelay",
                     "settings", "lobby", "start", "stop"
             ), args[0]);
         }
@@ -270,9 +268,9 @@ public class TNTRunCommand {
                             ? filter(List.of("5", "10", "15", "20", "40"), args[1])
                             : List.of();
 
-            case "setjumpcooldown" ->
+            case "setjumpuses" ->
                     args.length == 2
-                            ? filter(List.of("0", "3", "5", "8", "10", "15"), args[1])
+                            ? filter(List.of("0", "1", "2", "3", "5", "8"), args[1])
                             : List.of();
 
             case "setenddelay" ->
@@ -314,7 +312,7 @@ public class TNTRunCommand {
         info(player, "Countdown",      cfg.getCountdownSeconds() + "s");
         info(player, "Delay fin",       cfg.getEndDelaySeconds() + "s");
         info(player, "Doble salto",    cfg.isDoubleJumpEnabled()
-                ? "§aactivado §7(cooldown: " + cfg.getDoubleJumpCooldown() + "s)"
+                ? "§aactivado §7(usos: " + cfg.getDoubleJumpMaxUses() + ")"
                 : "§cdesactivado");
         info(player, "Puntaje 1°",     String.valueOf(cfg.getScoreForPlace(1)));
         info(player, "Puntaje 2°",     String.valueOf(cfg.getScoreForPlace(2)));
@@ -353,7 +351,7 @@ public class TNTRunCommand {
         help(player, "/em tntrun setdelay <ticks>",        "Delay caída del bloque");
         help(player, "/em tntrun setscore <n> <pts>",      "Puntaje por posición");
         help(player, "/em tntrun setjump <on|off>",        "Activa/desactiva doble salto");
-        help(player, "/em tntrun setjumpcooldown <s>",     "Cooldown del doble salto (0=sin cd)");
+        help(player, "/em tntrun setjumpuses <n>",         "Cantidad de usos de doble salto");
         help(player, "/em tntrun setenddelay <s>",         "Tiempo en arena al finalizar");
         help(player, "/em tntrun settings",                "Ver configuración completa");
 

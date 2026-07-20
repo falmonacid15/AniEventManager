@@ -3,18 +3,15 @@ package org.falmdev.anieventmanager.minigames.battleroyale.model;
 import org.bukkit.Location;
 import java.util.UUID;
 
-/**
- * Estado en tiempo real de un jugador durante el Battle Royale.
- */
 public class BRPlayer {
 
     public enum State {
-        WAITING,      // en lobby esperando
-        ON_DRAGON,    // montado en el dragón, aún no saltó
-        PARACHUTING,  // cayendo con elytra + slow falling
-        ALIVE,        // en tierra, combate activo
-        DEAD,         // eliminado
-        SPECTATING    // espectador tras morir
+        WAITING,
+        ON_DRAGON,
+        PARACHUTING,
+        ALIVE,
+        DEAD,
+        SPECTATING
     }
 
     private final UUID   uuid;

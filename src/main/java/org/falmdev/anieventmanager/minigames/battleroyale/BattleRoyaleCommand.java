@@ -3,6 +3,7 @@ package org.falmdev.anieventmanager.minigames.battleroyale;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
+import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.falmdev.anieventmanager.Anieventmanager;
 import org.falmdev.anieventmanager.minigames.battleroyale.death.RespawnManager;
@@ -11,9 +12,6 @@ import org.falmdev.anieventmanager.minigames.battleroyale.zone.ZonePhase;
 
 import java.util.List;
 
-/**
- * Manejador de /em battleroyale ...
- */
 public class BattleRoyaleCommand {
 
     private final Anieventmanager      plugin;
@@ -69,14 +67,14 @@ public class BattleRoyaleCommand {
             case "zone"  -> handleZone(player, args);
             case "loot"  -> handleLoot(player, args);
             case "money"   -> handleMoney(player, args);
+            case "points"  -> handlePoints(player, args);
             case "respawn" -> handleRespawn(player, args);
             case "revive"  -> handleRevive(player, args);
+            case "revivemate" -> handleReviveMate(player, args);
 
             default -> sendHelp(player);
         }
     }
-
-    // ── /em battleroyale arena ... ────────────────────────────────────────────
 
     private void handleArena(Player player, String[] args) {
         if (args.length < 2) {
@@ -141,8 +139,6 @@ public class BattleRoyaleCommand {
         }
     }
 
-    // ── /em battleroyale drop ... ─────────────────────────────────────────────
-
     private void handleDrop(Player player, String[] args) {
         if (args.length < 2) {
             player.sendMessage(Component.text(
@@ -184,8 +180,6 @@ public class BattleRoyaleCommand {
         }
     }
 
-    // ── /em battleroyale zone ... ─────────────────────────────────────────────
-
     private void handleZone(Player player, String[] args) {
         if (args.length < 2) {
             player.sendMessage(Component.text(
@@ -225,7 +219,6 @@ public class BattleRoyaleCommand {
                                 .append(Component.text(ph.damagePerSecond() + " HP/s", NamedTextColor.RED)));
                     }
                 }
-                // Listar todas las fases configuradas
                 player.sendMessage(Component.text("  ─── Fases configuradas ───", NamedTextColor.DARK_GRAY));
                 List<BattleRoyaleConfig.ZonePhaseData> phases = game.getConfig().getZonePhases();
                 for (int i = 0; i < phases.size(); i++) {
@@ -277,7 +270,6 @@ public class BattleRoyaleCommand {
             }
 
             case "teststart" -> {
-                // Inicia solo la zona sin necesidad de toda la partida
                 if (zm.isRunning()) {
                     player.sendMessage(Component.text("✘ La zona ya está activa.", NamedTextColor.RED));
                     return;
@@ -288,6 +280,7 @@ public class BattleRoyaleCommand {
                     return;
                 }
                 zm.start();
+                zm.beginCountdown();
                 player.sendMessage(Component.text("✔ Zona iniciada en modo test.", NamedTextColor.GREEN));
                 player.sendMessage(Component.text("  Usa /em battleroyale zone stop para detenerla.", NamedTextColor.GRAY));
             }
@@ -298,11 +291,11 @@ public class BattleRoyaleCommand {
         }
     }
 
+    public void handleMoneyConsole(org.bukkit.command.CommandSender sender, String[] args) {
+        handleMoney(sender, args);
+    }
 
-
-    // ── /em battleroyale money ... ────────────────────────────────────────────
-
-    private void handleMoney(Player sender, String[] args) {
+    private void handleMoney(org.bukkit.command.CommandSender sender, String[] args) {
         if (args.length < 2) {
             sender.sendMessage(Component.text(
                     "Uso: /em battleroyale money [get|set|add|remove|give|top] ...",
@@ -451,8 +444,6 @@ public class BattleRoyaleCommand {
         }
     }
 
-    // ── /em battleroyale loot ... ─────────────────────────────────────────────
-
     private void handleLoot(Player player, String[] args) {
         if (args.length < 2) {
             player.sendMessage(Component.text(
@@ -546,8 +537,53 @@ public class BattleRoyaleCommand {
         }
     }
 
+    private void handlePoints(Player player, String[] args) {
+        if (args.length < 2) {
+            showPointsList(player);
+            return;
+        }
 
-    // ── /em battleroyale respawn ... ──────────────────────────────────────────
+        int placement = switch (args[1].toLowerCase()) {
+            case "first"  -> 1;
+            case "second" -> 2;
+            case "third"  -> 3;
+            case "other"  -> 4;
+            default -> -1;
+        };
+        if (placement == -1) {
+            player.sendMessage(Component.text("Uso: /em battleroyale points [first|second|third|other] [<n>]",
+                    NamedTextColor.YELLOW));
+            return;
+        }
+
+        if (args.length < 3) {
+            int current = game.getConfig().getPointsForPlacement(placement);
+            player.sendMessage(Component.text(args[1] + ": " + current + " puntos", NamedTextColor.YELLOW));
+            return;
+        }
+
+        try {
+            int value = Integer.parseInt(args[2]);
+            game.getConfig().setPointsForPlacement(placement, value);
+            player.sendMessage(Component.text("✔ " + args[1] + " ahora otorga " + value + " puntos.",
+                    NamedTextColor.GREEN));
+        } catch (NumberFormatException e) {
+            player.sendMessage(Component.text("✘ Número inválido.", NamedTextColor.RED));
+        }
+    }
+
+    private void showPointsList(Player player) {
+        var cfg = game.getConfig();
+        player.sendMessage(Component.text("─── Puntos por posición ───", NamedTextColor.GOLD));
+        player.sendMessage(Component.text("  1er lugar: ", NamedTextColor.GRAY)
+                .append(Component.text(cfg.getPointsForPlacement(1), NamedTextColor.WHITE)));
+        player.sendMessage(Component.text("  2do lugar: ", NamedTextColor.GRAY)
+                .append(Component.text(cfg.getPointsForPlacement(2), NamedTextColor.WHITE)));
+        player.sendMessage(Component.text("  3er lugar: ", NamedTextColor.GRAY)
+                .append(Component.text(cfg.getPointsForPlacement(3), NamedTextColor.WHITE)));
+        player.sendMessage(Component.text("  Resto:     ", NamedTextColor.GRAY)
+                .append(Component.text(cfg.getPointsForPlacement(4), NamedTextColor.WHITE)));
+    }
 
     private void handleRespawn(Player player, String[] args) {
         if (args.length < 2) {
@@ -613,11 +649,6 @@ public class BattleRoyaleCommand {
         }
     }
 
-    // ── /em battleroyale revive ... ───────────────────────────────────────────
-    //
-    // /em battleroyale revive <jugador>        → reviver = sender, valida equipo
-    // /em battleroyale revive <jugador> force  → sin validación (admin)
-
     private void handleRevive(Player sender, String[] args) {
         if (args.length < 2) {
             sender.sendMessage(Component.text(
@@ -647,11 +678,61 @@ public class BattleRoyaleCommand {
         }
     }
 
-    // ── Tab complete ──────────────────────────────────────────────────────────
+    public void handleReviveMateConsole(CommandSender sender, String[] args) {
+        handleReviveMate(sender, args);
+    }
+
+    private void handleReviveMate(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage(Component.text(
+                    "Uso: /em battleroyale revivemate <jugador>",
+                    NamedTextColor.YELLOW));
+            return;
+        }
+
+        Player reviver = Bukkit.getPlayerExact(args[1]);
+        if (reviver == null) {
+            sender.sendMessage(Component.text("✘ Jugador no encontrado.", NamedTextColor.RED));
+            return;
+        }
+
+        var teamOpt = plugin.getTeamManager().getTeamOf(reviver);
+        if (teamOpt.isEmpty()) {
+            reviver.sendMessage(Component.text("✘ No pertenecés a ningún equipo.", NamedTextColor.RED));
+            return;
+        }
+
+        Player target = teamOpt.get().getOnlinePlayers().stream()
+                .filter(p -> !p.getUniqueId().equals(reviver.getUniqueId()))
+                .filter(p -> {
+                    var brp = game.getBRPlayer(p);
+                    return brp != null && brp.isDead();
+                })
+                .findFirst()
+                .orElse(null);
+
+        if (target == null) {
+            reviver.sendMessage(Component.text(
+                    "✘ No tenés ningún compañero muerto para revivir.", NamedTextColor.RED));
+            return;
+        }
+
+        RespawnManager.ReviveResult result = game.getRespawnManager().revivePlayer(target, reviver);
+        switch (result) {
+            case OK -> reviver.sendMessage(Component.text("✔ " + target.getName() + " ha sido revivido.",
+                    NamedTextColor.GREEN));
+            case TARGET_OFFLINE       -> reviver.sendMessage(Component.text("✘ Jugador no online.", NamedTextColor.RED));
+            case TARGET_NOT_IN_GAME   -> reviver.sendMessage(Component.text("✘ El jugador no está en la partida.", NamedTextColor.RED));
+            case TARGET_NOT_DEAD      -> reviver.sendMessage(Component.text("✘ El jugador no está muerto.", NamedTextColor.RED));
+            case NO_RESPAWN_POINTS    -> reviver.sendMessage(Component.text("✘ No hay puntos de respawn configurados.", NamedTextColor.RED));
+            case DIFFERENT_TEAM       -> reviver.sendMessage(Component.text("✘ No son del mismo equipo.", NamedTextColor.RED));
+            case SAME_PLAYER          -> reviver.sendMessage(Component.text("✘ No podés revivirte a vos mismo.", NamedTextColor.RED));
+        }
+    }
 
     public List<String> tabComplete(String[] args) {
         if (args.length == 1)
-            return filter(List.of("start","stop","status","setlobby","setcenter","arena","drop","zone","loot","money","respawn","revive"), args[0]);
+            return filter(List.of("start","stop","status","setlobby","setcenter","arena","drop","zone","loot","money","points","respawn","revive","revivemate"), args[0]);
         if (args.length == 2 && args[0].equalsIgnoreCase("arena"))
             return filter(List.of("pos1","pos2","setymin","setymax","info"), args[1]);
         if (args.length == 2 && args[0].equalsIgnoreCase("drop"))
@@ -662,6 +743,8 @@ public class BattleRoyaleCommand {
             return filter(List.of("scan","list","refill","empty","clear","reload","particles"), args[1]);
         if (args.length == 2 && args[0].equalsIgnoreCase("money"))
             return filter(List.of("get","set","add","remove","give","top"), args[1]);
+        if (args.length == 2 && args[0].equalsIgnoreCase("points"))
+            return filter(List.of("first","second","third","other"), args[1]);
         if (args.length == 2 && args[0].equalsIgnoreCase("respawn"))
             return filter(List.of("add","remove","list","clear"), args[1]);
         if (args.length == 2 && args[0].equalsIgnoreCase("revive")) {
@@ -670,7 +753,12 @@ public class BattleRoyaleCommand {
                     .filter(s -> s.toLowerCase().startsWith(args[1].toLowerCase()))
                     .toList();
         }
-        // Tab completer — tercer nivel para money: nombres de jugadores
+        if (args.length == 2 && args[0].equalsIgnoreCase("revivemate")) {
+            return Bukkit.getOnlinePlayers().stream()
+                    .map(Player::getName)
+                    .filter(s -> s.toLowerCase().startsWith(args[1].toLowerCase()))
+                    .toList();
+        }
         if (args.length == 3 && args[0].equalsIgnoreCase("money")
                 && List.of("get","set","add","remove").contains(args[1].toLowerCase())) {
             return Bukkit.getOnlinePlayers().stream()
@@ -680,8 +768,6 @@ public class BattleRoyaleCommand {
         }
         return List.of();
     }
-
-    // ── Ayuda ─────────────────────────────────────────────────────────────────
 
     private void sendHelp(Player player) {
         player.sendMessage(Component.text("─── /em battleroyale ───", NamedTextColor.GOLD));
@@ -723,6 +809,9 @@ public class BattleRoyaleCommand {
         player.sendMessage(h("money remove <p> <n>",     "Restar monedas"));
         player.sendMessage(h("money give <n>",           "Dar a todos los jugadores"));
         player.sendMessage(h("money top",                "Ranking de monedas"));
+        player.sendMessage(Component.text("  ─ Puntos ─", NamedTextColor.DARK_GRAY));
+        player.sendMessage(h("points",                   "Ver puntos por posición"));
+        player.sendMessage(h("points <pos> <n>",         "Setear puntos (first|second|third|other)"));
         player.sendMessage(Component.text("  ─ Respawn / Revive ─", NamedTextColor.DARK_GRAY));
         player.sendMessage(h("respawn add",              "Agregar punto en tu pos"));
         player.sendMessage(h("respawn remove <n>",       "Eliminar punto por índice"));
@@ -730,6 +819,7 @@ public class BattleRoyaleCommand {
         player.sendMessage(h("respawn clear",            "Borrar todos los puntos"));
         player.sendMessage(h("revive <p>",               "Revivir compañero (mismo equipo)"));
         player.sendMessage(h("revive <p> force",         "Revivir sin validación"));
+        player.sendMessage(h("revivemate <p>",           "Revive automáticamente al compañero muerto de <p>"));
     }
 
     private Component h(String sub, String desc) {

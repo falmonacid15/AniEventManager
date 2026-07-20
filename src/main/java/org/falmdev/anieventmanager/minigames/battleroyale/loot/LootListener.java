@@ -16,26 +16,12 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
-/**
- * LootListener — detecta apertura de cofres registrados.
- *
- * Cuando un jugador abre un cofre del Battle Royale por primera vez:
- *   1. Ese cofre queda marcado como "ya abierto en esta partida" (sin re-reward)
- *   2. Si el tier tiene coins-chance y se cumple → da monedas al jugador
- *
- * El loot del cofre lo pone el LootManager al hacer refill, esto NO toca items.
- * Solo gestiona las monedas como bonus al primer abrir.
- *
- * Al hacer refill manual o automático, el set de "ya abiertos" se resetea
- * (el LootManager llama a clearOpenedChests()).
- */
+
 public class LootListener implements Listener {
 
     private final Anieventmanager      plugin;
     private final BattleRoyaleMiniGame game;
 
-    // Set de bloques ya abiertos (key = "world:x:y:z")
-    // Se limpia con cada refill
     private final Set<String> openedChests = ConcurrentHashMap.newKeySet();
 
     public LootListener(Anieventmanager plugin, BattleRoyaleMiniGame game) {
@@ -43,9 +29,6 @@ public class LootListener implements Listener {
         this.game   = game;
     }
 
-    /**
-     * Limpiar set de cofres abiertos. Llamado desde LootManager.refill().
-     */
     public void clearOpenedChests() {
         openedChests.clear();
     }
@@ -56,48 +39,38 @@ public class LootListener implements Listener {
         Block block = event.getClickedBlock();
         if (block == null) return;
 
-        // Solo cuando hay partida activa
         if (!game.isRunning()) return;
 
-        // Solo para jugadores del BR
         Player player = event.getPlayer();
         var brp = game.getBRPlayer(player);
         if (brp == null) return;
 
-        // Verificar que el bloque es un cofre registrado
         LootManager loot = game.getLootManager();
         if (loot == null) return;
 
         String key = blockKey(block);
         if (!isRegisteredChest(loot, block)) return;
 
-        // Si ya fue abierto en esta partida, no dar monedas otra vez
         if (openedChests.contains(key)) return;
         openedChests.add(key);
 
-        // Buscar el tier del cofre
         String tierId = findTier(loot, block);
         if (tierId == null) return;
 
         LootConfig.TierCoinReward reward = loot.getLootConfig().getCoinReward(tierId);
         if (reward == null) return;
 
-        // Aplicar chance
         int roll = ThreadLocalRandom.current().nextInt(100);
-        if (roll >= reward.chance()) return; // no toca monedas
+        if (roll >= reward.chance()) return;
 
-        // Calcular cantidad
         int amount;
         if (reward.max() <= reward.min()) amount = reward.min();
         else amount = ThreadLocalRandom.current().nextInt(reward.min(), reward.max() + 1);
 
         if (amount <= 0) return;
 
-        // Sumar monedas al jugador
         game.getCoinManager().add(player, amount);
     }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
 
     public boolean isOpened(LootChest chest) {
         return openedChests.contains(

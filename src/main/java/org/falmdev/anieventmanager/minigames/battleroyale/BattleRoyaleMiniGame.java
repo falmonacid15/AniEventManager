@@ -11,6 +11,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
 import org.falmdev.anieventmanager.managers.MiniGame;
+import org.falmdev.anieventmanager.minigames.battleroyale.drop.DropListener;
 import org.falmdev.anieventmanager.minigames.battleroyale.drop.DropSystem;
 import org.falmdev.anieventmanager.minigames.battleroyale.loot.LootManager;
 import org.falmdev.anieventmanager.minigames.battleroyale.loot.LootListener;
@@ -20,6 +21,7 @@ import org.falmdev.anieventmanager.minigames.battleroyale.death.RespawnManager;
 import org.falmdev.anieventmanager.minigames.battleroyale.model.BRPlayer;
 import org.falmdev.anieventmanager.minigames.battleroyale.model.BRTeam;
 import org.falmdev.anieventmanager.minigames.battleroyale.zone.ZoneManager;
+import org.falmdev.anieventmanager.model.EventTeam;
 
 import java.time.Duration;
 import java.util.*;
@@ -33,6 +35,7 @@ public class BattleRoyaleMiniGame implements MiniGame {
     private final Anieventmanager    plugin;
     private final BattleRoyaleConfig config;
     private final DropSystem         dropSystem;
+    private final DropListener       dropListener;
     private final ZoneManager        zoneManager;
     private final LootManager        lootManager;
     private final LootListener       lootListener;
@@ -46,11 +49,14 @@ public class BattleRoyaleMiniGame implements MiniGame {
 
     private final Map<UUID, BRPlayer> players = new LinkedHashMap<>();
     private final Map<String, BRTeam> teams   = new LinkedHashMap<>();
+    private final Map<String, EventTeam> eventTeamsById = new LinkedHashMap<>();
+    private final List<String>        eliminatedTeamsOrder = new ArrayList<>();
 
     public BattleRoyaleMiniGame(Anieventmanager plugin) {
         this.plugin      = plugin;
         this.config      = new BattleRoyaleConfig(plugin);
         this.dropSystem  = new DropSystem(plugin, config);
+        this.dropListener = new DropListener(this);
         this.zoneManager = new ZoneManager(plugin, this);
         this.lootManager = new LootManager(plugin, this);
         this.lootListener = new LootListener(plugin, this);
@@ -59,9 +65,9 @@ public class BattleRoyaleMiniGame implements MiniGame {
         this.respawnManager = new RespawnManager(plugin, this);
         this.deathListener = new DeathListener(plugin, this);
 
-        // Registrar listeners
         org.bukkit.Bukkit.getPluginManager().registerEvents(lootListener, plugin);
         org.bukkit.Bukkit.getPluginManager().registerEvents(deathListener, plugin);
+        org.bukkit.Bukkit.getPluginManager().registerEvents(dropListener, plugin);
     }
 
     @Override public String  getId()          { return "battleroyale"; }
@@ -115,8 +121,11 @@ public class BattleRoyaleMiniGame implements MiniGame {
         dropSystem.stop();
         cancelCountdown();
         restoreAllPlayers();
+        deathListener.clearPendingRespawns();
         players.clear();
         teams.clear();
+        eventTeamsById.clear();
+        eliminatedTeamsOrder.clear();
         state = State.IDLE;
         broadcast(Component.text("Battle Royale detenido.", NamedTextColor.RED));
     }
@@ -125,8 +134,6 @@ public class BattleRoyaleMiniGame implements MiniGame {
 
     @Override public void   reloadConfig()   { config.reload(); }
     @Override public String validateConfig() { return config.validate(); }
-
-    // ── Transiciones ──────────────────────────────────────────────────────────
 
     private void transitionTo(State newState) {
         this.state = newState;
@@ -199,7 +206,17 @@ public class BattleRoyaleMiniGame implements MiniGame {
     }
 
     private void startDrop() {
-        broadcast(Component.text("¡Los avión despega! Presioná SHIFT para saltar.", NamedTextColor.AQUA));
+        broadcast(Component.text("¡El avión despega! Presioná SHIFT para saltar.", NamedTextColor.AQUA));
+
+        zoneManager.start();
+
+        if (lootManager.getLootConfig().isRefillOnGameStart()) {
+            var res = lootManager.refill();
+            broadcast(Component.text("📦 Loot inicial: " + res.filled() + " cofres rellenados.",
+                    NamedTextColor.GREEN));
+        }
+        lootManager.startParticles();
+
         dropSystem.start(players, () -> {
             if (state == State.DROPPING) transitionTo(State.IN_GAME);
         });
@@ -207,32 +224,54 @@ public class BattleRoyaleMiniGame implements MiniGame {
 
     private void startGame() {
         broadcast(Component.text("¡La partida comenzó! Último en pie gana.", NamedTextColor.GREEN));
-        zoneManager.start();
-        lootManager.startParticles();
+        zoneManager.beginCountdown();
         coinManager.resetAll();
-
-        // Refill inicial si está habilitado
-        if (lootManager.getLootConfig().isRefillOnGameStart()) {
-            var res = lootManager.refill();
-            broadcast(Component.text("📦 Loot inicial: " + res.filled() + " cofres rellenados.",
-                    NamedTextColor.GREEN));
-        }
     }
 
     private void endGame() {
-        BRPlayer winner = players.values().stream().filter(BRPlayer::isAlive).findFirst().orElse(null);
-        if (winner != null)
-            broadcast(Component.text("🏆 ¡" + winner.getName() + " ganó el Battle Royale!", NamedTextColor.GOLD));
-        else
+        List<String> finalOrder = buildFinalTeamOrder();
+        awardPointsToTeams(finalOrder);
+
+        if (!finalOrder.isEmpty()) {
+            String winnerId = finalOrder.get(0);
+            EventTeam winnerTeam = eventTeamsById.get(winnerId);
+            String winnerName = winnerTeam != null ? winnerTeam.getDisplayName() : winnerId;
+            broadcast(Component.text("🏆 ¡El equipo " + winnerName + " ganó el Battle Royale!",
+                    NamedTextColor.GOLD));
+        } else {
             broadcast(Component.text("La partida terminó sin ganador.", NamedTextColor.GRAY));
+        }
         Bukkit.getScheduler().runTaskLater(plugin, this::forceStop, 100L);
     }
 
-    /**
-     * Procesa la muerte de un jugador. Llamado desde DeathListener.
-     * NO hace broadcast (eso lo gestiona DeathListener).
-     * Solo actualiza el estado, suma kill al killer y verifica win condition.
-     */
+    private List<String> buildFinalTeamOrder() {
+        List<String> order = new ArrayList<>();
+        List<BRPlayer> allPlayers = new ArrayList<>(players.values());
+
+        teams.values().stream()
+                .filter(bt -> bt.isAlive(allPlayers))
+                .map(BRTeam::getId)
+                .forEach(order::add);
+
+        List<String> eliminatedReversed = new ArrayList<>(eliminatedTeamsOrder);
+        Collections.reverse(eliminatedReversed);
+        for (String teamId : eliminatedReversed) {
+            if (!order.contains(teamId)) order.add(teamId);
+        }
+        return order;
+    }
+
+    private void awardPointsToTeams(List<String> finalOrder) {
+        for (int i = 0; i < finalOrder.size(); i++) {
+            int placement = i + 1;
+            int points = config.getPointsForPlacement(placement);
+            if (points <= 0) continue;
+            EventTeam team = eventTeamsById.get(finalOrder.get(i));
+            if (team == null) continue;
+            plugin.getScoreManager().addScore(team, points);
+        }
+    }
+
     public void handleDeath(Player victim, Player killer) {
         BRPlayer brp = players.get(victim.getUniqueId());
         if (brp == null || brp.isDead()) return;
@@ -246,25 +285,43 @@ public class BattleRoyaleMiniGame implements MiniGame {
                 if (reward > 0) coinManager.add(killer, reward);
             }
         }
+        registerTeamEliminationIfNeeded(victim);
         checkWinCondition();
     }
 
-    /** API de compatibilidad — delega a handleDeath. */
     public void killPlayer(Player player, Player killer) {
         handleDeath(player, killer);
     }
 
+    private void registerTeamEliminationIfNeeded(Player victim) {
+        var teamOpt = plugin.getTeamManager().getTeamOf(victim);
+        if (teamOpt.isEmpty()) return;
+        String teamId = teamOpt.get().getId();
+        if (eliminatedTeamsOrder.contains(teamId)) return;
+
+        BRTeam brTeam = teams.get(teamId);
+        if (brTeam == null) return;
+        if (!brTeam.isAlive(new ArrayList<>(players.values()))) {
+            eliminatedTeamsOrder.add(teamId);
+        }
+    }
+
     private void checkWinCondition() {
         if (state != State.IN_GAME) return;
-        if (players.values().stream().filter(BRPlayer::isAlive).count() <= 1)
-            transitionTo(State.ENDING);
+        long teamsAlive = teams.values().stream()
+                .filter(bt -> bt.isAlive(new ArrayList<>(players.values())))
+                .count();
+        if (teamsAlive <= 1) transitionTo(State.ENDING);
     }
 
     private void loadPlayersFromTeams() {
         players.clear();
         teams.clear();
+        eventTeamsById.clear();
+        eliminatedTeamsOrder.clear();
         plugin.getTeamManager().getAllTeams().forEach(team -> {
             teams.put(team.getId(), new BRTeam(team));
+            eventTeamsById.put(team.getId(), team);
             team.getMembers().forEach(uuid -> {
                 Player p = Bukkit.getPlayer(uuid);
                 String name = p != null ? p.getName()
@@ -304,11 +361,10 @@ public class BattleRoyaleMiniGame implements MiniGame {
                         .plainText().serialize(msg));
     }
 
-    // ── Getters ───────────────────────────────────────────────────────────────
-
     public State              getState()       { return state; }
     public BattleRoyaleConfig getConfig()      { return config; }
     public DropSystem         getDropSystem()  { return dropSystem; }
+    public DropListener       getDropListener() { return dropListener; }
     public ZoneManager        getZoneManager() { return zoneManager; }
     public LootManager        getLootManager() { return lootManager; }
     public CoinManager        getCoinManager() { return coinManager; }

@@ -7,23 +7,6 @@ import org.falmdev.anieventmanager.minigames.battleroyale.model.BRPlayer;
 import org.falmdev.anieventmanager.minigames.battleroyale.zone.ZoneManager;
 import org.falmdev.anieventmanager.minigames.battleroyale.zone.ZonePhase;
 
-/**
- * Placeholders %anievent_battleroyale_...%
- *
- * Estado:
- *   state, running, players, players_alive, teams_alive
- *
- * Zona:
- *   zone_state, zone_radius, zone_phase, zone_phases_total,
- *   zone_next_time, zone_damage
- *
- * Jugador:
- *   player_kills, player_money, player_alive, player_state, player_in_zone
- *
- * Ranking de monedas (top 1-10):
- *   top_money_1_name, top_money_1_amount
- *   ... top_money_10_name, top_money_10_amount
- */
 public class BattleRoyalePlaceholders {
 
     private final Anieventmanager      plugin;
@@ -36,7 +19,6 @@ public class BattleRoyalePlaceholders {
 
     public String resolve(OfflinePlayer offlinePlayer, String params) {
 
-        // ── Generales ─────────────────────────────────────────────────────────
         switch (params) {
             case "state" -> {
                 return switch (game.getState()) {
@@ -59,8 +41,6 @@ public class BattleRoyalePlaceholders {
             }
         }
 
-        // ── Top monedas ───────────────────────────────────────────────────────
-        // top_money_N_name | top_money_N_amount
         if (params.startsWith("top_money_")) {
             String rest = params.substring("top_money_".length());
             int underscore = rest.indexOf('_');
@@ -85,7 +65,6 @@ public class BattleRoyalePlaceholders {
             };
         }
 
-        // ── Zona ──────────────────────────────────────────────────────────────
         if (params.startsWith("zone_")) {
             ZoneManager zm = game.getZoneManager();
             return switch (params) {
@@ -98,6 +77,8 @@ public class BattleRoyalePlaceholders {
                         game.getConfig().getZonePhases().size());
                 case "zone_next_time" -> zm.isRunning()
                         ? String.valueOf(zm.getSecondsLeft()) : "-";
+                case "zone_time_percent" -> zm.isRunning()
+                        ? String.format("%.0f", zm.getSubStatePercentLeft()) : "0";
                 case "zone_damage" -> {
                     if (!zm.isRunning()) yield "0";
                     ZonePhase ph = zm.getCurrentPhaseData();
@@ -107,7 +88,6 @@ public class BattleRoyalePlaceholders {
             };
         }
 
-        // ── Jugador ───────────────────────────────────────────────────────────
         if (params.startsWith("player_")) {
             Player player = offlinePlayer.getPlayer();
             if (player == null) {

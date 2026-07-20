@@ -23,9 +23,6 @@ public class BingoCommand implements CommandExecutor, TabCompleter {
     private final Anieventmanager plugin;
     private final BingoMiniGame miniGame;
 
-    // ── Listas para tab complete ───────────────────────────────────────────────
-
-    // Mobs que se pueden matar (excluye mobs no-combat o irrelevantes)
     private static final List<String> KILLABLE_MOBS = List.of(
             "ZOMBIE", "SKELETON", "CREEPER", "SPIDER", "CAVE_SPIDER", "ENDERMAN",
             "WITCH", "BLAZE", "GHAST", "MAGMA_CUBE", "SLIME", "WITHER_SKELETON",
@@ -36,7 +33,6 @@ public class BingoCommand implements CommandExecutor, TabCompleter {
             "BOGGED", "CREAKING", "ENDER_DRAGON", "WITHER", "IRON_GOLEM"
     );
 
-    // Materiales comunes para tradear (ítems que los aldeanos dan)
     private static final List<String> TRADE_RESULT_MATERIALS = List.of(
             "EMERALD", "DIAMOND", "IRON_INGOT", "GOLD_INGOT",
             "DIAMOND_SWORD", "DIAMOND_AXE", "DIAMOND_PICKAXE", "DIAMOND_SHOVEL",
@@ -56,7 +52,6 @@ public class BingoCommand implements CommandExecutor, TabCompleter {
             "MAP", "FILLED_MAP", "GLOBE_BANNER_PATTERN"
     );
 
-    // Estructuras disponibles
     private static final List<String> STRUCTURES = List.of(
             "minecraft:trial_chambers",
             "minecraft:stronghold",
@@ -80,7 +75,6 @@ public class BingoCommand implements CommandExecutor, TabCompleter {
             "minecraft:swamp_hut"
     );
 
-    // Materiales obtenibles / crafteables comunes
     private static final List<String> COMMON_MATERIALS = Stream.of(Material.values())
             .filter(m -> !m.isAir() && !m.name().startsWith("LEGACY_") && m.isItem())
             .map(Material::name)
@@ -91,8 +85,6 @@ public class BingoCommand implements CommandExecutor, TabCompleter {
         this.plugin   = plugin;
         this.miniGame = miniGame;
     }
-
-    // ── /em bingo (admin) ─────────────────────────────────────────────────────
 
     public void handleAdmin(Player player, String[] args) {
         if (args.length == 0) { sendAdminHelp(player); return; }
@@ -188,8 +180,6 @@ public class BingoCommand implements CommandExecutor, TabCompleter {
             default -> sendAdminHelp(player);
         }
     }
-
-    // ── /em bingo task ────────────────────────────────────────────────────────
 
     private void handleTask(Player player, String[] args) {
         if (args.length == 0) { sendTaskHelp(player); return; }
@@ -350,8 +340,6 @@ public class BingoCommand implements CommandExecutor, TabCompleter {
         }
     }
 
-    // ── /em bingo wall ────────────────────────────────────────────────────────
-
     private void handleWall(Player player, String[] args) {
         if (args.length == 0) { sendWallHelp(player); return; }
         var wallManager = plugin.getBingoWallManager();
@@ -421,8 +409,6 @@ public class BingoCommand implements CommandExecutor, TabCompleter {
         }
     }
 
-    // ── /bingo (jugadores) ────────────────────────────────────────────────────
-
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) {
@@ -458,25 +444,20 @@ public class BingoCommand implements CommandExecutor, TabCompleter {
         return List.of();
     }
 
-    // ── Tab completion para /em bingo ─────────────────────────────────────────
-
     public List<String> tabComplete(String[] args) {
         if (args.length == 1)
             return filter(List.of("start", "stop", "settings", "setspawn", "setcountdown",
                     "setduration", "setscore", "task", "lobby", "wall"), args[0]);
 
-        // ── task ──────────────────────────────────────────────────────────────
         if (args[0].equalsIgnoreCase("task")) {
             if (args.length == 2)
                 return filter(List.of("add", "edit", "remove", "list", "clear"), args[1]);
 
-            // task edit/remove <id>
             if ((args[1].equalsIgnoreCase("edit") || args[1].equalsIgnoreCase("remove"))
                     && args.length == 3)
                 return filter(taskIds(), args[2]);
 
             if (args[1].equalsIgnoreCase("add")) {
-                // task add <id> <TYPE>
                 if (args.length == 4)
                     return filter(List.of("OBTAIN_ITEM", "CRAFT_ITEM", "KILL_MOB",
                             "REACH_LOCATION", "EQUIP_ITEM", "FISH_ITEM",
@@ -484,46 +465,36 @@ public class BingoCommand implements CommandExecutor, TabCompleter {
 
                 String type = args.length >= 4 ? args[3].toUpperCase() : "";
 
-                // task add <id> OBTAIN_ITEM|CRAFT_ITEM|TRADE_ITEM <MATERIAL>
                 if ((type.equals("OBTAIN_ITEM") || type.equals("CRAFT_ITEM")
                         || type.equals("TRADE_ITEM")) && args.length == 5)
                     return filter(COMMON_MATERIALS, args[4]);
 
-                // task add <id> EQUIP_ITEM <MATERIAL> (armaduras)
                 if (type.equals("EQUIP_ITEM") && args.length == 5)
                     return filter(EQUIP_MATERIALS, args[4]);
 
-                // task add <id> FISH_ITEM <MATERIAL> (peces y loot de pesca)
                 if (type.equals("FISH_ITEM") && args.length == 5)
                     return filter(FISH_MATERIALS, args[4]);
 
-                // task add <id> KILL_MOB <MOB>
                 if (type.equals("KILL_MOB") && args.length == 5)
                     return filter(KILLABLE_MOBS, args[4]);
 
-                // task add <id> VISIT_STRUCTURE <structure_key>
                 if (type.equals("VISIT_STRUCTURE") && args.length == 5)
                     return filter(STRUCTURES, args[4]);
 
-                // task add <id> TRADE_ANY <cantidad>
                 if (type.equals("TRADE_ANY") && args.length == 5)
                     return filter(List.of("1", "3", "5", "10", "20"), args[4]);
 
-                // task add <id> TRADE_ITEM <MATERIAL> <cantidad>
                 if (type.equals("TRADE_ITEM") && args.length == 6)
                     return filter(List.of("1", "2", "3", "5", "10"), args[5]);
 
-                // task add <id> OBTAIN_ITEM|CRAFT_ITEM <MATERIAL> <cantidad>
                 if ((type.equals("OBTAIN_ITEM") || type.equals("CRAFT_ITEM")) && args.length == 6)
                     return filter(List.of("1", "2", "4", "8", "16", "32", "64"), args[5]);
 
-                // task add <id> KILL_MOB <MOB> <cantidad>
                 if (type.equals("KILL_MOB") && args.length == 6)
                     return filter(List.of("1", "2", "5", "10", "20"), args[5]);
             }
         }
 
-        // ── wall ──────────────────────────────────────────────────────────────
         if (args[0].equalsIgnoreCase("wall")) {
             if (args.length == 2)
                 return filter(List.of("add", "remove", "list", "place", "clear"), args[1]);
@@ -537,14 +508,11 @@ public class BingoCommand implements CommandExecutor, TabCompleter {
             }
         }
 
-        // ── setscore ──────────────────────────────────────────────────────────
         if (args[0].equalsIgnoreCase("setscore") && args.length == 2)
             return filter(List.of("1", "2", "3", "4"), args[1]);
 
         return List.of();
     }
-
-    // ── Listas de materiales específicas ──────────────────────────────────────
 
     private static final List<String> EQUIP_MATERIALS = List.of(
             "LEATHER_HELMET", "LEATHER_CHESTPLATE", "LEATHER_LEGGINGS", "LEATHER_BOOTS",
@@ -564,8 +532,6 @@ public class BingoCommand implements CommandExecutor, TabCompleter {
             "FISHING_ROD", "ENCHANTED_BOOK", "LEATHER", "LEATHER_BOOTS",
             "ROTTEN_FLESH", "WATER_BUCKET"
     );
-
-    // ── Ayuda ─────────────────────────────────────────────────────────────────
 
     private void sendAdminHelp(Player player) {
         player.sendMessage(Component.text("━━━ /em bingo ━━━", NamedTextColor.GOLD));
@@ -606,8 +572,6 @@ public class BingoCommand implements CommandExecutor, TabCompleter {
         help(player, "/em bingo wall place <id|all>", "Colocar barriers");
         help(player, "/em bingo wall clear <id|all>", "Quitar barriers (pone air)");
     }
-
-    // ── Utilidades ────────────────────────────────────────────────────────────
 
     private List<String> taskIds() {
         return new ArrayList<>(miniGame.getConfig().loadTasks().stream()

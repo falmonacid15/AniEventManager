@@ -13,24 +13,21 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.SkullMeta;
+import org.bukkit.profile.PlayerProfile;
+import org.bukkit.profile.PlayerTextures;
 import org.falmdev.anieventmanager.Anieventmanager;
 import org.falmdev.anieventmanager.utils.gui.GuiUtil;
+import org.falmdev.anieventmanager.utils.gui.HeadUtil;
 import org.falmdev.anieventmanager.utils.gui.ItemBuilder;
 
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * GUI de edición de una tarea del bingo.
- *
- * Layout (36 slots = 4 filas):
- *   Fila 1: ICON(10) | TITLE(12) | DESC(14) | RESET(16)
- *   Fila 3: INFO(28)
- *
- * Descripción soporta saltos de línea con \n. Ejemplo:
- *   "Primera línea\nSegunda línea\n&aTercera en verde"
- */
 public class BingoEditGUI implements Listener {
 
     private static final int SLOT_ICON  = 10;
@@ -52,14 +49,11 @@ public class BingoEditGUI implements Listener {
         this.config = plugin.getBingoMiniGame().getConfig();
     }
 
-    // ── Abrir el editor ───────────────────────────────────────────────────────
-
     public void open(Player player, BingoTask task) {
         Inventory inv = Bukkit.createInventory(null, 36,
                 Component.text(TITLE_PREFIX, NamedTextColor.GOLD)
                         .append(Component.text(task.getId(), NamedTextColor.YELLOW)));
 
-        // Llenar con borders grises y luego setear los items custom
         GuiUtil.fillAll(inv, Material.GRAY_STAINED_GLASS_PANE);
 
         inv.setItem(SLOT_ICON,  buildIconSlot(task));
@@ -70,8 +64,6 @@ public class BingoEditGUI implements Listener {
 
         player.openInventory(inv);
     }
-
-    // ── Clicks ────────────────────────────────────────────────────────────────
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
@@ -104,12 +96,23 @@ public class BingoEditGUI implements Listener {
                             NamedTextColor.RED));
                     return;
                 }
-                task.setIcon(hand.getType());
-                config.saveTask(task);
-                player.sendMessage(Component.text("✔ Icono cambiado a ", NamedTextColor.GREEN)
-                        .append(Component.text(hand.getType().name().toLowerCase()
-                                .replace('_', ' '), NamedTextColor.WHITE))
-                        .append(Component.text(".", NamedTextColor.GREEN)));
+
+                String texture = extractSkullTexture(hand);
+                if (texture != null) {
+                    task.setIconTexture(texture);
+                    task.setIcon(Material.PLAYER_HEAD);
+                    config.saveTask(task);
+                    player.sendMessage(Component.text(
+                            "✔ Icono cambiado a la cabeza personalizada.", NamedTextColor.GREEN));
+                } else {
+                    task.setIcon(hand.getType());
+                    task.setIconTexture(null);
+                    config.saveTask(task);
+                    player.sendMessage(Component.text("✔ Icono cambiado a ", NamedTextColor.GREEN)
+                            .append(Component.text(hand.getType().name().toLowerCase()
+                                    .replace('_', ' '), NamedTextColor.WHITE))
+                            .append(Component.text(".", NamedTextColor.GREEN)));
+                }
                 Bukkit.getScheduler().runTask(plugin, () -> open(player, task));
             }
 
@@ -141,20 +144,19 @@ public class BingoEditGUI implements Listener {
             }
 
             case SLOT_RESET -> {
-                if (!task.hasCustomIcon()) {
+                if (!task.hasCustomIcon() && !task.hasIconTexture()) {
                     player.sendMessage(Component.text(
                             "Esta tarea no tiene icono personalizado.", NamedTextColor.GRAY));
                     return;
                 }
                 task.setIcon(null);
+                task.setIconTexture(null);
                 config.saveTask(task);
                 player.sendMessage(Component.text("✔ Icono reseteado al default.", NamedTextColor.GREEN));
                 Bukkit.getScheduler().runTask(plugin, () -> open(player, task));
             }
         }
     }
-
-    // ── Chat prompts ──────────────────────────────────────────────────────────
 
     @EventHandler
     public void onChat(AsyncPlayerChatEvent event) {
@@ -220,15 +222,35 @@ public class BingoEditGUI implements Listener {
         }
     }
 
-    // ── Construcción de slots ─────────────────────────────────────────────────
+    private String extractSkullTexture(ItemStack item) {
+        if (item.getType() != Material.PLAYER_HEAD) return null;
+        if (!(item.getItemMeta() instanceof SkullMeta skullMeta)) return null;
+
+        PlayerProfile profile = skullMeta.getPlayerProfile();
+        if (profile == null) return null;
+
+        PlayerTextures textures = profile.getTextures();
+        if (textures == null || textures.isEmpty()) return null;
+
+        URL skinUrl = textures.getSkin();
+        if (skinUrl == null) return null;
+
+        String json = "{\"textures\":{\"SKIN\":{\"url\":\"" + skinUrl + "\"}}}";
+        return Base64.getEncoder().encodeToString(json.getBytes(StandardCharsets.UTF_8));
+    }
 
     private ItemStack buildIconSlot(BingoTask task) {
-        Material mat = task.hasCustomIcon() ? task.getIcon() : Material.ITEM_FRAME;
-        String currentIcon = task.hasCustomIcon()
-                ? task.getIcon().name().toLowerCase().replace('_', ' ')
-                : "default (cristal)";
+        String currentIcon = task.hasIconTexture()
+                ? "cabeza personalizada"
+                : task.hasCustomIcon()
+                  ? task.getIcon().name().toLowerCase().replace('_', ' ')
+                  : "default (cristal)";
 
-        return ItemBuilder.of(mat)
+        ItemBuilder b = task.hasIconTexture()
+                ? ItemBuilder.of(HeadUtil.fromBase64(task.getIconTexture()))
+                : ItemBuilder.of(task.hasCustomIcon() ? task.getIcon() : Material.ITEM_FRAME);
+
+        return b
                 .name("Cambiar icono", NamedTextColor.GOLD)
                 .emptyLine()
                 .lore(GuiUtil.noItalic(Component.text("Icono actual: ", NamedTextColor.GRAY)
@@ -237,6 +259,7 @@ public class BingoEditGUI implements Listener {
                 .lore(NamedTextColor.YELLOW,
                         "Click con un ítem en mano",
                         "para usarlo como icono.")
+                .lore(NamedTextColor.DARK_GRAY, "Funciona con cabezas personalizadas.")
                 .build();
     }
 
@@ -282,7 +305,7 @@ public class BingoEditGUI implements Listener {
                 .name("Quitar icono personalizado", NamedTextColor.RED)
                 .emptyLine();
 
-        if (task.hasCustomIcon()) {
+        if (task.hasCustomIcon() || task.hasIconTexture()) {
             b.lore(NamedTextColor.YELLOW,
                     "Click para volver al cristal",
                     "de color por defecto.");

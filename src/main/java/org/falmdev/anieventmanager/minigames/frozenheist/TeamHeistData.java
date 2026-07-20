@@ -11,13 +11,9 @@ public class TeamHeistData {
     private final EventTeam team;
     private int localPoints = 0;
 
-    // Dos spawns de respawn dentro de la base (uno por jugador)
     private Location baseSpawn1;
     private Location baseSpawn2;
 
-    // Índice rotativo: alterna qué spawn usar para el próximo respawn.
-    // 0 = próximo usa spawn1, 1 = próximo usa spawn2.
-    // Se avanza cada vez que se teleporta a un jugador en teleportToBase.
     private int spawnIndex = 0;
 
     private Location captureZone;
@@ -29,12 +25,10 @@ public class TeamHeistData {
         this.team = team;
     }
 
-    // ── Puntos ────────────────────────────────────────────────────────────────
 
     public void addPoints(int points) { localPoints += points; }
     public int  getPoints()           { return localPoints; }
 
-    // ── Spawns de base ────────────────────────────────────────────────────────
 
     public Location getBaseSpawn1() { return baseSpawn1; }
     public void setBaseSpawn1(Location l) { this.baseSpawn1 = l; }
@@ -42,10 +36,6 @@ public class TeamHeistData {
     public Location getBaseSpawn2() { return baseSpawn2; }
     public void setBaseSpawn2(Location l) { this.baseSpawn2 = l; }
 
-    /**
-     * Devuelve el spawn para el índice dado (1 o 2).
-     * Si el spawn pedido es null, devuelve el otro como fallback.
-     */
     public Location getBaseSpawnFor(int index) {
         if (index == 2) {
             return baseSpawn2 != null ? baseSpawn2 : baseSpawn1;
@@ -53,11 +43,6 @@ public class TeamHeistData {
         return baseSpawn1 != null ? baseSpawn1 : baseSpawn2;
     }
 
-    /**
-     * Devuelve el siguiente spawn disponible para un respawn,
-     * alternando entre spawn1 y spawn2.
-     * Si solo hay uno configurado, siempre devuelve ese.
-     */
     public Location getNextRespawnSpawn() {
         if (baseSpawn1 == null) return baseSpawn2;
         if (baseSpawn2 == null) return baseSpawn1;
@@ -66,15 +51,9 @@ public class TeamHeistData {
         return result;
     }
 
-    /**
-     * Devuelve cualquier spawn disponible (para eventos como onRespawn
-     * donde no queremos avanzar el índice).
-     */
     public Location getAnyBaseSpawn() {
         return baseSpawn1 != null ? baseSpawn1 : baseSpawn2;
     }
-
-    // ── Resto de getters/setters ──────────────────────────────────────────────
 
     public EventTeam getTeam()       { return team; }
 
@@ -89,8 +68,6 @@ public class TeamHeistData {
 
     public Location getBaseCorner2() { return baseCorner2; }
     public void setBaseCorner2(Location l) { this.baseCorner2 = l; }
-
-    // ── Verificaciones de zona ────────────────────────────────────────────────
 
     public boolean isInsideBase(Location loc) {
         if (baseCorner1 == null || baseCorner2 == null) return false;

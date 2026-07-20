@@ -3,6 +3,8 @@ package org.falmdev.anieventmanager.minigames.bingo;
 import io.papermc.paper.event.player.PlayerTradeEvent;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -10,13 +12,21 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.CraftItemEvent;
+import org.bukkit.event.inventory.FurnaceExtractEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerFishEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
 import org.falmdev.anieventmanager.model.EventTeam;
@@ -34,8 +44,6 @@ public class BingoListener implements Listener {
         this.miniGame = miniGame;
     }
 
-    // ── OBTAIN_ITEM ───────────────────────────────────────────────────────────
-
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPickup(EntityPickupItemEvent event) {
         if (!(event.getEntity() instanceof Player player)) return;
@@ -49,7 +57,16 @@ public class BingoListener implements Listener {
         checkTasksByType(teamOpt.get(), BingoTask.Type.OBTAIN_ITEM, mat, amount);
     }
 
-    // ── CRAFT_ITEM ────────────────────────────────────────────────────────────
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onFurnaceExtract(FurnaceExtractEvent event) {
+        if (!miniGame.isRunning()) return;
+
+        Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeamOf(event.getPlayer());
+        if (teamOpt.isEmpty()) return;
+
+        checkTasksByType(teamOpt.get(), BingoTask.Type.OBTAIN_ITEM,
+                event.getItemType(), event.getItemAmount());
+    }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onCraft(CraftItemEvent event) {
@@ -77,8 +94,6 @@ public class BingoListener implements Listener {
         checkTasksByType(teamOpt.get(), BingoTask.Type.CRAFT_ITEM, result.getType(), craftedAmount);
     }
 
-    // ── KILL_MOB ──────────────────────────────────────────────────────────────
-
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onKill(EntityDeathEvent event) {
         if (!miniGame.isRunning()) return;
@@ -99,9 +114,10 @@ public class BingoListener implements Listener {
 
             boolean justCompleted = task.increment(1);
             if (!justCompleted) {
-                killer.sendMessage(Component.text("⚔ " + task.getDisplayName()
-                                + " — " + task.getProgress() + "/" + task.getRequired(),
-                        NamedTextColor.GRAY));
+                killer.sendMessage(Component.text("⚔ ", NamedTextColor.GRAY)
+                        .append(legacyTaskName(task, NamedTextColor.GRAY))
+                        .append(Component.text(" — " + task.getProgress() + "/" + task.getRequired(),
+                                NamedTextColor.GRAY)));
                 refreshOpenGUIs(teamOpt.get(), card);
             } else {
                 onTaskCompleted(teamOpt.get(), task, card);
@@ -109,8 +125,6 @@ public class BingoListener implements Listener {
             break;
         }
     }
-
-    // ── EQUIP_ITEM ────────────────────────────────────────────────────────────
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onInventoryClick(InventoryClickEvent event) {
@@ -127,8 +141,6 @@ public class BingoListener implements Listener {
         checkTasksByType(teamOpt.get(), BingoTask.Type.EQUIP_ITEM, item.getType(), 1);
     }
 
-    // ── FISH_ITEM ─────────────────────────────────────────────────────────────
-
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onFish(PlayerFishEvent event) {
         if (!miniGame.isRunning()) return;
@@ -142,8 +154,6 @@ public class BingoListener implements Listener {
             checkTasksByType(teamOpt.get(), BingoTask.Type.FISH_ITEM, mat, 1);
         }
     }
-
-    // ── TRADE_ANY / TRADE_ITEM ────────────────────────────────────────────────
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onTrade(PlayerTradeEvent event) {
@@ -166,10 +176,10 @@ public class BingoListener implements Listener {
                     if (done) {
                         onTaskCompleted(teamOpt.get(), task, card);
                     } else {
-                        event.getPlayer().sendMessage(
-                                Component.text("🤝 " + task.getDisplayName()
-                                                + " — " + task.getProgress() + "/" + task.getRequired(),
-                                        NamedTextColor.GRAY));
+                        event.getPlayer().sendMessage(Component.text("🤝 ", NamedTextColor.GRAY)
+                                .append(legacyTaskName(task, NamedTextColor.GRAY))
+                                .append(Component.text(" — " + task.getProgress() + "/" + task.getRequired(),
+                                        NamedTextColor.GRAY)));
                         refreshOpenGUIs(teamOpt.get(), card);
                     }
                 }
@@ -179,10 +189,10 @@ public class BingoListener implements Listener {
                     if (done) {
                         onTaskCompleted(teamOpt.get(), task, card);
                     } else {
-                        event.getPlayer().sendMessage(
-                                Component.text("🤝 " + task.getDisplayName()
-                                                + " — " + task.getProgress() + "/" + task.getRequired(),
-                                        NamedTextColor.GRAY));
+                        event.getPlayer().sendMessage(Component.text("🤝 ", NamedTextColor.GRAY)
+                                .append(legacyTaskName(task, NamedTextColor.GRAY))
+                                .append(Component.text(" — " + task.getProgress() + "/" + task.getRequired(),
+                                        NamedTextColor.GRAY)));
                         refreshOpenGUIs(teamOpt.get(), card);
                     }
                 }
@@ -191,7 +201,54 @@ public class BingoListener implements Listener {
         }
     }
 
-    // ── REACH_LOCATION + VISIT_STRUCTURE — tick periódico ────────────────────
+    @EventHandler
+    public void onCardItemUse(PlayerInteractEvent event) {
+        if (!miniGame.isRunning()) return;
+        if (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
+        if (!isCardItem(event.getItem())) return;
+
+        event.setCancelled(true);
+        event.getPlayer().performCommand("bingo");
+    }
+
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onCardItemMoveInventory(InventoryClickEvent event) {
+        if (!miniGame.isRunning()) return;
+        if (isCardItem(event.getCurrentItem()) || isCardItem(event.getCursor())) {
+            event.setCancelled(true);
+            return;
+        }
+        if (event.getClick() == ClickType.NUMBER_KEY) {
+            ItemStack hotbarItem = event.getWhoClicked().getInventory().getItem(event.getHotbarButton());
+            if (isCardItem(hotbarItem)) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onCardItemDrag(InventoryDragEvent event) {
+        if (!miniGame.isRunning()) return;
+        if (isCardItem(event.getOldCursor())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onCardItemDrop(PlayerDropItemEvent event) {
+        if (!miniGame.isRunning()) return;
+        if (isCardItem(event.getItemDrop().getItemStack())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onCardItemSwap(PlayerSwapHandItemsEvent event) {
+        if (!miniGame.isRunning()) return;
+        if (isCardItem(event.getMainHandItem()) || isCardItem(event.getOffHandItem())) {
+            event.setCancelled(true);
+        }
+    }
 
     public void startLocationCheck() {
         locationTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
@@ -236,8 +293,6 @@ public class BingoListener implements Listener {
     public void stopLocationCheck() {
         if (locationTask != null && !locationTask.isCancelled()) locationTask.cancel();
     }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private void checkTasksByType(EventTeam team, BingoTask.Type type, Material mat, int amount) {
         BingoCard card = miniGame.getCard(team);
@@ -288,12 +343,25 @@ public class BingoListener implements Listener {
                 p.sendMessage(Component.text("✔ ", NamedTextColor.GREEN)
                         .append(Component.text(team.getDisplayName(), team.getColor()))
                         .append(Component.text(" completó: ", NamedTextColor.GREEN))
-                        .append(Component.text(task.getDisplayName(), NamedTextColor.YELLOW))
+                        .append(legacyTaskName(task, NamedTextColor.YELLOW))
                         .append(Component.text("  (" + card.getCompletedCount()
                                 + "/" + card.getTotalTasks() + ")", NamedTextColor.GRAY)))
         );
         refreshOpenGUIs(team, card);
         miniGame.checkWinCondition(team, card);
+    }
+
+    private Component legacyTaskName(BingoTask task, NamedTextColor defaultColor) {
+        return LegacyComponentSerializer.legacyAmpersand()
+                .deserialize(task.getDisplayName())
+                .decoration(TextDecoration.ITALIC, false)
+                .colorIfAbsent(defaultColor);
+    }
+
+    private boolean isCardItem(ItemStack item) {
+        if (item == null || item.getType().isAir() || !item.hasItemMeta()) return false;
+        return item.getItemMeta().getPersistentDataContainer()
+                .has(miniGame.getCardItemKey(), PersistentDataType.BOOLEAN);
     }
 
     private void refreshOpenGUIs(EventTeam team, BingoCard card) {

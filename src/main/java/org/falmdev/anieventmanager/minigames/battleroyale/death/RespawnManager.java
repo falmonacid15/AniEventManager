@@ -3,7 +3,10 @@ package org.falmdev.anieventmanager.minigames.battleroyale.death;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.*;
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Firework;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.meta.FireworkMeta;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
 import org.falmdev.anieventmanager.minigames.battleroyale.BattleRoyaleMiniGame;
@@ -11,23 +14,19 @@ import org.falmdev.anieventmanager.minigames.battleroyale.model.BRPlayer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
-/**
- * RespawnManager — gestión de puntos de revive y la animación de respawn.
- *
- * Puntos guardados en battleroyale.yml bajo "respawn-points".
- * La animación de revive:
- *  - 3 segundos de helix de partículas en el punto de spawn
- *  - A la mitad (1.5s) el jugador aparece y se cambia a SURVIVAL
- *  - Las partículas continúan hasta el final
- */
 public class RespawnManager {
 
-    private static final int    ANIMATION_TOTAL_TICKS = 60;  // 3 segundos
-    private static final int    SPAWN_TICK            = 30;  // mitad
+    private static final int    ANIMATION_TOTAL_TICKS = 60;
+    private static final int    SPAWN_TICK            = 30;
     private static final double HELIX_RADIUS          = 1.0;
     private static final double HELIX_HEIGHT          = 3.0;
     private static final int    PARTICLES_PER_TICK    = 4;
+
+    private static final Color[] FIREWORK_COLORS = {
+            Color.RED, Color.YELLOW, Color.AQUA, Color.LIME, Color.FUCHSIA, Color.ORANGE
+    };
 
     private final Anieventmanager      plugin;
     private final BattleRoyaleMiniGame game;
@@ -36,8 +35,6 @@ public class RespawnManager {
         this.plugin = plugin;
         this.game   = game;
     }
-
-    // ── Gestión de puntos ─────────────────────────────────────────────────────
 
     public List<Location> getRespawnPoints() {
         return game.getConfig().getRespawnPoints();
@@ -55,10 +52,6 @@ public class RespawnManager {
         game.getConfig().clearRespawnPoints();
     }
 
-    /**
-     * Devuelve el punto de respawn más cercano a la ubicación dada.
-     * Si no hay puntos configurados, devuelve null.
-     */
     public Location getClosestRespawnPoint(Location from) {
         List<Location> points = getRespawnPoints();
         if (points.isEmpty()) return null;
@@ -74,8 +67,6 @@ public class RespawnManager {
         return closest != null ? closest : points.get(0);
     }
 
-    // ── Revive ────────────────────────────────────────────────────────────────
-
     public enum ReviveResult {
         OK,
         TARGET_OFFLINE,
@@ -86,11 +77,6 @@ public class RespawnManager {
         SAME_PLAYER
     }
 
-    /**
-     * Reviva al jugador "target", solo si "reviver" es de su mismo equipo.
-     * El comando puede ser ejecutado por consola pasando reviver=null para saltar
-     * la validación de equipo (uso interno admin).
-     */
     public ReviveResult revivePlayer(Player target, Player reviver) {
         if (target == null || !target.isOnline()) return ReviveResult.TARGET_OFFLINE;
         if (reviver != null && reviver.equals(target)) return ReviveResult.SAME_PLAYER;
@@ -99,7 +85,6 @@ public class RespawnManager {
         if (brpTarget == null) return ReviveResult.TARGET_NOT_IN_GAME;
         if (!brpTarget.isDead()) return ReviveResult.TARGET_NOT_DEAD;
 
-        // Validar mismo equipo si hay reviver
         if (reviver != null) {
             var teamReviver = plugin.getTeamManager().getTeamOf(reviver);
             var teamTarget  = plugin.getTeamManager().getTeamOf(target);
@@ -108,7 +93,6 @@ public class RespawnManager {
                 return ReviveResult.DIFFERENT_TEAM;
         }
 
-        // Elegir punto de respawn
         Location reviveLoc;
         if (reviver != null) {
             reviveLoc = getClosestRespawnPoint(reviver.getLocation());
@@ -116,7 +100,6 @@ public class RespawnManager {
             reviveLoc = getClosestRespawnPoint(target.getLocation());
         }
         if (reviveLoc == null) {
-            // Fallback al lobby si no hay puntos configurados
             reviveLoc = game.getConfig().getLobbySpawn();
         }
         if (reviveLoc == null) return ReviveResult.NO_RESPAWN_POINTS;
@@ -125,13 +108,10 @@ public class RespawnManager {
         return ReviveResult.OK;
     }
 
-    // ── Animación de revive ───────────────────────────────────────────────────
-
     private void playReviveAnimation(Player target, Location spawnLoc, BRPlayer brp) {
         final Location loc = spawnLoc.clone();
         final World world  = loc.getWorld();
 
-        // Sonido inicial
         world.playSound(loc, Sound.BLOCK_BEACON_ACTIVATE, 1.0f, 1.2f);
 
         new org.bukkit.scheduler.BukkitRunnable() {
@@ -140,10 +120,8 @@ public class RespawnManager {
             public void run() {
                 tick++;
 
-                // Helix de partículas durante toda la animación
                 drawHelix(world, loc, tick);
 
-                // A la mitad: spawnear al jugador
                 if (tick == SPAWN_TICK) {
                     if (target.isOnline()) {
                         brp.setState(BRPlayer.State.ALIVE);
@@ -154,17 +132,16 @@ public class RespawnManager {
                         target.setFoodLevel(20);
                         target.teleport(loc);
 
-                        // Sonido del respawn
                         world.playSound(loc, Sound.ITEM_TRIDENT_THUNDER, 0.8f, 1.5f);
                         world.spawnParticle(Particle.FLASH, loc, 1);
+                        launchCelebrationFireworks(world, loc);
 
-                        target.sendMessage(Component.text("✔ Has sido revivido. ¡Volvé a la lucha!",
+                        target.sendMessage(Component.text("✔ Has sido revivido. ¡Vuelve a la lucha!",
                                 NamedTextColor.GREEN));
                     }
                 }
 
                 if (tick >= ANIMATION_TOTAL_TICKS) {
-                    // Sonido final
                     world.playSound(loc, Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1.5f);
                     cancel();
                 }
@@ -172,20 +149,15 @@ public class RespawnManager {
         }.runTaskTimer(plugin, 0L, 1L);
     }
 
-    /**
-     * Dibuja una helix de partículas subiendo desde el suelo.
-     */
     private void drawHelix(World world, Location base, int tick) {
         Particle.DustOptions cyan = new Particle.DustOptions(Color.AQUA, 1.5f);
 
         for (int i = 0; i < PARTICLES_PER_TICK; i++) {
-            // Progreso vertical animado — el helix sube con el tiempo
             double yProgress = ((tick * PARTICLES_PER_TICK + i) % (ANIMATION_TOTAL_TICKS * PARTICLES_PER_TICK))
                     / (double)(ANIMATION_TOTAL_TICKS * PARTICLES_PER_TICK);
             double y = yProgress * HELIX_HEIGHT;
 
-            // Dos hélices opuestas
-            double angle1 = yProgress * Math.PI * 6; // 3 vueltas en total
+            double angle1 = yProgress * Math.PI * 6;
             double angle2 = angle1 + Math.PI;
 
             double x1 = Math.cos(angle1) * HELIX_RADIUS;
@@ -201,7 +173,6 @@ public class RespawnManager {
                     1, 0, 0, 0, 0, cyan);
         }
 
-        // Circulo de partículas en el suelo
         if (tick % 5 == 0) {
             for (int i = 0; i < 16; i++) {
                 double angle = (i * Math.PI * 2) / 16;
@@ -212,5 +183,39 @@ public class RespawnManager {
                         1, 0, 0, 0, 0);
             }
         }
+    }
+
+    private void launchCelebrationFireworks(World world, Location loc) {
+        int count = 2 + ThreadLocalRandom.current().nextInt(2);
+        for (int i = 0; i < count; i++) {
+            Bukkit.getScheduler().runTaskLater(plugin,
+                    () -> spawnSingleFirework(world, loc), i * 4L);
+        }
+    }
+
+    private void spawnSingleFirework(World world, Location loc) {
+        Firework firework = (Firework) world.spawnEntity(loc, EntityType.FIREWORK_ROCKET);
+        FireworkMeta meta = firework.getFireworkMeta();
+        meta.addEffect(FireworkEffect.builder()
+                .withColor(randomFireworkColor())
+                .withFade(randomFireworkColor())
+                .with(pickRandomFireworkType())
+                .trail(true)
+                .flicker(true)
+                .build());
+        meta.setPower(0);
+        firework.setFireworkMeta(meta);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!firework.isDead()) firework.detonate();
+        }, 2L);
+    }
+
+    private Color randomFireworkColor() {
+        return FIREWORK_COLORS[ThreadLocalRandom.current().nextInt(FIREWORK_COLORS.length)];
+    }
+
+    private FireworkEffect.Type pickRandomFireworkType() {
+        FireworkEffect.Type[] types = FireworkEffect.Type.values();
+        return types[ThreadLocalRandom.current().nextInt(types.length)];
     }
 }

@@ -32,10 +32,7 @@ public class TNTRunListener implements Listener {
     private final TNTRunMiniGame  miniGame;
 
     private final Set<Long>          scheduledBlocks = new HashSet<>();
-    private final Map<UUID, Long>    jumpTimestamps  = new HashMap<>();
-    private final Map<UUID, Integer> cooldownTasks   = new HashMap<>();
-
-
+    private final Map<UUID, Integer> remainingUses    = new HashMap<>();
 
     private BukkitTask tickTask;
     private BukkitTask actionBarTask;
@@ -47,13 +44,16 @@ public class TNTRunListener implements Listener {
 
     public void startTick() {
         scheduledBlocks.clear();
-        jumpTimestamps.clear();
-
+        remainingUses.clear();
 
         if (miniGame.getConfig().isDoubleJumpEnabled()) {
+            int maxUses = miniGame.getConfig().getDoubleJumpMaxUses();
             plugin.getServer().getOnlinePlayers().stream()
                     .filter(miniGame::isActivePlayer)
-                    .forEach(p -> p.setAllowFlight(true));
+                    .forEach(p -> {
+                        remainingUses.put(p.getUniqueId(), maxUses);
+                        p.setAllowFlight(maxUses > 0);
+                    });
         }
 
         tickTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
@@ -103,16 +103,16 @@ public class TNTRunListener implements Listener {
         if (miniGame.getConfig().isDoubleJumpEnabled()) {
             actionBarTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
                 if (!miniGame.isStrictlyRunning()) return;
-                long now = System.currentTimeMillis();
-                int cooldownMs = miniGame.getConfig().getDoubleJumpCooldown() * 1000;
 
                 plugin.getServer().getOnlinePlayers().stream()
                         .filter(miniGame::isActivePlayer)
-                        .filter(p -> !cooldownTasks.containsKey(p.getUniqueId()))
                         .forEach(p -> {
-                            Long lastJump = jumpTimestamps.get(p.getUniqueId());
-                            boolean ready = lastJump == null || (now - lastJump) >= cooldownMs;
-                            if (ready) sendActionBar(p, "§a✦ Doble salto disponible");
+                            int uses = remainingUses.getOrDefault(p.getUniqueId(), 0);
+                            if (uses > 0) {
+                                sendActionBar(p, "§a✦ Doble salto disponible §7(" + uses + " usos)");
+                            } else {
+                                sendActionBar(p, "§c✦ Sin usos de doble salto");
+                            }
                         });
             }, 0L, 20L);
         }
@@ -123,6 +123,7 @@ public class TNTRunListener implements Listener {
         if (actionBarTask != null && !actionBarTask.isCancelled()) actionBarTask.cancel();
 
         scheduledBlocks.clear();
+        remainingUses.clear();
 
         plugin.getServer().getOnlinePlayers().forEach(p -> {
             if (p.getGameMode() != GameMode.SPECTATOR) {
@@ -130,10 +131,6 @@ public class TNTRunListener implements Listener {
                 p.setFlying(false);
             }
         });
-
-        cooldownTasks.values().forEach(id -> plugin.getServer().getScheduler().cancelTask(id));
-        cooldownTasks.clear();
-        jumpTimestamps.clear();
 
         org.bukkit.event.HandlerList.unregisterAll(this);
     }
@@ -155,7 +152,6 @@ public class TNTRunListener implements Listener {
         }
     }
 
-
     @EventHandler(priority = EventPriority.HIGH)
     public void onPlayerToggleFlight(PlayerToggleFlightEvent event) {
         Player player = event.getPlayer();
@@ -167,22 +163,18 @@ public class TNTRunListener implements Listener {
 
         event.setCancelled(true);
 
-        int cooldownSecs = miniGame.getConfig().getDoubleJumpCooldown();
         UUID uuid = player.getUniqueId();
+        int uses = remainingUses.getOrDefault(uuid, 0);
 
-        Long lastJump = jumpTimestamps.get(uuid);
-        long now = System.currentTimeMillis();
-        if (lastJump != null) {
-            long elapsed    = now - lastJump;
-            long cooldownMs = cooldownSecs * 1000L;
-            if (elapsed < cooldownMs) {
-                long remaining = (cooldownMs - elapsed + 999) / 1000;
-                sendActionBar(player, "§c⏳ Doble salto en §f" + remaining + "s");
-                return;
-            }
+        if (uses <= 0) {
+            player.setAllowFlight(false);
+            sendActionBar(player, "§cNo te quedan usos de doble salto");
+            return;
         }
 
-        jumpTimestamps.put(uuid, now);
+        uses--;
+        remainingUses.put(uuid, uses);
+
         player.setAllowFlight(false);
         player.setFlying(false);
 
@@ -190,12 +182,11 @@ public class TNTRunListener implements Listener {
         vel.setY(DOUBLE_JUMP_VELOCITY);
         player.setVelocity(vel);
 
-        sendActionBar(player, "§a✦ ¡Doble salto!");
-
-        if (cooldownSecs > 0) {
-            startCooldownDisplay(player, cooldownSecs);
-        } else {
+        if (uses > 0) {
             player.setAllowFlight(true);
+            sendActionBar(player, "§a✦ ¡Doble salto! §7(" + uses + " restantes)");
+        } else {
+            sendActionBar(player, "§a✦ ¡Doble salto! §7(sin usos restantes)");
         }
     }
 
@@ -210,22 +201,13 @@ public class TNTRunListener implements Listener {
 
     public void clearDoubleJumpState(Player player) {
         UUID uuid = player.getUniqueId();
-        jumpTimestamps.remove(uuid);
-        Integer taskId = cooldownTasks.remove(uuid);
-        if (taskId != null) plugin.getServer().getScheduler().cancelTask(taskId);
+        remainingUses.remove(uuid);
         player.setFlying(false);
         player.setAllowFlight(false);
     }
 
-    public int getJumpCooldownPercent(UUID uuid) {
-        if (!miniGame.getConfig().isDoubleJumpEnabled()) return 0;
-        int cooldownMs = miniGame.getConfig().getDoubleJumpCooldown() * 1000;
-        if (cooldownMs <= 0) return 0;
-        Long lastJump = jumpTimestamps.get(uuid);
-        if (lastJump == null) return 0;
-        long elapsed = System.currentTimeMillis() - lastJump;
-        if (elapsed >= cooldownMs) return 0;
-        return (int)(100 - (elapsed * 100L / cooldownMs));
+    public int getRemainingUses(UUID uuid) {
+        return remainingUses.getOrDefault(uuid, 0);
     }
 
     private void scheduleIfSand(Block block) {
@@ -233,7 +215,6 @@ public class TNTRunListener implements Listener {
             scheduleRemoval(block);
         }
     }
-
 
     private void scheduleRemoval(Block sand) {
         long key = blockKey(sand);
@@ -254,7 +235,6 @@ public class TNTRunListener implements Listener {
         }, delay);
     }
 
-
     private void spawnBreakParticle(Block block) {
         Location  center   = block.getLocation().add(0.5, 0.5, 0.5);
         BlockData data     = block.getBlockData();
@@ -273,47 +253,6 @@ public class TNTRunListener implements Listener {
         try { return Particle.valueOf("BLOCK_CRACK");   } catch (IllegalArgumentException ignored) {}
         try { return Particle.valueOf("BLOCK");         } catch (IllegalArgumentException ignored) {}
         return null;
-    }
-
-    private void startCooldownDisplay(Player player, int totalSeconds) {
-        UUID uuid = player.getUniqueId();
-
-        Integer existing = cooldownTasks.remove(uuid);
-        if (existing != null) plugin.getServer().getScheduler().cancelTask(existing);
-
-        int[] remaining = { totalSeconds };
-
-        int taskId = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
-            if (!miniGame.isActivePlayer(player) || !miniGame.isStrictlyRunning()) {
-                Integer id = cooldownTasks.remove(uuid);
-                if (id != null) plugin.getServer().getScheduler().cancelTask(id);
-                return;
-            }
-
-            if (remaining[0] <= 0) {
-                player.setAllowFlight(true);
-                sendActionBar(player, "§a✦ Doble salto listo");
-                Integer id = cooldownTasks.remove(uuid);
-                if (id != null) plugin.getServer().getScheduler().cancelTask(id);
-                return;
-            }
-
-            sendActionBar(player, buildCooldownBar(remaining[0], totalSeconds));
-            remaining[0]--;
-        }, 0L, 20L).getTaskId();
-
-        cooldownTasks.put(uuid, taskId);
-    }
-
-    private String buildCooldownBar(int remaining, int total) {
-        int bars   = 10;
-        int filled = (int) Math.round(((double)(total - remaining) / total) * bars);
-        StringBuilder bar = new StringBuilder("§8[");
-        for (int i = 0; i < bars; i++) {
-            bar.append(i < filled ? "§c█" : "§7░");
-        }
-        bar.append("§8] §f").append(remaining).append("s");
-        return bar.toString();
     }
 
     private void sendActionBar(Player player, String message) {

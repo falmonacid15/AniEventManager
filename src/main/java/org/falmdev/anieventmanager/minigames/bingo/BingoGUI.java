@@ -16,12 +16,14 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitTask;
 import org.falmdev.anieventmanager.Anieventmanager;
+import org.falmdev.anieventmanager.model.EventTeam;
 import org.falmdev.anieventmanager.utils.gui.GuiUtil;
 import org.falmdev.anieventmanager.utils.gui.HeadUtil;
 import org.falmdev.anieventmanager.utils.gui.ItemBuilder;
 
 import java.time.Duration;
 import java.util.*;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class BingoGUI implements Listener {
@@ -36,6 +38,7 @@ public class BingoGUI implements Listener {
 
     private static final int INFO_SLOT = 50;
     private static final int TELEPORT_SLOT = 48;
+    private static final int TELEPORT_TEAMMATE_SLOT = 49;
 
     private final Map<UUID, BukkitTask> pendingTeleports = new HashMap<>();
     private final Map<UUID, Location>   teleportOrigins  = new HashMap<>();
@@ -45,8 +48,6 @@ public class BingoGUI implements Listener {
     public BingoGUI(Anieventmanager plugin) {
         this.plugin = plugin;
     }
-
-    // ── Abrir GUI ─────────────────────────────────────────────────────────────
 
     public static void open(Player player, BingoCard card, BingoConfig config) {
         Inventory inv = Bukkit.createInventory(new BingoHolder(config), 54,
@@ -69,11 +70,15 @@ public class BingoGUI implements Listener {
                 Material icon = fromConfig != null && fromConfig.hasCustomIcon()
                         ? fromConfig.getIcon()
                         : null;
+                String iconTexture = fromConfig != null && fromConfig.hasIconTexture()
+                        ? fromConfig.getIconTexture()
+                        : null;
                 String description = fromConfig != null
                         ? fromConfig.getDescription()
                         : inMemory.getDescription();
 
-                inv.setItem(GRID_SLOTS[i], buildTaskItem(inMemory, displayName, icon, description));
+                inv.setItem(GRID_SLOTS[i],
+                        buildTaskItem(inMemory, displayName, icon, iconTexture, description));
             } else {
                 inv.setItem(GRID_SLOTS[i], GuiUtil.emptyPane());
             }
@@ -81,20 +86,18 @@ public class BingoGUI implements Listener {
 
         inv.setItem(INFO_SLOT, buildInfoItem(card));
         inv.setItem(TELEPORT_SLOT, buildTeleportItem(config));
+        inv.setItem(TELEPORT_TEAMMATE_SLOT, buildTeleportTeammateItem());
         player.openInventory(inv);
     }
 
-    // ── Construcción de ítems ─────────────────────────────────────────────────
-
     private static ItemStack buildTaskItem(BingoTask task, String displayName,
-                                           Material icon, String description) {
-        Material mat = icon != null
-                ? (task.isCompleted() ? Material.LIME_STAINED_GLASS_PANE : icon)
-                : (task.isCompleted()
-                   ? Material.LIME_STAINED_GLASS_PANE
-                   : Material.RED_STAINED_GLASS_PANE);
+                                           Material icon, String iconTexture, String description) {
+        boolean useTexture = !task.isCompleted() && iconTexture != null && !iconTexture.isEmpty();
 
-        // Construir el nombre — soporta &-codes via LegacyComponentSerializer
+        Material mat = task.isCompleted()
+                ? Material.LIME_STAINED_GLASS_PANE
+                : (icon != null ? icon : Material.RED_STAINED_GLASS_PANE);
+
         Component nameComponent;
         if (task.isCompleted() && !displayName.contains("&")) {
             nameComponent = Component.text(displayName, NamedTextColor.GREEN)
@@ -105,9 +108,10 @@ public class BingoGUI implements Listener {
                     .decoration(TextDecoration.ITALIC, false);
         }
 
-        ItemBuilder b = ItemBuilder.of(mat).name(nameComponent);
+        ItemBuilder b = useTexture
+                ? ItemBuilder.of(HeadUtil.fromBase64(iconTexture)).name(nameComponent)
+                : ItemBuilder.of(mat).name(nameComponent);
 
-        // Descripción
         if (description != null && !description.isEmpty()) {
             b.emptyLine();
             for (String line : description.split("\n")) {
@@ -119,14 +123,12 @@ public class BingoGUI implements Listener {
 
         b.emptyLine();
 
-        // Estado
         if (task.isCompleted()) {
             b.lore(NamedTextColor.GREEN, "✔ Completada");
         } else {
             b.lore(NamedTextColor.RED, "✘ Pendiente");
         }
 
-        // Progreso
         boolean showProgress = switch (task.getType()) {
             case OBTAIN_ITEM, CRAFT_ITEM, KILL_MOB, TRADE_ANY, TRADE_ITEM -> true;
             default -> false;
@@ -198,16 +200,24 @@ public class BingoGUI implements Listener {
         return b.hideDetails().build();
     }
 
-    // ── Listener ──────────────────────────────────────────────────────────────
+    private static ItemStack buildTeleportTeammateItem() {
+        return ItemBuilder.of(Material.ENDER_PEARL)
+                .name("✦ Teletransportarse a compañero", NamedTextColor.AQUA)
+                .emptyLine()
+                .lore(NamedTextColor.YELLOW, "Click para ir con un compañero de equipo.")
+                .hideDetails()
+                .build();
+    }
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
-        if (event.getInventory().getHolder() instanceof BingoHolder holder) {
-            event.setCancelled(true);
+        if (!(event.getInventory().getHolder() instanceof BingoHolder holder)) return;
+        event.setCancelled(true);
 
-            if (event.getRawSlot() != TELEPORT_SLOT) return;
-            if (!(event.getWhoClicked() instanceof Player player)) return;
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+        int slot = event.getRawSlot();
 
+        if (slot == TELEPORT_SLOT) {
             Location spawn = holder.getConfig().getSpawn();
             if (spawn == null) {
                 player.sendMessage(Component.text(
@@ -216,11 +226,41 @@ public class BingoGUI implements Listener {
             }
             if (pendingTeleports.containsKey(player.getUniqueId())) return;
             player.closeInventory();
-            startTeleportCountdown(player, spawn);
+            startTeleportCountdown(player, () -> spawn,
+                    Component.text("✦ ¡Listo!", NamedTextColor.GREEN),
+                    Component.text("Spawn del Bingo", NamedTextColor.AQUA),
+                    "✦ Teletransportado al spawn del Bingo.");
+            return;
+        }
+
+        if (slot == TELEPORT_TEAMMATE_SLOT) {
+            if (pendingTeleports.containsKey(player.getUniqueId())) return;
+
+            Player teammate = findOnlineTeammate(player);
+            if (teammate == null) {
+                player.sendMessage(Component.text(
+                        "No tienes compañeros de equipo conectados.", NamedTextColor.RED));
+                return;
+            }
+
+            player.closeInventory();
+            startTeleportCountdown(player,
+                    () -> teammate.isOnline() ? teammate.getLocation() : null,
+                    Component.text("✦ ¡Listo!", NamedTextColor.GREEN),
+                    Component.text("Junto a tu compañero", NamedTextColor.AQUA),
+                    "✦ Teletransportado junto a tu compañero.");
         }
     }
 
-    // ── Utilidades ────────────────────────────────────────────────────────────
+    private Player findOnlineTeammate(Player player) {
+        Optional<EventTeam> teamOpt = plugin.getTeamManager().getTeamOf(player);
+        if (teamOpt.isEmpty()) return null;
+
+        for (Player teammate : teamOpt.get().getOnlinePlayers()) {
+            if (!teammate.getUniqueId().equals(player.getUniqueId())) return teammate;
+        }
+        return null;
+    }
 
     private static String prettyType(BingoTask.Type type) {
         return switch (type) {
@@ -236,7 +276,9 @@ public class BingoGUI implements Listener {
         };
     }
 
-    private void startTeleportCountdown(Player player, Location destination) {
+    private void startTeleportCountdown(Player player, Supplier<Location> destinationSupplier,
+                                        Component successTitle, Component successSubtitle,
+                                        String successMessage) {
         UUID uid = player.getUniqueId();
         teleportOrigins.put(uid, player.getLocation().clone());
 
@@ -272,12 +314,17 @@ public class BingoGUI implements Listener {
                 count[0]--;
             } else {
                 cancelTeleport(uid);
+
+                Location destination = destinationSupplier.get();
+                if (destination == null) {
+                    player.sendMessage(Component.text(
+                            "✘ No se pudo completar el teletransporte.", NamedTextColor.RED));
+                    return;
+                }
+
                 player.teleport(destination);
-                player.sendMessage(Component.text(
-                        "✦ Teletransportado al spawn del Bingo.", NamedTextColor.AQUA));
-                player.showTitle(Title.title(
-                        Component.text("✦ ¡Listo!", NamedTextColor.GREEN),
-                        Component.text("Spawn del Bingo", NamedTextColor.AQUA),
+                player.sendMessage(Component.text(successMessage, NamedTextColor.AQUA));
+                player.showTitle(Title.title(successTitle, successSubtitle,
                         Title.Times.times(Duration.ofMillis(100), Duration.ofMillis(1200), Duration.ofMillis(400))));
             }
         }, 0L, 20L);

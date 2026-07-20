@@ -20,15 +20,6 @@ import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.*;
 
-/**
- * Reproductor de cinematicas.
- *
- * Cambios respecto a versión anterior:
- *  - Fade in / fade out via Title.Times + LETTERBOX_CHAR
- *  - Modo debug usa CREATIVE en vez de SPECTATOR
- *  - Hotbar debug: 5 slots (pausa, rebobinar, adelantar, marker, stop)
- *  - seekDebug() para rebobinar/adelantar
- */
 public class CinematicPlayer {
 
     private static final String LETTERBOX_CHAR = "\uE100";
@@ -40,11 +31,11 @@ public class CinematicPlayer {
     public static final String DEBUG_MARKER_NAME = "+ Agregar Marker";
     public static final String DEBUG_STOP_NAME   = "■ Detener";
 
-    /** Ticks que salta rebobinar/adelantar (5 segundos). */
     private static final int SKIP_TICKS = 100;
 
     private final Anieventmanager plugin;
     private final CinematicEffects effects;
+    private final CinematicSpectators spectators;
 
     private BukkitTask task;
     private Cinematic  current;
@@ -69,9 +60,10 @@ public class CinematicPlayer {
     private Field   fieldConnection   = null;
     private boolean reflectionFailed  = false;
 
-    public CinematicPlayer(Anieventmanager plugin, CinematicEffects effects) {
+    public CinematicPlayer(Anieventmanager plugin, CinematicEffects effects, CinematicSpectators spectators) {
         this.plugin  = plugin;
         this.effects = effects;
+        this.spectators = spectators;
     }
 
     // ── API pública ───────────────────────────────────────────────────────────
@@ -90,8 +82,6 @@ public class CinematicPlayer {
     public void playDebug(Cinematic cinematic, Player admin, Runnable onFinish) {
         startPlayback(cinematic, onFinish, true, admin);
     }
-
-    // ── Implementación ────────────────────────────────────────────────────────
 
     private void startPlayback(Cinematic cinematic, Runnable onFinish,
                                boolean debug, Player debugAdminPlayer) {
@@ -114,7 +104,6 @@ public class CinematicPlayer {
             setupDebugHotbar(debugAdminPlayer);
             savedDebugGM = debugAdminPlayer.getGameMode();
 
-            // FIX: modo debug usa CREATIVE (no SPECTATOR) para poder moverse libremente
             debugAdminPlayer.setGameMode(GameMode.CREATIVE);
             debugAdminPlayer.setAllowFlight(true);
             debugAdminPlayer.setFlying(true);
@@ -140,7 +129,6 @@ public class CinematicPlayer {
 
             effects.applyAll(audience);
 
-            // Delay de 2 ticks para que el packet de SPECTATOR no pise la calabaza/fade
             final List<Player> audienceSnapshot = new ArrayList<>(audience);
             final int fadeIn = cinematic.getFadeInTicks();
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
@@ -149,7 +137,6 @@ public class CinematicPlayer {
                 }
             }, 2L);
 
-            // Control de tiempo
             if (cinematic.hasTimeControl() && startLoc != null) {
                 timeWorld = startLoc.getWorld();
                 if (timeWorld != null) {
@@ -191,18 +178,12 @@ public class CinematicPlayer {
                 if (debugTick >= totalFrames) {
                     int fadeOut = cinematic.getFadeOutTicks();
                     if (fadeOut > 0) {
-                        // Cancelar reproducción
                         task.cancel();
                         task = null;
                         List<Player> live = getAudience();
                         if (live.isEmpty()) {
                             finish();
                         } else {
-                            // applyFadeOut aplica BLINDNESS y llama onComplete
-                            // cuando la pantalla ya está negra (~10 ticks).
-                            // finish() restaura al jugador mientras está negro —
-                            // el efecto expira solo y el cliente hace el fade nativo.
-                            // Usamos el primer jugador como trigger (todos tienen mismo timing)
                             int[] triggered = {0};
                             for (Player p : live) {
                                 effects.applyFadeOut(p, fadeOut, () -> {
@@ -245,13 +226,6 @@ public class CinematicPlayer {
         }, 0L, 1L);
     }
 
-    // ── Fade en modo normal (bandas + fade nativo) ────────────────────────────
-
-    // El fade in lo maneja applyLetterbox(player, fadeInTicks) en CinematicEffects.
-    // El fade out lo maneja applyFadeOut(player, fadeOutTicks) al llegar al final.
-
-    // ── Letterbox + título combinados ─────────────────────────────────────────
-
     private void showText(Player player, CinematicMarker m) {
         boolean hasTitle    = m.getTitleMain() != null && !m.getTitleMain().isBlank();
         boolean hasSub      = m.getTitleSub()  != null && !m.getTitleSub().isBlank();
@@ -286,8 +260,6 @@ public class CinematicPlayer {
         }
     }
 
-    // ── Debug: pausa, seek, marker, stop ─────────────────────────────────────
-
     public void toggleDebugPause() {
         if (!debugMode) return;
         debugPaused = !debugPaused;
@@ -298,10 +270,6 @@ public class CinematicPlayer {
         return debugMode && p != null && p.getUniqueId().equals(debugAdmin);
     }
 
-    /**
-     * Rebobina o adelanta la reproducción debug.
-     * @param deltaTicks positivo = adelantar, negativo = rebobinar
-     */
     public void seekDebug(int deltaTicks) {
         if (!debugMode || current == null) return;
         int newTick = Math.max(0, Math.min(current.getTotalFrames() - 1, debugTick + deltaTicks));
@@ -340,14 +308,6 @@ public class CinematicPlayer {
                 plugin.getCinematicMarkerGUI().open(admin, current, marker, null), 1L);
     }
 
-    /**
-     * Hotbar debug — 5 slots:
-     *   0: Pausa/Play
-     *   1: ◀◀ Rebobinar -5s
-     *   2: ▶▶ Adelantar +5s
-     *   3: + Marker
-     *   4: ■ Stop
-     */
     public boolean handleDebugHotbarClick(Player admin, int slot) {
         if (!isDebugAdmin(admin)) return false;
         return switch (slot) {
@@ -359,8 +319,6 @@ public class CinematicPlayer {
             default -> false;
         };
     }
-
-    // ── Debug hotbar ──────────────────────────────────────────────────────────
 
     private void setupDebugHotbar(Player admin) {
         savedDebugHotbar = new ItemStack[5];
@@ -375,7 +333,6 @@ public class CinematicPlayer {
     }
 
     private void updateDebugHotbar(Player admin) {
-        // Slot 0: Pausa/Play
         admin.getInventory().setItem(0, ItemBuilder.of(
                         debugPaused ? Material.LIME_DYE : Material.YELLOW_DYE)
                 .name(debugPaused ? DEBUG_RESUME_NAME : DEBUG_PAUSE_NAME,
@@ -385,7 +342,6 @@ public class CinematicPlayer {
                 .lore(NamedTextColor.GRAY, "Click para " + (debugPaused ? "reanudar." : "pausar."))
                 .build());
 
-        // Slot 1: Rebobinar
         admin.getInventory().setItem(1, ItemBuilder.of(Material.CLOCK)
                 .name(DEBUG_REWIND_NAME, NamedTextColor.AQUA, TextDecoration.BOLD)
                 .emptyLine()
@@ -393,7 +349,6 @@ public class CinematicPlayer {
                 .lore(NamedTextColor.DARK_GRAY, "Tick actual: " + debugTick)
                 .build());
 
-        // Slot 2: Adelantar
         admin.getInventory().setItem(2, ItemBuilder.of(Material.CLOCK)
                 .name(DEBUG_FORWARD_NAME, NamedTextColor.AQUA, TextDecoration.BOLD)
                 .emptyLine()
@@ -401,14 +356,12 @@ public class CinematicPlayer {
                 .lore(NamedTextColor.DARK_GRAY, "Tick actual: " + debugTick)
                 .build());
 
-        // Slot 3: Marker
         admin.getInventory().setItem(3, ItemBuilder.of(Material.GLOW_INK_SAC)
                 .name(DEBUG_MARKER_NAME, NamedTextColor.GREEN, TextDecoration.BOLD)
                 .emptyLine()
                 .lore(NamedTextColor.GRAY, "Click para agregar marker en tick actual.")
                 .build());
 
-        // Slot 4: Stop
         admin.getInventory().setItem(4, ItemBuilder.of(Material.RED_DYE)
                 .name(DEBUG_STOP_NAME, NamedTextColor.RED, TextDecoration.BOLD)
                 .emptyLine()
@@ -422,8 +375,6 @@ public class CinematicPlayer {
             admin.getInventory().setItem(i, savedDebugHotbar[i]);
     }
 
-    // ── Fin ───────────────────────────────────────────────────────────────────
-
     public void stop() {
         if (task != null) { task.cancel(); task = null; }
         if (debugMode) restoreDebug();
@@ -434,7 +385,6 @@ public class CinematicPlayer {
     }
 
     private void finish() {
-        // El fade out ya fue aplicado antes de llamar finish() (si había fadeOutTicks > 0)
         if (task != null) { task.cancel(); task = null; }
         if (debugMode) restoreDebug();
         else { restoreWorldTime(); restoreAudience(); }
@@ -481,8 +431,6 @@ public class CinematicPlayer {
         savedLocations.clear();
     }
 
-    // ── Actionbar debug ───────────────────────────────────────────────────────
-
     private Component buildDebugActionBar(int tick, int total, boolean paused) {
         int bars   = 20;
         int filled = total > 0 ? Math.min(bars, (tick * bars) / total) : 0;
@@ -519,8 +467,6 @@ public class CinematicPlayer {
 
         return bar;
     }
-
-    // ── Utilidades ────────────────────────────────────────────────────────────
 
     private Location toLocation(CinematicFrame frame, Cinematic cinematic) {
         World world = plugin.getCinematicManager().getCinematicWorld(cinematic.getId());
@@ -600,7 +546,7 @@ public class CinematicPlayer {
     private List<Player> getAudience() {
         List<Player> out = new ArrayList<>();
         for (Player p : Bukkit.getOnlinePlayers())
-            if (plugin.getTeamManager().isInTeam(p)) out.add(p);
+            if (plugin.getTeamManager().isInTeam(p) || spectators.isSpectator(p)) out.add(p);
         return out;
     }
 }

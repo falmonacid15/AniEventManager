@@ -10,6 +10,7 @@ import org.bukkit.util.Vector;
 import org.falmdev.anieventmanager.Anieventmanager;
 import org.falmdev.anieventmanager.model.EventTeam;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class ChainManager {
@@ -26,6 +27,8 @@ public class ChainManager {
 
     private boolean chainEnabled;
 
+    private List<EventTeam> activeTeams = new ArrayList<>();
+
     public ChainManager(Anieventmanager plugin, boolean chainEnabled, double maxDistance) {
         this.plugin       = plugin;
         this.chainEnabled = chainEnabled;
@@ -34,8 +37,9 @@ public class ChainManager {
 
     public void startForTeams(List<EventTeam> teams) {
         stopTick();
+        activeTeams = new ArrayList<>(teams);
         tickTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
-            for (EventTeam team : teams) {
+            for (EventTeam team : activeTeams) {
                 List<Player> members = team.getOnlinePlayers();
                 if (members.size() < 2) continue;
                 Player p1 = members.get(0);
@@ -47,8 +51,12 @@ public class ChainManager {
 
     public void stopTick() {
         if (tickTask != null && !tickTask.isCancelled()) tickTask.cancel();
+        activeTeams.clear();
     }
 
+    public void removeTeam(EventTeam team) {
+        activeTeams.remove(team);
+    }
 
     private void tickChain(Player p1, Player p2) {
         if (!p1.isOnline() || !p2.isOnline()) return;

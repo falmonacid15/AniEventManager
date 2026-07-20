@@ -9,14 +9,6 @@ import org.falmdev.anieventmanager.cinematics.model.CinematicState;
 import java.io.File;
 import java.util.*;
 
-/**
- * Registro central de cinematicas v2.
- *
- * Cambios respecto a v1:
- *  - Almacena el mundo de cada cinematica (necesario para convertir frames a Locations)
- *  - El método play() requiere que la cinematica tenga al menos 1 frame
- *  - CinematicRecorder ya no usa magic stick sino tijeras
- */
 public class CinematicManager {
 
     private final Anieventmanager plugin;
@@ -24,33 +16,24 @@ public class CinematicManager {
 
     private final LinkedHashMap<String, Cinematic> cinematics = new LinkedHashMap<>();
 
-    /**
-     * Mundo de cada cinematica (donde fue grabada).
-     * Necesario porque los frames no almacenan el nombre del mundo
-     * (para mantener el YAML compacto).
-     * Se guarda en un archivo separado: cinematics/<id>.world
-     */
     private final Map<String, String> cinematicWorlds = new HashMap<>();
 
     private final CinematicEffects  effects;
     private final CinematicPlayer   player;
     private final CinematicRecorder recorder;
+    private final CinematicSpectators spectators;
 
     public CinematicManager(Anieventmanager plugin) {
         this.plugin        = plugin;
         this.cinematicsDir = new File(plugin.getDataFolder(), "cinematics");
         cinematicsDir.mkdirs();
 
+        this.spectators = new CinematicSpectators();
         this.effects  = new CinematicEffects(plugin);
-        this.player   = new CinematicPlayer(plugin, effects);
+        this.player   = new CinematicPlayer(plugin, effects, spectators);
         this.recorder = new CinematicRecorder(plugin);
     }
 
-    // ── Carga ─────────────────────────────────────────────────────────────────
-
-    /**
-     * Llamar desde ServerLoadEvent (mundos ya disponibles).
-     */
     public void loadAll() {
         cinematics.clear();
         cinematicWorlds.clear();
@@ -88,24 +71,14 @@ public class CinematicManager {
         }
     }
 
-    // ── Mundo de la cinematica ────────────────────────────────────────────────
-
-    /**
-     * Obtiene el World en que fue grabada la cinematica.
-     * Usado por CinematicPlayer para convertir frames a Locations.
-     */
     public World getCinematicWorld(String id) {
         String worldName = cinematicWorlds.get(id.toLowerCase());
         if (worldName == null) return null;
         return org.bukkit.Bukkit.getWorld(worldName);
     }
 
-    /**
-     * Guarda el mundo de una cinematica (llamado al terminar la grabación).
-     */
     public void setCinematicWorld(String id, World world) {
         cinematicWorlds.put(id.toLowerCase(), world.getName());
-        // Persistir en archivo .world
         File worldFile = new File(cinematicsDir, id.toLowerCase() + ".world");
         try {
             java.nio.file.Files.writeString(worldFile.toPath(), world.getName());
@@ -114,8 +87,6 @@ public class CinematicManager {
                     + id + ": " + e.getMessage());
         }
     }
-
-    // ── CRUD ──────────────────────────────────────────────────────────────────
 
     public Cinematic create(String id, String displayName) {
         String key = id.toLowerCase();
@@ -133,7 +104,7 @@ public class CinematicManager {
         if (c.isPlaying()) return false;
         if (c.isRecording()) recorder.stopRecording();
         c.getFile().delete();
-        // Borrar también el archivo .world
+
         new File(cinematicsDir, id.toLowerCase() + ".world").delete();
         cinematics.remove(id.toLowerCase());
         cinematicWorlds.remove(id.toLowerCase());
@@ -152,17 +123,10 @@ public class CinematicManager {
         return Collections.unmodifiableSet(cinematics.keySet());
     }
 
-    // ── Grabación ─────────────────────────────────────────────────────────────
-
-    /**
-     * Inicia la grabación. El mundo se guarda al terminar desde CinematicListener.
-     */
     public boolean startRecording(org.bukkit.entity.Player admin,
                                   Cinematic cinematic, int durationTicks) {
         return recorder.startRecording(admin, cinematic, durationTicks);
     }
-
-    // ── Reproducción ─────────────────────────────────────────────────────────
 
     public boolean play(String id) {
         Cinematic c = cinematics.get(id.toLowerCase());
@@ -203,4 +167,5 @@ public class CinematicManager {
     public CinematicEffects  getEffects()            { return effects; }
     public CinematicPlayer   getPlayer()             { return player; }
     public CinematicRecorder getRecorder()           { return recorder; }
+    public CinematicSpectators getSpectators() { return spectators; }
 }
