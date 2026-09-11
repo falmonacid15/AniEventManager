@@ -55,10 +55,10 @@ public class BingoConfig {
     private void writeDefaults() {
         yaml.set("settings.duration-minutes", 30);
         yaml.set("settings.countdown-seconds", 5);
-        yaml.set("settings.score-first",  10);
-        yaml.set("settings.score-second",  6);
-        yaml.set("settings.score-third",   3);
-        yaml.set("settings.score-default", 1);
+        yaml.set("settings.score-first",  20);
+        yaml.set("settings.score-second",  15);
+        yaml.set("settings.score-third",   10);
+        yaml.set("settings.score-default", 5);
     }
 
     public Location getSpawn() {
@@ -92,10 +92,10 @@ public class BingoConfig {
 
     public int getScoreForPlace(int place) {
         return switch (place) {
-            case 1  -> yaml.getInt("settings.score-first",   10);
-            case 2  -> yaml.getInt("settings.score-second",   6);
-            case 3  -> yaml.getInt("settings.score-third",    3);
-            default -> yaml.getInt("settings.score-default",  1);
+            case 1  -> yaml.getInt("settings.score-first",   20);
+            case 2  -> yaml.getInt("settings.score-second",   15);
+            case 3  -> yaml.getInt("settings.score-third",    10);
+            default -> yaml.getInt("settings.score-default",  5);
         };
     }
 

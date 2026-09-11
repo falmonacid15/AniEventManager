@@ -110,10 +110,10 @@ public class BattleRoyaleConfig {
 
     public int getPointsForPlacement(int placement) {
         return switch (placement) {
-            case 1  -> yaml.getInt("points.first", 100);
-            case 2  -> yaml.getInt("points.second", 60);
-            case 3  -> yaml.getInt("points.third", 30);
-            default -> yaml.getInt("points.other", 10);
+            case 1  -> yaml.getInt("points.first", 20);
+            case 2  -> yaml.getInt("points.second", 15);
+            case 3  -> yaml.getInt("points.third", 10);
+            default -> yaml.getInt("points.other", 5);
         };
     }
 

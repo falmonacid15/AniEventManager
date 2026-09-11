@@ -285,6 +285,7 @@ public class BingoMiniGame implements MiniGame {
         Location spawn = config.getSpawn();
         if (spawn == null) return;
         for (var p : team.getOnlinePlayers()) {
+            p.getInventory().clear();
             p.teleport(spawn);
             p.setGameMode(GameMode.ADVENTURE);
         }

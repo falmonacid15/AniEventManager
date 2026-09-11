@@ -2,6 +2,7 @@ package org.falmdev.anieventmanager.minigames.frozenheist;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.falmdev.anieventmanager.Anieventmanager;
 import org.falmdev.anieventmanager.model.EventTeam;
@@ -178,6 +179,17 @@ public class FrozenHeistCommand {
                 ok(player, "Partida detenida.");
             }
 
+            case "cleareffects" -> {
+                if (args.length < 2) { err(player, "Uso: /em frozenheist cleareffects <jugador>"); return; }
+                Player target = Bukkit.getPlayerExact(args[1]);
+                if (target == null) { err(player, "Jugador '" + args[1] + "' no está conectado."); return; }
+                miniGame.clearPlayerEffects(target);
+                ok(player, "Efectos de Frozen Heist limpiados para " + target.getName() + ".");
+                if (!target.getUniqueId().equals(player.getUniqueId())) {
+                    target.sendMessage(Component.text("✔ Un administrador limpió tus efectos de Frozen Heist.", NamedTextColor.GREEN));
+                }
+            }
+
             default -> sendHelp(player);
         }
     }
@@ -186,7 +198,7 @@ public class FrozenHeistCommand {
         if (args.length == 1)
             return filter(List.of("setspawn", "setduration", "settings",
                     "setbasespawn", "setcapture", "setflag", "setbase", "colorize",
-                    "teaminfo", "start", "stop"), args[0]);
+                    "teaminfo", "start", "stop", "cleareffects"), args[0]);
 
         List<String> teamIds = new ArrayList<>(plugin.getTeamManager().getTeamIds());
 
@@ -196,6 +208,8 @@ public class FrozenHeistCommand {
             if (List.of("setcapture", "setflag", "setbase", "colorize", "teaminfo")
                     .contains(args[0].toLowerCase()))
                 return filter(teamIds, args[1]);
+            if (args[0].equalsIgnoreCase("cleareffects"))
+                return filter(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList(), args[1]);
         }
 
         if (args.length == 3) {
@@ -224,6 +238,7 @@ public class FrozenHeistCommand {
         player.sendMessage(Component.text("  Control:", NamedTextColor.GRAY));
         help(player, "/em frozenheist start",                   "Iniciar partida");
         help(player, "/em frozenheist stop",                    "Detener partida");
+        help(player, "/em frozenheist cleareffects <jugador>",  "Limpia efectos atascados (glow, congelado)");
     }
 
     private String stateToSpanish(FrozenHeistMiniGame.State state) {
