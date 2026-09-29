@@ -338,6 +338,13 @@ public class FrozenHeistMiniGame implements MiniGame, Listener {
             org.bukkit.event.HandlerList.unregisterAll(listener);
         }
         org.bukkit.event.HandlerList.unregisterAll(this);
+
+        if (flagManager != null) {
+            playerStates.keySet().stream()
+                    .map(Bukkit::getPlayer)
+                    .filter(Objects::nonNull)
+                    .forEach(flagManager::clearCarrierGlow);
+        }
         if (flagManager != null) flagManager.returnAll();
 
         state = State.FINISHED;
@@ -486,6 +493,30 @@ public class FrozenHeistMiniGame implements MiniGame, Listener {
                 .append(Component.text(".", NamedTextColor.GREEN)));
     }
 
+    public void clearPlayerEffects(Player target) {
+        PlayerState ps = playerStates.get(target.getUniqueId());
+        if (ps != null) {
+            if (ps.isRescuing()) ps.cancelRescue();
+            if (ps.isFrozen()) ps.unfreeze();
+            if (ps.isCarryingFlag()) {
+                String flagTeamId = ps.getCarryingFlagOf();
+                ps.clearFlag();
+                if (flagManager != null) flagManager.returnToBase(flagTeamId);
+            }
+            ps.setBeingRescuedBy(null);
+            ps.resetHits();
+        }
+
+        if (flagManager != null) flagManager.clearCarrierGlow(target);
+
+        target.removePotionEffect(org.bukkit.potion.PotionEffectType.SLOWNESS);
+        target.removePotionEffect(org.bukkit.potion.PotionEffectType.JUMP_BOOST);
+        target.removePotionEffect(org.bukkit.potion.PotionEffectType.SPEED);
+        target.setFreezeTicks(0);
+        target.setGlowing(false);
+        target.getInventory().setHelmet(null);
+    }
+
     public void addPoints(String teamId, int points) {
         TeamHeistData data = teamData.get(teamId);
         if (data == null) return;
@@ -596,6 +627,8 @@ public class FrozenHeistMiniGame implements MiniGame, Listener {
         p.removePotionEffect(org.bukkit.potion.PotionEffectType.SLOWNESS);
         p.removePotionEffect(org.bukkit.potion.PotionEffectType.JUMP_BOOST);
         p.removePotionEffect(org.bukkit.potion.PotionEffectType.SPEED);
+        p.setFreezeTicks(0);
+        p.setGlowing(false);
         p.getInventory().setHelmet(null);
         p.getInventory().setChestplate(null);
         p.getInventory().setLeggings(null);

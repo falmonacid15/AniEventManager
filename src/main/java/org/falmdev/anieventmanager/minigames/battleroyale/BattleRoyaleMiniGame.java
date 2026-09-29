@@ -121,7 +121,6 @@ public class BattleRoyaleMiniGame implements MiniGame {
         dropSystem.stop();
         cancelCountdown();
         restoreAllPlayers();
-        deathListener.clearPendingRespawns();
         players.clear();
         teams.clear();
         eventTeamsById.clear();
@@ -287,10 +286,6 @@ public class BattleRoyaleMiniGame implements MiniGame {
         }
         registerTeamEliminationIfNeeded(victim);
         checkWinCondition();
-    }
-
-    public void killPlayer(Player player, Player killer) {
-        handleDeath(player, killer);
     }
 
     private void registerTeamEliminationIfNeeded(Player victim) {

@@ -43,6 +43,14 @@ public class DropListener implements Listener {
 
         if (brp.isOnDragon() || brp.isParachuting()) {
             event.setCancelled(true);
+            return;
+        }
+
+        boolean fromPlayer = event instanceof EntityDamageByEntityEvent damageByEntity
+                && damageByEntity.getDamager() instanceof Player;
+
+        if (!fromPlayer && game.getDropSystem().isInLandingGrace(player.getUniqueId())) {
+            event.setCancelled(true);
         }
     }
 

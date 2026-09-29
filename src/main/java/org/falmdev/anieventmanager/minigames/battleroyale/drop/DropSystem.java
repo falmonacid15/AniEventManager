@@ -25,6 +25,7 @@ public class DropSystem {
     private static final String PARACHUTE_TAG = "br_parachute";
     private static final int    GHAST_CAPACITY = 4;
     private static final double GHAST_SPACING  = 6.0;
+    private static final long   LANDING_GRACE_MS = 3000;
 
     private final Anieventmanager    plugin;
     private final BattleRoyaleConfig config;
@@ -35,6 +36,7 @@ public class DropSystem {
 
     private final List<HappyGhast>    ghasts = new ArrayList<>();
     private final Map<UUID, HappyGhast> playerGhast = new HashMap<>();
+    private final Map<UUID, Long> landingGraceUntil = new HashMap<>();
 
     private Location currentPos = null;
     private Vector   stepVec    = null;
@@ -50,6 +52,16 @@ public class DropSystem {
     }
 
     public boolean isActive() { return !ghasts.isEmpty(); }
+
+    public boolean isInLandingGrace(UUID uuid) {
+        Long until = landingGraceUntil.get(uuid);
+        if (until == null) return false;
+        if (System.currentTimeMillis() > until) {
+            landingGraceUntil.remove(uuid);
+            return false;
+        }
+        return true;
+    }
 
     public void start(Map<UUID, BRPlayer> players, Runnable onAllLanded) {
         this.onAllLanded = onAllLanded;
@@ -268,6 +280,7 @@ public class DropSystem {
         brp.setHasLanded(true);
         brp.setState(BRPlayer.State.ALIVE);
         brp.setLastGroundLocation(player.getLocation().clone());
+        landingGraceUntil.put(player.getUniqueId(), System.currentTimeMillis() + LANDING_GRACE_MS);
 
         ItemStack chest = player.getInventory().getChestplate();
         if (isParachuteElytra(chest)) player.getInventory().setChestplate(null);
@@ -294,6 +307,7 @@ public class DropSystem {
         despawnGhasts();
         brPlayers.clear();
         playerGhast.clear();
+        landingGraceUntil.clear();
         currentPos = null;
         stepVec    = null;
         sideVec    = null;
